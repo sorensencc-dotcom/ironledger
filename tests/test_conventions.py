@@ -14,6 +14,7 @@ from ironledger.conventions import (
     validate_amount_minor_units,
     validate_convention_sample,
     validate_currency,
+    validate_same_currency_balance,
     validate_source_link,
     validate_utc_timestamp,
 )
@@ -139,3 +140,125 @@ def test_currency_scale_lookup():
 
 def test_validate_currency_returns_code():
     assert validate_currency("EUR") == "EUR"
+
+
+def test_currency_lowercase_rejected():
+    with pytest.raises(ConventionError):
+        validate_currency("usd")
+
+
+def test_currency_invalid_length_rejected():
+    for bad in ("US", "USDA", "U", ""):
+        with pytest.raises(ConventionError):
+            validate_currency(bad)
+
+
+def test_currency_non_alpha_rejected():
+    for bad in ("U$D", "123", "US1"):
+        with pytest.raises(ConventionError):
+            validate_currency(bad)
+
+
+def test_account_empty_or_trailing_colon_rejected():
+    for bad in ("", "Assets:", "Assets:Bank:", ":Assets:Bank"):
+        with pytest.raises(ConventionError):
+            validate_account_name(bad)
+
+
+def test_account_non_ascii_rejected():
+    with pytest.raises(ConventionError):
+        validate_account_name("Assets:Bänk:Checking")
+
+
+def test_timestamp_offsets_rejected():
+    for bad in ("2026-08-31T14:05:09+05:30", "2026-08-31T14:05:09-04:00", "2026-08-31 14:05:09Z"):
+        with pytest.raises(ConventionError):
+            validate_utc_timestamp(bad)
+
+
+def test_timestamp_invalid_calendar_date_rejected():
+    with pytest.raises(ConventionError):
+        validate_utc_timestamp("2026-02-30T12:00:00Z")
+
+
+def test_same_currency_balance_validates():
+    postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": -10000, "scale": 2},
+        {"account": "Expenses:Groceries:Supermarket", "currency": "USD", "minor_units": 10000, "scale": 2},
+    ]
+    res = validate_same_currency_balance(postings)
+    assert res == {"USD": 0}
+
+
+def test_same_currency_multi_posting_balance_validates():
+    postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": -15000, "scale": 2},
+        {"account": "Expenses:Groceries:Food", "currency": "USD", "minor_units": 10000, "scale": 2},
+        {"account": "Expenses:Groceries:Tax", "currency": "USD", "minor_units": 5000, "scale": 2},
+    ]
+    res = validate_same_currency_balance(postings)
+    assert res == {"USD": 0}
+
+
+def test_same_currency_unbalanced_rejected():
+    postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": -10000, "scale": 2},
+        {"account": "Expenses:Groceries:Supermarket", "currency": "USD", "minor_units": 9000, "scale": 2},
+    ]
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance(postings)
+
+
+def test_unlike_currency_netting_rejected():
+    postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": -10000, "scale": 2},
+        {"account": "Expenses:Travel:Europe", "currency": "EUR", "minor_units": 10000, "scale": 2},
+    ]
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance(postings)
+
+
+def test_multi_currency_independently_balanced_accepted():
+    postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": -10000, "scale": 2},
+        {"account": "Expenses:Groceries:Food", "currency": "USD", "minor_units": 10000, "scale": 2},
+        {"account": "Assets:Bank:Foreign:Euro", "currency": "EUR", "minor_units": -5000, "scale": 2},
+        {"account": "Expenses:Travel:Lodging", "currency": "EUR", "minor_units": 5000, "scale": 2},
+    ]
+    res = validate_same_currency_balance(postings)
+    assert res == {"USD": 0, "EUR": 0}
+
+
+def test_posting_zero_amount_rejected():
+    postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": 0, "scale": 2},
+        {"account": "Expenses:Groceries:Food", "currency": "USD", "minor_units": 0, "scale": 2},
+    ]
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance(postings)
+
+
+def test_posting_all_positive_or_all_negative_rejected():
+    positive_postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": 10000, "scale": 2},
+        {"account": "Expenses:Groceries:Food", "currency": "USD", "minor_units": 10000, "scale": 2},
+    ]
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance(positive_postings)
+
+    negative_postings = [
+        {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": -10000, "scale": 2},
+        {"account": "Expenses:Groceries:Food", "currency": "USD", "minor_units": -10000, "scale": 2},
+    ]
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance(negative_postings)
+
+
+def test_posting_sequence_too_short_rejected():
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance([])
+    with pytest.raises(ConventionError):
+        validate_same_currency_balance([
+            {"account": "Assets:Bank:Checking:Ally", "currency": "USD", "minor_units": 10000, "scale": 2}
+        ])
+

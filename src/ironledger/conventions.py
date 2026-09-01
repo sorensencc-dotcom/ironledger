@@ -44,6 +44,7 @@ __all__ = [
     "validate_amount_minor_units",
     "validate_utc_timestamp",
     "validate_source_link",
+    "validate_same_currency_balance",
     "validate_convention_sample",
 ]
 
@@ -156,7 +157,7 @@ def validate_amount_minor_units(minor_units: int, currency: str, scale: int) -> 
 
 # --- Timestamps ----------------------------------------------------------
 
-# ISO-8601, date and time, explicit trailing Z, optional fractional seconds.
+# ISO-8601, date, and time, explicit trailing Z, optional fractional seconds.
 _UTC_TIMESTAMP: Final[re.Pattern[str]] = re.compile(
     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\Z"
 )
@@ -223,6 +224,44 @@ LEDGER_LAYOUT: Final[dict[str, str]] = {
     "ledger/accounts.beancount": "Every account's open directive, each with a single-currency constraint.",
     "ledger/txns/": "Compiled transaction entries, one file per calendar year (YYYY.beancount).",
 }
+
+
+# --- Transaction balancing ---------------------------------------------
+
+def validate_same_currency_balance(postings: list[dict[str, Any]]) -> dict[str, int]:
+    """Validate that a list of postings balances to zero for each currency.
+
+    Unlike currencies are never netted against each other. Every currency
+    present in the postings must independently sum to zero minor units.
+    All postings are validated for account grammar, currency code, and
+    minor-unit scale.
+    """
+    if not isinstance(postings, (list, tuple)) or len(postings) < 2:
+        raise ConventionError("postings must be a sequence of at least 2 entries")
+
+    currency_totals: dict[str, int] = {}
+    for posting in postings:
+        if not isinstance(posting, dict):
+            raise ConventionError("each posting must be a dict")
+        required = {"account", "currency", "minor_units", "scale"}
+        missing = required - set(posting)
+        if missing:
+            raise ConventionError(f"posting is missing keys: {sorted(missing)}")
+        validate_account_name(posting["account"])
+        validate_currency(posting["currency"])
+        validate_amount_minor_units(posting["minor_units"], posting["currency"], posting["scale"])
+        if posting["minor_units"] == 0:
+            raise ConventionError("posting minor_units must be non-zero")
+
+        curr = posting["currency"]
+        currency_totals[curr] = currency_totals.get(curr, 0) + posting["minor_units"]
+
+    for curr, total in currency_totals.items():
+        if total != 0:
+            raise ConventionError(
+                f"postings do not balance for currency {curr!r}: net balance is {total} minor units"
+            )
+    return currency_totals
 
 
 # --- Convention fixture ------------------------------------------------

@@ -40,3 +40,26 @@ def test_restricted_delete_raises_with_enforcement_live(tmp_path):
 
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute("DELETE FROM source_documents WHERE source_document_id = 'doc-1'")
+
+
+def test_connect_raises_when_foreign_keys_not_enforced(monkeypatch):
+    import sqlite3
+    import pytest
+    from ironledger.db.connection import ForeignKeysNotEnforced
+
+    class DummyCursor:
+        def fetchone(self):
+            return (0,)
+
+    class DummyConn:
+        def execute(self, sql):
+            return DummyCursor()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(sqlite3, "connect", lambda _: DummyConn())
+
+    with pytest.raises(ForeignKeysNotEnforced):
+        connect(":memory:")
+
