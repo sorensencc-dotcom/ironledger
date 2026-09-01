@@ -1,0 +1,25 @@
+[project]
+name = "ironledger"
+version = "0.0.0"
+description = "Local-first, single-operator financial OS. Beancount is the sole accounting authority; SQLite is a disposable projection."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ironledger"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ironledger]
+# Phase 1 in progress: canonical ledger conventions and schema migrations only.
+# No ingestion, compilation, projection, MCP, or network code is authorized.
+phase = 1

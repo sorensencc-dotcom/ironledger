@@ -1,0 +1,17 @@
+{
+  "table_version": "2026-01",
+  "source": "ISO 4217 alphabetic codes, static pinned snapshot",
+  "note": "minor_unit_scale is the number of decimal places in the currency's minor unit. Amounts are stored as signed integer minor units at exactly this scale.",
+  "currencies": {
+    "USD": { "minor_unit_scale": 2, "name": "United States dollar" },
+    "EUR": { "minor_unit_scale": 2, "name": "Euro" },
+    "GBP": { "minor_unit_scale": 2, "name": "Pound sterling" },
+    "CAD": { "minor_unit_scale": 2, "name": "Canadian dollar" },
+    "AUD": { "minor_unit_scale": 2, "name": "Australian dollar" },
+    "CHF": { "minor_unit_scale": 2, "name": "Swiss franc" },
+    "JPY": { "minor_unit_scale": 0, "name": "Yen" },
+    "KRW": { "minor_unit_scale": 0, "name": "South Korean won" },
+    "BHD": { "minor_unit_scale": 3, "name": "Bahraini dinar" },
+    "KWD": { "minor_unit_scale": 3, "name": "Kuwaiti dinar" }
+  }
+}
