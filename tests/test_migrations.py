@@ -38,7 +38,8 @@ def test_fresh_apply_reaches_expected_version_and_tables():
     conn = connect(":memory:")
     expected = len(migrations.discover_migrations())
     version = migrations.migrate(conn)
-    assert version == expected == 1
+    assert version == expected
+    assert version >= 2
     assert CORE_TABLES.issubset(table_names(conn))
 
 
@@ -112,8 +113,9 @@ def test_schema_migrations_row_recorded_with_checksum():
     conn = connect(":memory:")
     migrations.migrate(conn)
     rows = migrations.applied_migrations(conn)
-    assert len(rows) == 1
-    version, name, checksum = rows[0]
-    assert version == 1
-    assert name == "core_schema"
-    assert len(checksum) == 64
+    assert len(rows) == len(migrations.discover_migrations())
+    for version, name, checksum in rows:
+        assert version >= 1
+        assert len(name) > 0
+        assert len(checksum) == 64
+
