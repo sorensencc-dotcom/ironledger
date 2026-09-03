@@ -1,0 +1,16 @@
+{
+  "name": "example-bank",
+  "institution_id": "example-bank",
+  "account_id": "checking-1",
+  "account": "Assets:Bank:Checking:ExampleBank",
+  "date_column": "Date",
+  "date_formats": ["%Y-%m-%d", "%m/%d/%Y"],
+  "amount_column": "Amount",
+  "debit_column": null,
+  "credit_column": null,
+  "payee_column": "Description",
+  "memo_column": "Notes",
+  "currency_column": null,
+  "default_currency": "USD",
+  "delimiter": ","
+}
