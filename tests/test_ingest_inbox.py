@@ -79,3 +79,17 @@ def test_directory_is_rejected(workspace: tuple[Path, Path]):
     sub.mkdir()
     with pytest.raises(IngestPathError):
         resolve_inbox_path(config_dir, sub)
+
+
+def test_unc_path_is_rejected(workspace: tuple[Path, Path]):
+    config_dir, inbox = workspace
+    with pytest.raises(IngestPathError):
+        resolve_inbox_path(config_dir, r"\\server\share\statement.csv")
+    assert list(inbox.iterdir()) == []
+
+
+def test_device_path_is_rejected(workspace: tuple[Path, Path]):
+    config_dir, inbox = workspace
+    with pytest.raises(IngestPathError):
+        resolve_inbox_path(config_dir, r"\\.\PhysicalDrive0")
+    assert list(inbox.iterdir()) == []

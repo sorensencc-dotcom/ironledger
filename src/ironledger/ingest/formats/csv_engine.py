@@ -84,9 +84,20 @@ def parse_amount_to_text(value: str) -> str:
     if not text:
         raise ParseError("empty amount cell")
     negative = False
+    had_parens = False
     if text.startswith("(") and text.endswith(")"):
+        had_parens = True
         negative = True
         text = text[1:-1]
+    if had_parens and (
+        text.startswith("-") or text.startswith("+")
+        or text.endswith("-") or text.endswith("+")
+    ):
+        # spec §10: a value that is both parenthesised and explicitly signed is
+        # ambiguous. Reject it rather than silently flipping the sign positive.
+        raise ParseError(
+            f"amount {value!r} has an ambiguous sign (parentheses and an explicit sign)"
+        )
     if text.endswith("-"):
         negative = True
         text = text[:-1]

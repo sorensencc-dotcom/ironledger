@@ -90,3 +90,20 @@ def test_bad_row_rolls_back_the_whole_file_and_audits_error(env, tmp_path: Path)
     assert (c["source_records"], c["staged_transactions"]) == (0, 0)
     assert c["audit_events"] == 1
     assert conn.execute("SELECT result FROM audit_events").fetchone()[0] == "error"
+
+
+def test_ofx_unresolvable_curdef_audits_error_and_rolls_back(env, tmp_path: Path):
+    """An OFX <CURDEF> that ofxtools accepts but IronLedger's pinned ISO-4217
+    table rejects (EEK) must surface as a ParseError inside run_import's outer
+    handler: one error audit event, zero staged rows, CLI exit 4."""
+    conn, paths = env
+    raw = (FIXTURES / "sample_v1.ofx").read_bytes().replace(b"<CURDEF>USD", b"<CURDEF>EEK")
+    src = tmp_path / "bad_curdef.ofx"
+    src.write_bytes(raw)
+    with pytest.raises(ParseError):
+        run_import(conn, src, csv_profile=None,
+                   now_utc="2026-09-02T10:00:00Z", **paths)
+    c = _counts(conn)
+    assert (c["source_records"], c["staged_transactions"]) == (0, 0)
+    assert c["audit_events"] == 1
+    assert conn.execute("SELECT result FROM audit_events").fetchone()[0] == "error"

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ironledger.audit import append_audit_event
-from ironledger.conventions import currency_scale
+from ironledger.conventions import ConventionError, currency_scale, validate_currency
 from ironledger.ingest.acquire import acquire
 from ironledger.ingest.errors import IngestError, ParseError
 from ironledger.ingest.formats.csv_engine import load_profile, parse_csv
@@ -104,8 +104,21 @@ def run_import(
 
         created = 0
         for index, row in enumerate(parsed.rows):
-            scale = currency_scale(row.currency or parsed.default_currency)
-            currency = row.currency or parsed.default_currency
+            raw_currency = row.currency or parsed.default_currency
+            # spec §10: a currency that cannot be resolved to a valid ISO-4217
+            # code must surface as a ParseError inside this outer try (the CSV
+            # path pre-validates; the OFX <CURDEF>/per-row path does not), so the
+            # handler rolls back, writes exactly one error audit, and the CLI
+            # returns exit 4 instead of an unhandled ConventionError/TypeError.
+            try:
+                currency = validate_currency(raw_currency) if raw_currency else None
+                if currency is None:
+                    raise ParseError(f"row {index}: no resolvable currency", row_index=index)
+                scale = currency_scale(currency)
+            except ConventionError as exc:
+                raise ParseError(
+                    f"row {index}: currency {raw_currency!r}: {exc}", row_index=index
+                ) from exc
             minor_units = minor_units_from_text(row.amount_text, scale)
             canonical = normalize_row(row)
             source_record_id = write_source_record(

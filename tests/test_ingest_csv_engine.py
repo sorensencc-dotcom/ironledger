@@ -61,6 +61,12 @@ def test_parse_amount_rejects_non_decimal_residue():
         parse_amount_to_text("twelve dollars")
 
 
+@pytest.mark.parametrize("raw", ["(-45.00)", "(45.00-)", "(+45.00)"])
+def test_parse_amount_rejects_ambiguous_paren_and_explicit_sign(raw: str):
+    with pytest.raises(ParseError):
+        parse_amount_to_text(raw)
+
+
 def test_profile_without_currency_source_is_rejected(tmp_path: Path):
     body = dict(BASE_PROFILE, currency_column=None, default_currency=None)
     _write_profile(tmp_path, "nocur", body)
