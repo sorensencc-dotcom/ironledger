@@ -16,3 +16,6 @@ dist/
 # Secrets never enter the tree
 .env
 *.secret
+
+# SDD scratch workspace (subagent-driven-development ledger/artifacts)
+.superpowers/
