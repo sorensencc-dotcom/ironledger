@@ -17,6 +17,7 @@ CORE_TABLES = {
     "source_records",
     "fitid_trust_records",
     "staged_transactions",
+    "staged_postings",
     "compile_runs",
     "ledger_entries",
     "ledger_postings",
