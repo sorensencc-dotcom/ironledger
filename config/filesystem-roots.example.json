@@ -1,0 +1,4 @@
+{
+  "ingest_inbox": "C:\\Users\\you\\IronLedgerInbox",
+  "_note": "Copy to filesystem-roots.json and set ingest_inbox to the absolute directory where you drop bank exports to import. Decision D-4. IronLedger only reads from this directory."
+}
