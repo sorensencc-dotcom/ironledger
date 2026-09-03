@@ -216,7 +216,8 @@ def generate_projection_manifest(
     ).fetchall()
     row_counts = {}
     for (tbl_name,) in table_rows:
-        count = conn.execute(f"SELECT count(*) FROM {tbl_name}").fetchone()[0]
+        quoted = '"' + tbl_name.replace('"', '""') + '"'
+        count = conn.execute(f"SELECT count(*) FROM {quoted}").fetchone()[0]
         row_counts[tbl_name] = count
 
     if created_ts_utc is None:
@@ -312,8 +313,19 @@ def verify_manifest(
             )
 
         if parsed.row_counts is not None:
+            real_tables = {
+                name
+                for (name,) in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
             for tbl_name, expected_count in parsed.row_counts.items():
-                count = conn.execute(f"SELECT count(*) FROM {tbl_name}").fetchone()[0]
+                if tbl_name not in real_tables:
+                    raise ManifestVerificationError(
+                        f"manifest names table {tbl_name!r}, which does not exist in the database"
+                    )
+                quoted = '"' + tbl_name.replace('"', '""') + '"'
+                count = conn.execute(f"SELECT count(*) FROM {quoted}").fetchone()[0]
                 if count != expected_count:
                     raise ManifestVerificationError(
                         f"row count mismatch for table {tbl_name!r}: expected {expected_count}, found {count}"
