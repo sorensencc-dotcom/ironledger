@@ -10,9 +10,19 @@ from typing import Callable
 from ironledger.audit import append_audit_event
 from ironledger.ingest.errors import AuthorizationError
 
-__all__ = ["expected_phrase", "safe_mode_enabled", "require_operator"]
+__all__ = ["expected_phrase", "safe_mode_enabled", "require_operator", "require_safe_mode_off"]
 
-_PREFIX = {"import": "import", "fitid-trust-add": "trust"}
+_PREFIX = {
+    "import": "import",
+    "fitid-trust-add": "trust",
+    "review-approve": "approve",
+    "review-reject": "reject",
+    "review-reopen": "reopen",
+    "review-auto-match": "auto-match",
+    "rule-add": "rule",
+    "rule-disable": "rule-disable",
+    "review-session": "review-session",
+}
 
 
 def expected_phrase(action: str, subject: str) -> str:
@@ -69,3 +79,24 @@ def require_operator(
         raise deny("--confirm phrase did not match")
 
     raise deny("no confirmation supplied")
+
+
+def require_safe_mode_off(
+    conn: sqlite3.Connection,
+    *,
+    action: str,
+    subject: str,
+    config_dir: str | Path,
+) -> None:
+    """Raise AuthorizationError (after a denied audit event) if safe mode is on.
+
+    For mutating actions that are gated by safe mode alone and take no phrase,
+    such as `review categorize`.
+    """
+    if safe_mode_enabled(config_dir):
+        append_audit_event(
+            conn, actor="operator", action=f"{action} (denied: safe mode is on)",
+            target=subject, result="denied",
+        )
+        conn.commit()
+        raise AuthorizationError(f"{action} not authorized: safe mode is on")
