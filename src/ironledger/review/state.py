@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 
 from ironledger.audit import append_audit_event
 from ironledger.conventions import ConventionError, validate_account_name
+from ironledger.ingest.identity import canonical_payee
 from ironledger.review.approve_gate import check_approvable
+from ironledger.review.rules import resolve_rule_row
 
-__all__ = ["ReviewStateError", "categorize", "approve", "reject", "reopen"]
+__all__ = ["ReviewStateError", "categorize", "approve", "reject", "reopen", "auto_match"]
 
 
 class ReviewStateError(ValueError):
@@ -114,3 +116,56 @@ def reopen(conn: sqlite3.Connection, stx_id: str, *, now_utc: str | None = None)
         conn, actor="operator", action=f"review reopen (from {status})",
         target=stx_id, result="ok", ts_utc=now_utc,
     )
+
+
+def auto_match(
+    conn: sqlite3.Connection,
+    *,
+    importing_account: str | None = None,
+    now_utc: str | None = None,
+) -> tuple[int, int]:
+    sql = (
+        "SELECT st.staged_transaction_id, st.payee, imp.account "
+        "FROM staged_transactions st "
+        "JOIN staged_postings imp ON imp.staged_transaction_id = st.staged_transaction_id "
+        "  AND imp.role = 'imported' "
+        "JOIN staged_postings con ON con.staged_transaction_id = st.staged_transaction_id "
+        "  AND con.role = 'contra' "
+        "WHERE st.status = 'pending' AND con.account IS NULL"
+    )
+    params: tuple = ()
+    if importing_account is not None:
+        sql += " AND imp.account = ?"
+        params = (importing_account,)
+    candidates = conn.execute(sql, params).fetchall()
+
+    matched = 0
+    ts = _now(now_utc)
+    for stx_id, payee, imp_account in candidates:
+        hit = resolve_rule_row(conn, canonical_payee(payee), imp_account, now_utc=now_utc)
+        if hit is None:
+            continue
+        rule_id, target_account = hit
+        conn.execute(
+            "UPDATE staged_postings SET account = ? "
+            "WHERE staged_transaction_id = ? AND role = 'contra'",
+            (target_account, stx_id),
+        )
+        conn.execute(
+            "UPDATE staged_transactions SET status = 'categorized', categorized_at_utc = ? "
+            "WHERE staged_transaction_id = ?",
+            (ts, stx_id),
+        )
+        append_audit_event(
+            conn, actor="operator",
+            action=f"review auto-match ({target_account}; rule {rule_id})",
+            target=stx_id, result="ok", ts_utc=now_utc,
+        )
+        matched += 1
+
+    append_audit_event(
+        conn, actor="operator",
+        action=f"review auto-match (matched {matched} of {len(candidates)})",
+        target=importing_account or "all", result="ok", ts_utc=now_utc,
+    )
+    return matched, len(candidates)

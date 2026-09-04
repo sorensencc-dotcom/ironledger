@@ -9,7 +9,7 @@ import uuid
 from ironledger.audit import append_audit_event
 from ironledger.conventions import ConventionError, validate_account_name
 
-__all__ = ["RuleError", "resolve_rule", "RuleExistsError", "add_rule", "disable_rule", "list_rules", "persist_exact_rule"]
+__all__ = ["RuleError", "resolve_rule", "resolve_rule_row", "RuleExistsError", "add_rule", "disable_rule", "list_rules", "persist_exact_rule"]
 
 
 class RuleError(ValueError):
@@ -135,6 +135,52 @@ def list_rules(conn) -> list[dict]:
     ]
 
 
+def resolve_rule_row(
+    conn: sqlite3.Connection,
+    canonical_payee_value: str,
+    importing_account: str,
+    *,
+    audit_skips: bool = True,
+    now_utc: str | None = None,
+) -> tuple[str, str] | None:
+    """Like resolve_rule but returns (rule_id, target_account) or None.
+
+    `audit_skips` has the same meaning as in `resolve_rule`: True records an
+    uncompilable-regex skip as one audit event; False writes nothing.
+    """
+    rows = conn.execute(
+        "SELECT rule_id, match_type, pattern, target_account FROM categorization_rules "
+        "WHERE active = 1 AND (importing_account IS NULL OR importing_account = ?) "
+        "ORDER BY priority ASC, created_at_utc ASC",
+        (importing_account,),
+    ).fetchall()
+
+    for rule_id, match_type, pattern, target_account in rows:
+        if match_type == "exact":
+            if canonical_payee_value == pattern:
+                return rule_id, target_account
+        elif match_type == "prefix":
+            if canonical_payee_value.startswith(pattern):
+                return rule_id, target_account
+        elif match_type == "regex":
+            try:
+                compiled = re.compile(pattern)
+            except re.error:
+                if audit_skips:
+                    append_audit_event(
+                        conn,
+                        actor="operator",
+                        action="rule resolve (skipped uncompilable regex)",
+                        target=rule_id,
+                        result="error",
+                        ts_utc=now_utc,
+                    )
+                continue
+            if compiled.search(canonical_payee_value) is not None:
+                return rule_id, target_account
+    return None
+
+
 def resolve_rule(
     conn: sqlite3.Connection,
     canonical_payee_value: str,
@@ -152,34 +198,7 @@ def resolve_rule(
     event. When False (`review show`, the loop suggestion) nothing is written —
     those are read paths.
     """
-    rows = conn.execute(
-        "SELECT rule_id, match_type, pattern, target_account FROM categorization_rules "
-        "WHERE active = 1 AND (importing_account IS NULL OR importing_account = ?) "
-        "ORDER BY priority ASC, created_at_utc ASC",
-        (importing_account,),
-    ).fetchall()
-
-    for rule_id, match_type, pattern, target_account in rows:
-        if match_type == "exact":
-            if canonical_payee_value == pattern:
-                return target_account
-        elif match_type == "prefix":
-            if canonical_payee_value.startswith(pattern):
-                return target_account
-        elif match_type == "regex":
-            try:
-                compiled = re.compile(pattern)
-            except re.error:
-                if audit_skips:
-                    append_audit_event(
-                        conn,
-                        actor="operator",
-                        action="rule resolve (skipped uncompilable regex)",
-                        target=rule_id,
-                        result="error",
-                        ts_utc=now_utc,
-                    )
-                continue
-            if compiled.search(canonical_payee_value) is not None:
-                return target_account
-    return None
+    hit = resolve_rule_row(
+        conn, canonical_payee_value, importing_account, audit_skips=audit_skips, now_utc=now_utc
+    )
+    return None if hit is None else hit[1]
