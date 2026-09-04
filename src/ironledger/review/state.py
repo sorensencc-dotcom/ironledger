@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 
 from ironledger.audit import append_audit_event
 from ironledger.conventions import ConventionError, validate_account_name
+from ironledger.review.approve_gate import check_approvable
 
-__all__ = ["ReviewStateError", "categorize"]
+__all__ = ["ReviewStateError", "categorize", "approve", "reject", "reopen"]
 
 
 class ReviewStateError(ValueError):
@@ -62,5 +63,54 @@ def categorize(
     detail = target_account if rule_id is None else f"{target_account}; rule {rule_id}"
     append_audit_event(
         conn, actor="operator", action=f"review categorize ({detail})",
+        target=stx_id, result="ok", ts_utc=now_utc,
+    )
+
+
+def approve(conn: sqlite3.Connection, stx_id: str, *, now_utc: str | None = None) -> None:
+    check_approvable(conn, stx_id)  # raises ApproveGateError on failure
+    ts = _now(now_utc)
+    conn.execute(
+        "UPDATE staged_transactions SET status = 'approved', decided_at_utc = ? "
+        "WHERE staged_transaction_id = ?",
+        (ts, stx_id),
+    )
+    append_audit_event(
+        conn, actor="operator", action="review approve", target=stx_id, result="ok", ts_utc=now_utc,
+    )
+
+
+def reject(
+    conn: sqlite3.Connection, stx_id: str, *, reason: str | None = None, now_utc: str | None = None
+) -> None:
+    status = _status(conn, stx_id)
+    if status == "approved":
+        raise ReviewStateError(f"{stx_id} is approved; approved is terminal in Phase 2b")
+    if status == "rejected":
+        return
+    ts = _now(now_utc)
+    conn.execute(
+        "UPDATE staged_transactions SET status = 'rejected', reject_reason = ?, decided_at_utc = ? "
+        "WHERE staged_transaction_id = ?",
+        (reason, ts, stx_id),
+    )
+    append_audit_event(
+        conn, actor="operator", action="review reject", target=stx_id, result="ok", ts_utc=now_utc,
+    )
+
+
+def reopen(conn: sqlite3.Connection, stx_id: str, *, now_utc: str | None = None) -> None:
+    status = _status(conn, stx_id)
+    if status not in ("categorized", "rejected"):
+        raise ReviewStateError(
+            f"{stx_id} is {status}; only a categorized or rejected row can be reopened"
+        )
+    conn.execute(
+        "UPDATE staged_transactions SET status = 'pending', reject_reason = NULL, "
+        "categorized_at_utc = NULL, decided_at_utc = NULL WHERE staged_transaction_id = ?",
+        (stx_id,),
+    )
+    append_audit_event(
+        conn, actor="operator", action=f"review reopen (from {status})",
         target=stx_id, result="ok", ts_utc=now_utc,
     )
