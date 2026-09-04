@@ -4,14 +4,135 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import uuid
 
 from ironledger.audit import append_audit_event
+from ironledger.conventions import ConventionError, validate_account_name
 
-__all__ = ["RuleError", "resolve_rule"]
+__all__ = ["RuleError", "resolve_rule", "RuleExistsError", "add_rule", "disable_rule", "list_rules", "persist_exact_rule"]
 
 
 class RuleError(ValueError):
     """A rule definition is malformed (bad match_type or uncompilable regex)."""
+
+
+class RuleExistsError(RuleError):
+    """A rule with the same (match_type, pattern, importing_account) already exists."""
+
+    def __init__(self, existing_rule_id: str) -> None:
+        super().__init__(
+            f"a rule for this pattern and scope already exists: {existing_rule_id}. "
+            f"Run 'ironledger rule disable {existing_rule_id}' first."
+        )
+        self.existing_rule_id = existing_rule_id
+
+
+_MATCH_TYPES = ("exact", "prefix", "regex")
+
+
+def _new_rule_id() -> str:
+    return f"rule:{uuid.uuid4().hex}"
+
+
+def _validate_definition(match_type: str, pattern: str, target_account: str,
+                         importing_account: str | None) -> None:
+    if match_type not in _MATCH_TYPES:
+        raise RuleError(f"match_type {match_type!r} is not one of {_MATCH_TYPES}")
+    if not pattern:
+        raise RuleError("pattern must be a non-empty string")
+    if match_type == "regex":
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise RuleError(f"regex pattern does not compile: {exc}") from exc
+    try:
+        validate_account_name(target_account)
+        if importing_account is not None:
+            validate_account_name(importing_account)
+    except ConventionError as exc:
+        raise RuleError(str(exc)) from exc
+
+
+def _insert(conn, *, rule_id, match_type, pattern, importing_account, target_account,
+            priority, now_utc):
+    ts = now_utc or _now()
+    try:
+        conn.execute(
+            "INSERT INTO categorization_rules (rule_id, match_type, pattern, importing_account, "
+            " target_account, priority, active, created_at_utc) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+            (rule_id, match_type, pattern, importing_account, target_account, priority, ts),
+        )
+    except sqlite3.IntegrityError as exc:
+        existing = conn.execute(
+            "SELECT rule_id FROM categorization_rules "
+            "WHERE match_type = ? AND pattern = ? AND importing_account IS ?",
+            (match_type, pattern, importing_account),
+        ).fetchone()
+        if existing is not None:
+            raise RuleExistsError(existing[0]) from exc
+        raise RuleError(f"rule insert violated a constraint: {exc}") from exc
+
+
+def _now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def add_rule(conn, *, match_type, pattern, target_account, importing_account=None,
+             priority=100, now_utc=None) -> str:
+    _validate_definition(match_type, pattern, target_account, importing_account)
+    rule_id = _new_rule_id()
+    _insert(conn, rule_id=rule_id, match_type=match_type, pattern=pattern,
+            importing_account=importing_account, target_account=target_account,
+            priority=priority, now_utc=now_utc)
+    append_audit_event(
+        conn, actor="operator",
+        action=f"rule add ({match_type} {pattern} -> {target_account})",
+        target=rule_id, result="ok", ts_utc=now_utc,
+    )
+    return rule_id
+
+
+def persist_exact_rule(conn, *, canonical_payee_value, importing_account, target_account,
+                       now_utc=None) -> str:
+    _validate_definition("exact", canonical_payee_value, target_account, importing_account)
+    rule_id = _new_rule_id()
+    _insert(conn, rule_id=rule_id, match_type="exact", pattern=canonical_payee_value,
+            importing_account=importing_account, target_account=target_account,
+            priority=50, now_utc=now_utc)
+    append_audit_event(
+        conn, actor="operator",
+        action=f"rule add (exact {canonical_payee_value} -> {target_account})",
+        target=rule_id, result="ok", ts_utc=now_utc,
+    )
+    return rule_id
+
+
+def disable_rule(conn, rule_id: str, *, now_utc=None) -> None:
+    ts = now_utc or _now()
+    updated = conn.execute(
+        "UPDATE categorization_rules SET active = 0, disabled_at_utc = ? "
+        "WHERE rule_id = ? AND active = 1",
+        (ts, rule_id),
+    ).rowcount
+    if updated == 0:
+        raise RuleError(f"rule {rule_id!r} is unknown or already disabled")
+    append_audit_event(
+        conn, actor="operator", action="rule disable", target=rule_id, result="ok", ts_utc=now_utc,
+    )
+
+
+def list_rules(conn) -> list[dict]:
+    cols = ["rule_id", "match_type", "pattern", "importing_account", "target_account",
+            "priority", "active", "created_at_utc", "disabled_at_utc"]
+    return [
+        dict(zip(cols, row))
+        for row in conn.execute(
+            f"SELECT {', '.join(cols)} FROM categorization_rules "
+            "ORDER BY priority ASC, created_at_utc ASC"
+        )
+    ]
 
 
 def resolve_rule(
