@@ -50,6 +50,7 @@ def upsert_staged(
     staged: StagedInput,
     *,
     now_utc: str | None = None,
+    contra_account: str | None = None,
 ) -> tuple[str, bool]:
     existing = conn.execute(
         "SELECT staged_transaction_id FROM staged_transactions "
@@ -85,7 +86,7 @@ def upsert_staged(
                 (f"{stx_id}:0", stx_id, staged.source_record_id, "imported", 0,
                  staged.account, staged.minor_units, staged.currency, staged.scale, ts),
                 (f"{stx_id}:1", stx_id, staged.source_record_id, "contra", 1,
-                 None, -staged.minor_units, staged.currency, staged.scale, ts),
+                 contra_account, -staged.minor_units, staged.currency, staged.scale, ts),
             ],
         )
     except sqlite3.IntegrityError as exc:
