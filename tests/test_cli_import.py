@@ -51,7 +51,8 @@ def test_import_with_matching_confirm_exits_0_and_stages(workspace: dict):
     code = main([
         "--db", workspace["db"], "--config-dir", workspace["config_dir"],
         "--evidence-dir", workspace["evidence_dir"],
-        "import", str(path), "--confirm", f"import {path.resolve()}",
+        "import", str(path), "--importing-account", "Assets:Bank:Checking:SampleOfx",
+        "--confirm", f"import {path.resolve()}",
     ])
     assert code == 0
     conn = connect(workspace["db"])

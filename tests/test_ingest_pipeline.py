@@ -45,7 +45,8 @@ def test_ofx_import_stages_rows_and_writes_one_audit_event(env):
     conn, paths = env
     result = run_import(
         conn, FIXTURES / "sample_v1.ofx",
-        csv_profile=None, now_utc="2026-09-02T10:00:00Z", **paths,
+        csv_profile=None, importing_account="Assets:Bank:Checking:SampleOfx",
+        now_utc="2026-09-02T10:00:00Z", **paths,
     )
     c = _counts(conn)
     assert (c["source_records"], c["staged_transactions"], c["staged_postings"]) == (2, 2, 4)
@@ -56,8 +57,10 @@ def test_ofx_import_stages_rows_and_writes_one_audit_event(env):
 def test_reimport_short_circuits_with_zero_records_and_one_more_audit_event(env):
     conn, paths = env
     run_import(conn, FIXTURES / "sample_v1.ofx", csv_profile=None,
+               importing_account="Assets:Bank:Checking:SampleOfx",
                now_utc="2026-09-02T10:00:00Z", **paths)
     result = run_import(conn, FIXTURES / "sample_v1.ofx", csv_profile=None,
+                        importing_account="Assets:Bank:Checking:SampleOfx",
                         now_utc="2026-09-02T10:05:00Z", **paths)
     c = _counts(conn)
     assert (c["source_records"], c["staged_transactions"]) == (2, 2)
@@ -102,6 +105,7 @@ def test_ofx_unresolvable_curdef_audits_error_and_rolls_back(env, tmp_path: Path
     src.write_bytes(raw)
     with pytest.raises(ParseError):
         run_import(conn, src, csv_profile=None,
+                   importing_account="Assets:Bank:Checking:SampleOfx",
                    now_utc="2026-09-02T10:00:00Z", **paths)
     c = _counts(conn)
     assert (c["source_records"], c["staged_transactions"]) == (0, 0)

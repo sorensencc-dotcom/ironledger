@@ -36,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     imp.add_argument("path")
     imp.add_argument("--csv-profile", default=None)
+    imp.add_argument("--importing-account", default=None)
     imp.add_argument("--confirm", default=None)
     imp.add_argument("--allow-partial", action="store_true")
 
@@ -105,6 +106,7 @@ def _cmd_import(args) -> int:
                 evidence_dir=args.evidence_dir,
                 records_dir=args.evidence_dir / "source_records",
                 csv_profile=args.csv_profile,
+                importing_account=args.importing_account,
                 allow_partial=args.allow_partial,
             )
         except IngestError as exc:

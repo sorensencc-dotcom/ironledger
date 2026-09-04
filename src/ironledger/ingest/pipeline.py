@@ -3,19 +3,25 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ironledger.audit import append_audit_event
-from ironledger.conventions import ConventionError, currency_scale, validate_currency
+from ironledger.conventions import (
+    ConventionError,
+    currency_scale,
+    validate_account_name,
+    validate_currency,
+)
 from ironledger.ingest.acquire import acquire
 from ironledger.ingest.errors import IngestError, ParseError
 from ironledger.ingest.formats.csv_engine import load_profile, parse_csv
 from ironledger.ingest.formats.model import ParsedFile, institution_account_key
 from ironledger.ingest.formats.ofx import parse_ofx
-from ironledger.ingest.identity import fingerprint, select_identity_method
+from ironledger.ingest.identity import canonical_payee, fingerprint, select_identity_method
 from ironledger.ingest.records import normalize_row, write_source_record
 from ironledger.ingest.stage import StagedInput, minor_units_from_text, upsert_staged
+from ironledger.review.rules import resolve_rule
 
 __all__ = ["ImportResult", "run_import"]
 
@@ -58,6 +64,7 @@ def run_import(
     evidence_dir: Path,
     records_dir: Path,
     csv_profile: str | None = None,
+    importing_account: str | None = None,
     allow_partial: bool = False,
     actor: str = "operator",
     now_utc: str | None = None,
@@ -80,15 +87,24 @@ def run_import(
         doc_id = acq.source_document_id
 
         if not acq.is_new and _all_rows_staged(conn, acq.source_document_id, len(parsed.rows)):
-            _audit(conn, actor, acq.source_document_id, "ok", now_utc, note="records_created=0")
+            _audit(
+                conn, actor, acq.source_document_id, "ok", now_utc,
+                note="records_created=0, rules_applied=0",
+            )
             conn.commit()
             return ImportResult(acq.source_document_id, 0, short_circuited=True, advisories=())
 
+        if parsed.account is None and importing_account is None:
+            raise ParseError("an OFX or QFX import needs --importing-account")
+        if parsed.account is not None and importing_account is not None:
+            raise ParseError(
+                "--importing-account is only for OFX/QFX; a CSV import takes its account from the profile"
+            )
         if parsed.account is None:
-            # OFX/QFX: the imported account name is not yet mapped. Phase 2a uses a
-            # deterministic placeholder derived from the account id; Phase 2b review
-            # assigns the real account. The placeholder is a valid five-root name.
-            parsed = _with_placeholder_account(parsed)
+            try:
+                parsed = replace(parsed, account=validate_account_name(importing_account))
+            except ConventionError as exc:
+                raise ParseError(f"--importing-account: {exc}") from exc
 
         if any(r.fitid for r in parsed.rows):
             method_probe = select_identity_method(
@@ -103,6 +119,7 @@ def run_import(
                 )
 
         created = 0
+        rules_applied = 0
         for index, row in enumerate(parsed.rows):
             raw_currency = row.currency or parsed.default_currency
             # spec §10: a currency that cannot be resolved to a valid ISO-4217
@@ -135,6 +152,9 @@ def run_import(
                 payee=row.payee,
                 institution_account_key=provenance,
             )
+            contra_account = resolve_rule(
+                conn, canonical_payee(row.payee), parsed.account, now_utc=now_utc
+            )
             _stx_id, was_created = upsert_staged(
                 conn,
                 StagedInput(
@@ -151,11 +171,17 @@ def run_import(
                     institution_account_key=provenance,
                 ),
                 now_utc=now_utc,
+                contra_account=contra_account,
             )
             if was_created:
                 created += 1
+                if contra_account is not None:
+                    rules_applied += 1
 
-        _audit(conn, actor, acq.source_document_id, "ok", now_utc, note=f"records_created={created}")
+        _audit(
+            conn, actor, acq.source_document_id, "ok", now_utc,
+            note=f"records_created={created}, rules_applied={rules_applied}",
+        )
         conn.commit()
         return ImportResult(acq.source_document_id, created, short_circuited=False, advisories=tuple(advisories))
     except IngestError:
@@ -166,13 +192,6 @@ def run_import(
         _audit(conn, actor, target, "error", now_utc)
         conn.commit()
         raise
-
-
-def _with_placeholder_account(parsed: ParsedFile) -> ParsedFile:
-    from dataclasses import replace
-
-    safe = "".join(ch for ch in parsed.account_id if ch.isalnum()) or "Unmapped"
-    return replace(parsed, account=f"Assets:Unmapped:{safe[:32]}")
 
 
 def _audit(conn, actor, target, result, now_utc, *, note: str | None = None) -> None:

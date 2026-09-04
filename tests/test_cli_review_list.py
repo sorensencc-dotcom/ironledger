@@ -23,7 +23,8 @@ def staged_ws(tmp_path: Path) -> dict:
     conn = connect(str(db_path)); migrations.migrate(conn); conn.close()
     base = ["--db", str(db_path), "--config-dir", str(config_dir), "--evidence-dir", str(tmp_path / "e")]
     path = inbox / "sample_v1.ofx"
-    main(base + ["import", str(path), "--confirm", f"import {path.resolve()}"])
+    main(base + ["import", str(path), "--importing-account", "Assets:Bank:Checking:SampleOfx",
+                 "--confirm", f"import {path.resolve()}"])
     return {"base": base, "db": str(db_path)}
 
 
