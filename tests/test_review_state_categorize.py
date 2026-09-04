@@ -95,3 +95,27 @@ def test_categorize_rejects_bad_account(db):
 def test_categorize_unknown_id_raises(db):
     with pytest.raises(ReviewStateError):
         categorize(db, "stx:missing", "Expenses:Coffee")
+
+
+def test_categorize_rejects_rejected_state(db):
+    stx = _stage(db)
+    db.execute(
+        "UPDATE staged_transactions SET status = 'rejected' WHERE staged_transaction_id = ?",
+        (stx,),
+    )
+    db.commit()
+    with pytest.raises(ReviewStateError) as exc_info:
+        categorize(db, stx, "Expenses:Coffee")
+    assert "review reopen" in str(exc_info.value)
+
+
+def test_categorize_rejects_approved_state(db):
+    stx = _stage(db)
+    db.execute(
+        "UPDATE staged_transactions SET status = 'approved' WHERE staged_transaction_id = ?",
+        (stx,),
+    )
+    db.commit()
+    with pytest.raises(ReviewStateError) as exc_info:
+        categorize(db, stx, "Expenses:Coffee")
+    assert "review reopen" in str(exc_info.value)
