@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+from importlib import resources
+from pathlib import Path
 
 import pytest
 
@@ -11,9 +13,19 @@ from ironledger.db.connection import connect
 
 
 @pytest.fixture
-def db() -> sqlite3.Connection:
+def db(tmp_path: Path) -> sqlite3.Connection:
+    # Scope this file to migrations 0001-0003 so it keeps testing 0003's schema
+    # in isolation. Phase 2b's 0004 rebuilds staged_transactions; applying it
+    # here would move current_version past 3 and rewrite the table these tests
+    # target. 0003 itself is unchanged.
+    schema_dir = resources.files("ironledger.db.schema")
+    for entry in schema_dir.iterdir():
+        if entry.name[:4] in {"0001", "0002", "0003"} and entry.name.endswith(".sql"):
+            (tmp_path / entry.name).write_text(
+                entry.read_text(encoding="utf-8"), encoding="utf-8"
+            )
     conn = connect(":memory:")
-    migrations.migrate(conn)
+    migrations.migrate(conn, directory=tmp_path)
     return conn
 
 
