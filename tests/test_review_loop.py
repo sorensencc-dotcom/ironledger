@@ -95,3 +95,25 @@ def test_loop_phrase_prompted_once_only(db):
     )
     # both rows had a valid contra -> approve gate succeeds; phrase is checked once
     assert counts["a"] == 2
+
+
+def test_loop_approve_gate_error_reshows_same_row(db):
+    ok = _stage(db, 0, contra="Expenses:Coffee")
+    blocked = _stage(db, 1, contra=None)
+    # row ok: a -> approves, grants the phrase
+    # row blocked: a -> ApproveGateError (missing_account), re-shown same row;
+    #   c -> categorize with a valid account; a -> now approves
+    script = "a\na\nc\nExpenses:Coffee\na\nq\n"
+    stdout = io.StringIO()
+    counts = run_review_loop(
+        db, stdin=io.StringIO(script), stdout=stdout, db_basename="ledger.db",
+        confirm="review-session ledger.db", stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+    )
+    assert counts == {"c": 1, "a": 2, "r": 0, "s": 0}
+    assert "cannot approve" in stdout.getvalue()
+    assert db.execute(
+        "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (ok,)
+    ).fetchone()[0] == "approved"
+    assert db.execute(
+        "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (blocked,)
+    ).fetchone()[0] == "approved"
