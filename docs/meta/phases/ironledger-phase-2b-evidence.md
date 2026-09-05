@@ -61,4 +61,4 @@ backups, Git publication. Full-suite, live-bank-file, and production evidence.
 
 ## 5. Operator verdict
 
-Approved — 2026-09-05, Claude Code session dev-f4.
+<operator fills: approved / changes requested, date, transcript reference>

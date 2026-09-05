@@ -38,8 +38,6 @@ def env(tmp_path: Path):
 
 
 def test_import_then_auto_match_then_approve(env):
-    from ironledger.ingest.pipeline import run_import
-
     conn, paths = env
     # Import first, with no rule registered yet, so the row lands pending with a
     # NULL contra -- exactly what auto_match is for.
