@@ -124,3 +124,111 @@ def test_safe_mode_blocks_categorize(env):
     (cfg / "safe-mode.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
     rc = main(_argv(db, cfg, "review", "categorize", stx, "Expenses:Coffee"))
     assert rc == 3
+
+
+def _enable_safe_mode(cfg: Path) -> None:
+    (cfg / "safe-mode.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+
+
+def test_safe_mode_blocks_reject(env):
+    db, cfg, stx = env
+    _enable_safe_mode(cfg)
+    rc = main(_argv(db, cfg, "review", "reject", stx, "--confirm", f"reject {stx}"))
+    assert rc == 3
+    conn = connect(str(db))
+    action, result = conn.execute(
+        "SELECT action, result FROM audit_events ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    assert result == "denied"
+    assert action == "review-reject (denied: safe mode is on)"
+
+
+def test_safe_mode_blocks_reopen(env):
+    db, cfg, stx = env
+    _enable_safe_mode(cfg)
+    rc = main(_argv(db, cfg, "review", "reopen", stx, "--confirm", f"reopen {stx}"))
+    assert rc == 3
+    conn = connect(str(db))
+    assert conn.execute(
+        "SELECT result FROM audit_events ORDER BY seq DESC LIMIT 1"
+    ).fetchone()[0] == "denied"
+
+
+def test_safe_mode_blocks_auto_match(env):
+    db, cfg, stx = env
+    _enable_safe_mode(cfg)
+    rc = main(_argv(db, cfg, "review", "auto-match", "--confirm", "auto-match all"))
+    assert rc == 3
+    conn = connect(str(db))
+    assert conn.execute(
+        "SELECT result FROM audit_events ORDER BY seq DESC LIMIT 1"
+    ).fetchone()[0] == "denied"
+
+
+def test_safe_mode_blocks_rule_add(env):
+    db, cfg, stx = env
+    _enable_safe_mode(cfg)
+    rc = main(_argv(db, cfg, "rule", "add", "--match-type", "exact", "--pattern", "coffee bar",
+                    "--account", "Expenses:Coffee", "--confirm", "rule Expenses:Coffee"))
+    assert rc == 3
+    conn = connect(str(db))
+    assert conn.execute("SELECT count(*) FROM categorization_rules").fetchone()[0] == 0
+    assert conn.execute(
+        "SELECT result FROM audit_events ORDER BY seq DESC LIMIT 1"
+    ).fetchone()[0] == "denied"
+
+
+def test_review_show_and_json_emit_no_audit_event(env, capsys):
+    db, cfg, stx = env
+    main(_argv(db, cfg, "review", "categorize", stx, "Expenses:Coffee"))
+    conn = connect(str(db))
+    before = conn.execute("SELECT count(*) FROM audit_events").fetchone()[0]
+    conn.close()
+    rc = main(_argv(db, cfg, "review", "show", stx))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert stx in out and "Expenses:Coffee" in out
+    rc = main(_argv(db, cfg, "review", "show", stx, "--json"))
+    assert rc == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["staged_transaction_id"] == stx
+    rc = main(_argv(db, cfg, "rule", "list"))
+    assert rc == 0
+    conn = connect(str(db))
+    after = conn.execute("SELECT count(*) FROM audit_events").fetchone()[0]
+    assert after == before
+
+
+def test_review_show_uncompilable_regex_suggestion_writes_no_audit(env):
+    db, cfg, stx = env
+    conn = connect(str(db))
+    conn.execute(
+        "INSERT INTO categorization_rules (rule_id, match_type, pattern, importing_account, "
+        " target_account, priority, active, created_at_utc) VALUES "
+        "('bad', 'regex', '(unclosed', NULL, 'Expenses:X', 10, 1, '2026-09-03T10:00:00Z')"
+    )
+    conn.commit()
+    before = conn.execute("SELECT count(*) FROM audit_events").fetchone()[0]
+    conn.close()
+    rc = main(_argv(db, cfg, "review", "show", stx))
+    assert rc == 0
+    conn = connect(str(db))
+    after = conn.execute("SELECT count(*) FROM audit_events").fetchone()[0]
+    assert after == before
+
+
+def test_safe_mode_blocks_rule_disable(env):
+    db, cfg, stx = env
+    rc = main(_argv(db, cfg, "rule", "add", "--match-type", "exact", "--pattern", "coffee bar",
+                    "--account", "Expenses:Coffee", "--confirm", "rule Expenses:Coffee"))
+    assert rc == 0
+    conn = connect(str(db))
+    rule_id = conn.execute("SELECT rule_id FROM categorization_rules").fetchone()[0]
+    conn.close()
+    _enable_safe_mode(cfg)
+    rc = main(_argv(db, cfg, "rule", "disable", rule_id, "--confirm", f"rule-disable {rule_id}"))
+    assert rc == 3
+    conn = connect(str(db))
+    assert conn.execute(
+        "SELECT active FROM categorization_rules WHERE rule_id = ?", (rule_id,)
+    ).fetchone()[0] == 1

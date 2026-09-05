@@ -97,6 +97,36 @@ def test_loop_phrase_prompted_once_only(db):
     assert counts["a"] == 2
 
 
+def test_loop_full_session_categorize_reject_skip_quit(db):
+    row_a = _stage(db, 0)
+    row_b = _stage(db, 1)
+    row_c = _stage(db, 2)
+    # row a: c -> account -> a (approve; phrase supplied via confirm)
+    # row b: c -> account -> r -> reason
+    # row c: s (skip, left pending, no audit event, no state change)
+    script = "c\nExpenses:Coffee\na\nc\nExpenses:Dining\nr\nno reason\ns\n"
+    counts = run_review_loop(
+        db, stdin=io.StringIO(script), stdout=io.StringIO(), db_basename="ledger.db",
+        confirm="review-session ledger.db", stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+    )
+    assert counts == {"c": 2, "a": 1, "r": 1, "s": 1}
+    assert db.execute(
+        "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (row_a,)
+    ).fetchone()[0] == "approved"
+    assert db.execute(
+        "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (row_b,)
+    ).fetchone()[0] == "rejected"
+    assert db.execute(
+        "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (row_c,)
+    ).fetchone()[0] == "pending"
+    actions = [r[0] for r in db.execute("SELECT action FROM audit_events ORDER BY seq")]
+    assert actions[0] == "review-session start"
+    assert actions[-1] == "review-session end (c=2 a=1 r=1 s=1)"
+    # one audit event per decision: 2 categorize + 1 approve + 1 reject = 4, plus start/end = 6.
+    # the skip produces no audit event of its own.
+    assert len(actions) == 6
+
+
 def test_loop_approve_gate_error_reshows_same_row(db):
     ok = _stage(db, 0, contra="Expenses:Coffee")
     blocked = _stage(db, 1, contra=None)

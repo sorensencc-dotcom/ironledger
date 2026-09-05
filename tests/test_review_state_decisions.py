@@ -102,6 +102,25 @@ def test_reopen_from_rejected_clears_fields_keeps_contra(db):
     ).fetchone()[0] == "review reopen (from rejected)"
 
 
+def test_reopen_from_categorized_clears_fields_keeps_contra(db):
+    stx = _stage(db, contra="Expenses:Coffee")
+    categorize(db, stx, "Expenses:Coffee", now_utc="2026-09-03T12:00:00Z")
+    db.commit()
+    reopen(db, stx, now_utc="2026-09-03T14:00:00Z")
+    db.commit()
+    status, reason, cat_at, decided = db.execute(
+        "SELECT status, reject_reason, categorized_at_utc, decided_at_utc "
+        "FROM staged_transactions WHERE staged_transaction_id = ?", (stx,)
+    ).fetchone()
+    contra = db.execute(
+        "SELECT account FROM staged_postings WHERE staged_transaction_id = ? AND role = 'contra'", (stx,)
+    ).fetchone()[0]
+    assert (status, reason, cat_at, decided, contra) == ("pending", None, None, None, "Expenses:Coffee")
+    assert db.execute(
+        "SELECT action FROM audit_events ORDER BY seq DESC LIMIT 1"
+    ).fetchone()[0] == "review reopen (from categorized)"
+
+
 def test_approved_is_terminal(db):
     stx = _stage(db, contra="Expenses:Coffee")
     approve(db, stx, now_utc="2026-09-03T13:00:00Z")
