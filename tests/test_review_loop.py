@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +14,14 @@ from ironledger.db.connection import connect
 from ironledger.ingest.errors import AuthorizationError
 from ironledger.ingest.stage import StagedInput, upsert_staged
 from ironledger.review.loop import run_review_loop
+
+
+@pytest.fixture
+def cfg(tmp_path: Path) -> Path:
+    d = tmp_path / "config"
+    d.mkdir()
+    (d / "safe-mode.json").write_text(json.dumps({"enabled": False}), encoding="utf-8")
+    return d
 
 
 @pytest.fixture
@@ -49,7 +59,7 @@ def _stage(db, i, payee="COFFEE BAR", contra=None) -> str:
     return stx_id
 
 
-def test_loop_categorize_then_approve_then_reject_then_quit(db):
+def test_loop_categorize_then_approve_then_reject_then_quit(db, cfg):
     a = _stage(db, 0)
     b = _stage(db, 1)
     _c = _stage(db, 2)
@@ -59,7 +69,8 @@ def test_loop_categorize_then_approve_then_reject_then_quit(db):
     script = "c\nExpenses:Coffee\na\nr\nnot needed\nq\n"
     counts = run_review_loop(
         db, stdin=io.StringIO(script), stdout=io.StringIO(), db_basename="ledger.db",
-        confirm="review-session ledger.db", stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+        confirm="review-session ledger.db", stdin_isatty=False, config_dir=cfg,
+        now_utc="2026-09-03T12:00:00Z",
     )
     assert counts == {"c": 1, "a": 1, "r": 1, "s": 0}
     assert db.execute(
@@ -74,30 +85,36 @@ def test_loop_categorize_then_approve_then_reject_then_quit(db):
     assert actions.count("review approve") == 1
 
 
-def test_loop_first_decision_without_phrase_fails_closed(db):
+def test_loop_first_decision_without_phrase_fails_closed(db, cfg):
     _stage(db, 0)
     script = "a\n"
     with pytest.raises(AuthorizationError):
         run_review_loop(
             db, stdin=io.StringIO(script), stdout=io.StringIO(), db_basename="ledger.db",
-            confirm=None, stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+            confirm=None, stdin_isatty=False, config_dir=cfg, now_utc="2026-09-03T12:00:00Z",
         )
+    action, result = db.execute(
+        "SELECT action, result FROM audit_events WHERE result = 'denied' ORDER BY seq"
+    ).fetchone()
+    assert result == "denied"
+    assert action.startswith("review-session (denied:")
 
 
-def test_loop_phrase_prompted_once_only(db):
+def test_loop_phrase_prompted_once_only(db, cfg):
     _stage(db, 0, contra="Expenses:Coffee")
     _stage(db, 1, contra="Expenses:Coffee")
     # two approves; phrase provided once via confirm; second 'a' must not re-check
     script = "a\na\nq\n"
     counts = run_review_loop(
         db, stdin=io.StringIO(script), stdout=io.StringIO(), db_basename="ledger.db",
-        confirm="review-session ledger.db", stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+        confirm="review-session ledger.db", stdin_isatty=False, config_dir=cfg,
+        now_utc="2026-09-03T12:00:00Z",
     )
     # both rows had a valid contra -> approve gate succeeds; phrase is checked once
     assert counts["a"] == 2
 
 
-def test_loop_full_session_categorize_reject_skip_quit(db):
+def test_loop_full_session_categorize_reject_skip_quit(db, cfg):
     row_a = _stage(db, 0)
     row_b = _stage(db, 1)
     row_c = _stage(db, 2)
@@ -107,7 +124,8 @@ def test_loop_full_session_categorize_reject_skip_quit(db):
     script = "c\nExpenses:Coffee\na\nc\nExpenses:Dining\nr\nno reason\ns\n"
     counts = run_review_loop(
         db, stdin=io.StringIO(script), stdout=io.StringIO(), db_basename="ledger.db",
-        confirm="review-session ledger.db", stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+        confirm="review-session ledger.db", stdin_isatty=False, config_dir=cfg,
+        now_utc="2026-09-03T12:00:00Z",
     )
     assert counts == {"c": 2, "a": 1, "r": 1, "s": 1}
     assert db.execute(
@@ -127,7 +145,7 @@ def test_loop_full_session_categorize_reject_skip_quit(db):
     assert len(actions) == 6
 
 
-def test_loop_approve_gate_error_reshows_same_row(db):
+def test_loop_approve_gate_error_reshows_same_row(db, cfg):
     ok = _stage(db, 0, contra="Expenses:Coffee")
     blocked = _stage(db, 1, contra=None)
     # row ok: a -> approves, grants the phrase
@@ -137,7 +155,8 @@ def test_loop_approve_gate_error_reshows_same_row(db):
     stdout = io.StringIO()
     counts = run_review_loop(
         db, stdin=io.StringIO(script), stdout=stdout, db_basename="ledger.db",
-        confirm="review-session ledger.db", stdin_isatty=False, now_utc="2026-09-03T12:00:00Z",
+        confirm="review-session ledger.db", stdin_isatty=False, config_dir=cfg,
+        now_utc="2026-09-03T12:00:00Z",
     )
     assert counts == {"c": 1, "a": 2, "r": 0, "s": 0}
     assert "cannot approve" in stdout.getvalue()

@@ -17,11 +17,15 @@ class ApproveGateError(ValueError):
 
 
 def check_approvable(conn: sqlite3.Connection, stx_id: str) -> None:
+    # Imported lazily: review.state imports check_approvable, so a module-level
+    # import here would be circular.
+    from ironledger.review.state import ReviewStateError
+
     row = conn.execute(
         "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (stx_id,)
     ).fetchone()
     if row is None:
-        raise ApproveGateError("status", f"unknown staged transaction {stx_id!r}")
+        raise ReviewStateError(f"unknown staged transaction {stx_id!r}")
     if row[0] not in ("pending", "categorized"):
         raise ApproveGateError("status", f"{stx_id} is {row[0]}, not approvable")
 

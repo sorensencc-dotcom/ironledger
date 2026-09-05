@@ -24,6 +24,23 @@ _PREFIX = {
     "review-session": "review-session",
 }
 
+# Display form of each dispatch key, used only for the `action` string written
+# to audit events (never for phrase lookup — that stays keyed by _PREFIX).
+# Matches the spelling each command's own success-path audit event already uses.
+_DISPLAY = {
+    "review-approve": "review approve",
+    "review-reject": "review reject",
+    "review-reopen": "review reopen",
+    "review-auto-match": "review auto-match",
+    "rule-add": "rule add",
+    "rule-disable": "rule disable",
+    "review-session": "review-session",
+}
+
+
+def _display_action(action: str) -> str:
+    return _DISPLAY.get(action, action)
+
 
 def expected_phrase(action: str, subject: str) -> str:
     try:
@@ -58,7 +75,7 @@ def require_operator(
 
     def deny(reason: str) -> AuthorizationError:
         append_audit_event(
-            conn, actor="operator", action=f"{action} (denied: {reason})",
+            conn, actor="operator", action=f"{_display_action(action)} (denied: {reason})",
             target=subject, result="denied",
         )
         conn.commit()

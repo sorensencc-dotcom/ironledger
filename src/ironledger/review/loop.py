@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 from ironledger.audit import append_audit_event
-from ironledger.cli.auth import expected_phrase
+from ironledger.cli import auth
 from ironledger.ingest.errors import AuthorizationError
 from ironledger.ingest.identity import canonical_payee
 from ironledger.review.approve_gate import ApproveGateError
@@ -43,6 +44,7 @@ def run_review_loop(
     db_basename: str,
     confirm: str | None,
     stdin_isatty: bool,
+    config_dir: str | Path,
     now_utc: str | None = None,
 ) -> dict[str, int]:
     counts = {"c": 0, "a": 0, "r": 0, "s": 0}
@@ -52,24 +54,25 @@ def run_review_loop(
     )
     conn.commit()
 
-    want_phrase = expected_phrase("review-session", db_basename)
     phrase_ok = False
+
+    def _prompt(message: str) -> str:
+        stdout.write(message)
+        stdout.flush()
+        return stdin.readline() or ""
 
     def ensure_phrase() -> None:
         nonlocal phrase_ok
         if phrase_ok:
             return
-        if stdin_isatty:
-            stdout.write(f"Type '{want_phrase}' to authorize decisions this session: ")
-            stdout.flush()
-            typed = (stdin.readline() or "").strip()
-            if typed != want_phrase:
-                _end(conn, db_basename, counts, now_utc)
-                raise AuthorizationError("review session not authorized: phrase did not match")
-        else:
-            if confirm != want_phrase:
-                _end(conn, db_basename, counts, now_utc)
-                raise AuthorizationError("review session not authorized: --confirm did not match")
+        try:
+            auth.require_operator(
+                conn, action="review-session", subject=db_basename, confirm=confirm,
+                stdin_isatty=stdin_isatty, config_dir=config_dir, prompt=_prompt,
+            )
+        except AuthorizationError:
+            _end(conn, db_basename, counts, now_utc)
+            raise
         phrase_ok = True
 
     def read_line() -> str:

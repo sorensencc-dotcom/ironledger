@@ -92,6 +92,21 @@ def test_approve_without_confirm_on_non_tty_is_denied(env):
     assert rc == 3
 
 
+def test_approve_unknown_id_is_a_state_error_not_a_denial(env):
+    # Unknown id -> lookup error (exit 5, no audit event), same as show/categorize/
+    # reject/reopen on an unknown id -- not an authorization denial (exit 3).
+    db, cfg, _stx = env
+    conn = connect(str(db))
+    before = conn.execute("SELECT count(*) FROM audit_events").fetchone()[0]
+    conn.close()
+    rc = main(_argv(db, cfg, "review", "approve", "does-not-exist",
+                    "--confirm", "approve does-not-exist"))
+    assert rc == 5
+    conn = connect(str(db))
+    after = conn.execute("SELECT count(*) FROM audit_events").fetchone()[0]
+    assert after == before
+
+
 def test_reject_with_reason_and_reopen(env):
     db, cfg, stx = env
     assert main(_argv(db, cfg, "review", "reject", stx, "--reason", "dupe",
@@ -140,7 +155,7 @@ def test_safe_mode_blocks_reject(env):
         "SELECT action, result FROM audit_events ORDER BY seq DESC LIMIT 1"
     ).fetchone()
     assert result == "denied"
-    assert action == "review-reject (denied: safe mode is on)"
+    assert action == "review reject (denied: safe mode is on)"
 
 
 def test_safe_mode_blocks_reopen(env):

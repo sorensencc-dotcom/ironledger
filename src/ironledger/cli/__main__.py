@@ -353,6 +353,9 @@ def _cmd_review_approve(args) -> int:
         try:
             state.approve(conn, args.staged_transaction_id)
             conn.commit()
+        except ReviewStateError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return _EXIT_STATE
         except ApproveGateError as exc:
             append_audit_event(conn, actor="operator",
                                action=f"review approve (denied: {exc.reason})",
@@ -428,6 +431,7 @@ def _cmd_review_loop(args) -> int:
             run_review_loop(
                 conn, stdin=sys.stdin, stdout=sys.stdout, db_basename=db_basename,
                 confirm=args.confirm, stdin_isatty=sys.stdin.isatty(),
+                config_dir=args.config_dir,
             )
         except AuthorizationError as exc:
             print(f"denied: {exc}", file=sys.stderr)

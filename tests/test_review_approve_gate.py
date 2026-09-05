@@ -10,7 +10,7 @@ from ironledger.db import migrations
 from ironledger.db.connection import connect
 from ironledger.ingest.stage import StagedInput, upsert_staged
 from ironledger.review.approve_gate import ApproveGateError, check_approvable
-from ironledger.review.state import categorize
+from ironledger.review.state import ReviewStateError, categorize
 
 
 @pytest.fixture
@@ -104,3 +104,12 @@ def test_approved_row_blocks_on_status(db):
     with pytest.raises(ApproveGateError) as exc:
         check_approvable(db, stx)
     assert exc.value.reason == "status"
+
+
+def test_unknown_id_raises_review_state_error_not_approve_gate_error(db):
+    # An unknown id is a lookup error, not an authorization denial: it must raise
+    # ReviewStateError (mapped by the CLI to exit 5, no audit event), matching every
+    # sibling review command (show, categorize, reject, reopen) rather than
+    # ApproveGateError (mapped to exit 3 + a denied audit event).
+    with pytest.raises(ReviewStateError):
+        check_approvable(db, "does-not-exist")
