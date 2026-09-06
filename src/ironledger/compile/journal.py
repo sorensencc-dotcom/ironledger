@@ -1,3 +1,10 @@
+"""Journal persistence and compile-run lifecycle helpers.
+
+Assumes exclusive compile lock held by caller for all mutation operations.
+next_journal_seq() read-then-insert is not atomic; callers must guarantee
+only one compile operation at a time to ensure monotonic sequence assignment.
+"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -94,7 +101,7 @@ def get_active_started_run(conn: sqlite3.Connection) -> dict[str, Any] | None:
     cursor = conn.execute(
         "SELECT compile_run_id, beancount_version, compiler_version, input_hash, "
         "       intended_output_hash, status, started_at_utc, recovery_state "
-        "FROM compile_runs WHERE status = 'started' ORDER BY started_at_utc DESC LIMIT 1"
+        "FROM compile_runs WHERE status = 'started' ORDER BY started_at_utc DESC, rowid DESC LIMIT 1"
     )
     row = cursor.fetchone()
     if row is None:
@@ -116,7 +123,7 @@ def get_latest_successful_run(conn: sqlite3.Connection) -> dict[str, Any] | None
         "SELECT compile_run_id, beancount_version, compiler_version, input_hash, "
         "       intended_output_hash, actual_output_hash, status, started_at_utc, finished_at_utc "
         "FROM compile_runs WHERE status IN ('succeeded', 'recovered') "
-        "ORDER BY started_at_utc DESC LIMIT 1"
+        "ORDER BY finished_at_utc DESC, rowid DESC LIMIT 1"
     )
     row = cursor.fetchone()
     if row is None:

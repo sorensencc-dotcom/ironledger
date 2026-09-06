@@ -71,3 +71,57 @@ def test_fail_compile_run_records_failure(db: sqlite3.Connection):
     assert get_active_started_run(db) is None
     row = db.execute("SELECT status FROM compile_runs WHERE compile_run_id = ?", (run_id,)).fetchone()
     assert row[0] == "failed"
+
+
+def test_deterministic_lookup_with_same_timestamp_tiebreaker(db: sqlite3.Connection):
+    """Verify rowid tiebreaker determinism when two runs share a timestamp."""
+    # Two runs with identical start timestamp (same second)
+    run_id_1 = "run-ts-1"
+    run_id_2 = "run-ts-2"
+    ts = "2026-09-06T12:00:00Z"
+
+    # Insert first run
+    start_compile_run(
+        db,
+        compile_run_id=run_id_1,
+        beancount_version="3.0.0",
+        compiler_version="0.1.0",
+        input_hash="a" * 64,
+        intended_output_hash="b" * 64,
+        now_utc=ts,
+    )
+
+    # Insert second run with same timestamp
+    start_compile_run(
+        db,
+        compile_run_id=run_id_2,
+        beancount_version="3.0.0",
+        compiler_version="0.1.0",
+        input_hash="c" * 64,
+        intended_output_hash="d" * 64,
+        now_utc=ts,
+    )
+
+    # get_active_started_run should return second-inserted (higher rowid)
+    active = get_active_started_run(db)
+    assert active is not None
+    assert active["compile_run_id"] == run_id_2
+
+    # Finish both with same timestamp
+    finish_compile_run(
+        db,
+        compile_run_id=run_id_1,
+        actual_output_hash="b" * 64,
+        now_utc=ts,
+    )
+    finish_compile_run(
+        db,
+        compile_run_id=run_id_2,
+        actual_output_hash="d" * 64,
+        now_utc=ts,
+    )
+
+    # get_latest_successful_run should return second-inserted (higher rowid)
+    latest = get_latest_successful_run(db)
+    assert latest is not None
+    assert latest["compile_run_id"] == run_id_2
