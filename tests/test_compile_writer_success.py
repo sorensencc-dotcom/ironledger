@@ -10,6 +10,7 @@ import pytest
 from ironledger.db import migrations
 from ironledger.db.connection import connect
 from ironledger.compile.beancheck import BeanCheckResult
+from ironledger.compile.errors import CompileError
 from ironledger.compile.writer import compile_approved
 
 
@@ -73,3 +74,49 @@ def test_compile_approved_end_to_end_success(db: sqlite3.Connection, tmp_path: P
     # Check audit event
     audit = db.execute("SELECT action, result, compile_run_id FROM audit_events ORDER BY seq DESC LIMIT 1").fetchone()
     assert audit == ("compile", "ok", summary.compile_run_id)
+
+    # Staging cleaned up on success
+    assert not (tmp_path / ".staging" / summary.compile_run_id).exists()
+
+    # Compile journal walks the full success lifecycle
+    states = [
+        r[0]
+        for r in db.execute(
+            "SELECT state FROM compile_journal WHERE compile_run_id = ? ORDER BY seq",
+            (summary.compile_run_id,),
+        ).fetchall()
+    ]
+    for expected in ("started", "bean_checked", "replaced", "succeeded"):
+        assert expected in states
+
+
+def test_compile_approved_hash_mismatch_leaves_run_recoverable(db: sqlite3.Connection, tmp_path: Path):
+    _seed_valid(db)
+    success_res = BeanCheckResult(ok=True, exit_code=0, stdout="", stderr="", beancount_version="3.0.0", compiler_version="0.1.0")
+
+    with patch("ironledger.compile.writer.run_bean_check", return_value=success_res), \
+         patch("ironledger.compile.writer.compute_actual_output_hash", return_value="deadbeef" * 8):
+        with pytest.raises(CompileError):
+            compile_approved(db, tmp_path, now_utc="2026-09-06T12:00:00Z")
+
+    # finish_compile_run was never reached
+    run = db.execute("SELECT compile_run_id, status FROM compile_runs").fetchone()
+    assert run[1] == "started"
+    run_id = run[0]
+
+    # Staging preserved for recovery
+    assert list((tmp_path / ".staging").glob("crun-*"))
+
+    # Lock released despite the raise
+    assert not (tmp_path / ".compile.lock").exists()
+
+    # Journal got past the replace loop but never succeeded
+    states = [
+        r[0]
+        for r in db.execute(
+            "SELECT state FROM compile_journal WHERE compile_run_id = ? ORDER BY seq",
+            (run_id,),
+        ).fetchall()
+    ]
+    assert states[-1] == "replaced"
+    assert "succeeded" not in states
