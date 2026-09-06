@@ -1,9 +1,13 @@
-"""Compile lock manager and staging pipeline up to bean-check validation.
+"""Compile lock manager and full staging-to-live compile pipeline.
 
 On bean-check failure, staging is quarantined into ``failed-<run_id>``, a
 ``bean-check.txt`` transcript is written, the compile run is journalled as
-failed, and an error audit event is emitted. The success path (atomic replace,
-hash verification, ledger index) is implemented in Task 9.
+failed, and an error audit event is emitted. On success, rendered files are
+written to ``.staging/<run_id>/`` first, then copied into place with sibling
+temp + ``os.replace`` (A4.1 copy semantics, so ``.staging`` stays byte-complete
+until the explicit ``shutil.rmtree`` after the index update), the live output
+hash is read back and verified, the compile run is finished, and the
+``ledger_entries`` / ``ledger_postings`` index is repopulated.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 
 from ironledger.audit import append_audit_event
 from ironledger.compile.beancheck import run_bean_check
@@ -25,17 +29,98 @@ from ironledger.compile.errors import (
     CompileLockedError,
 )
 from ironledger.compile.hashing import (
+    compute_actual_output_hash,
     compute_input_hash,
     compute_intended_output_hash,
 )
 from ironledger.compile.journal import (
+    append_compile_journal,
     fail_compile_run,
+    finish_compile_run,
     get_active_started_run,
     start_compile_run,
 )
 from ironledger.compile.model import load_approved_set, validate_approved_set
 from ironledger.compile.render import render_ledger
 from ironledger.conventions import validate_utc_timestamp
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class CompileSummary:
+    compile_run_id: str
+    entry_count: int
+    year_files: tuple[str, ...]
+    output_hash: str
+
+
+def _fsync_dir(dir_path: Path) -> None:
+    try:
+        dfd = os.open(str(dir_path), os.O_RDONLY)
+        try:
+            os.fsync(dfd)
+        finally:
+            os.close(dfd)
+    except (OSError, AttributeError):
+        pass
+
+
+def _atomic_write_file(dst: Path, data: bytes) -> None:
+    """Write ``data`` to ``dst`` atomically via a sibling temp file + os.replace.
+
+    Copy semantics: the source (``.staging/<run_id>/``) is untouched, so a crash
+    between the temp write and the replace never destroys the staged copy.
+    """
+    tmp = dst.parent / (dst.name + f".tmp-{uuid.uuid4().hex[:8]}")
+    tmp.write_bytes(data)
+    os.replace(str(tmp), str(dst))
+    _fsync_dir(dst.parent)
+
+
+def _replace_ledger_index(
+    conn: sqlite3.Connection, compile_run_id: str, approved_set: Any, now_utc: str
+) -> None:
+    # Delete prior index rows (cascade deletes ledger_postings)
+    conn.execute("DELETE FROM ledger_entries")
+
+    for tx in approved_set.transactions:
+        entry_id = f"le-{uuid.uuid4().hex[:12]}"
+        conn.execute(
+            "INSERT INTO ledger_entries (ledger_entry_id, staged_transaction_id, compile_run_id, "
+            " entry_date, flag, payee, narration, created_at_utc) "
+            "VALUES (?, ?, ?, ?, '*', ?, ?, ?)",
+            (
+                entry_id,
+                tx.staged_transaction_id,
+                compile_run_id,
+                tx.proposed_date,
+                tx.payee,
+                tx.narration,
+                now_utc,
+            ),
+        )
+        for p in tx.postings:
+            p_id = f"lp-{uuid.uuid4().hex[:12]}"
+            conn.execute(
+                "INSERT INTO ledger_postings (ledger_posting_id, ledger_entry_id, source_record_id, "
+                " account, minor_units, currency, minor_unit_scale, identity_algo_version, "
+                " identity_method, identity_fingerprint, created_at_utc) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    p_id,
+                    entry_id,
+                    p.source_record_id,
+                    p.account,
+                    p.minor_units,
+                    p.currency,
+                    p.minor_unit_scale,
+                    p.identity_algo_version,
+                    p.identity_method,
+                    p.identity_fingerprint,
+                    now_utc,
+                ),
+            )
+    conn.commit()
 
 
 @contextmanager
@@ -58,7 +143,7 @@ def compile_approved(
     *,
     now_utc: str | None = None,
     bean_check_bin: str | None = None,
-) -> None:
+) -> CompileSummary:
     ledger_dir = Path(ledger_dir)
     now = now_utc or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     validate_utc_timestamp(now)
@@ -119,4 +204,51 @@ def compile_approved(
                 f"bean-check validation failed:\n{check_res.stderr}"
             )
 
-        raise CompileError("compile_approved success path is implemented in Task 9")
+        append_compile_journal(conn, run_id, "bean_checked", now_utc=now)
+
+        # Atomic replacement in fixed order: accounts.beancount, main.beancount,
+        # then sorted txns/YYYY.beancount. A4.1: copy semantics (sibling temp +
+        # os.replace) keep .staging byte-complete so a crash mid-replace is
+        # recoverable from staging as well as from a re-render.
+        (ledger_dir / "txns").mkdir(parents=True, exist_ok=True)
+        year_files = sorted(p for p in rendered if p.startswith("txns/"))
+        order = ["accounts.beancount", "main.beancount"] + year_files
+        for rel in order:
+            dst = ledger_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_file(dst, rendered[rel])
+
+        _fsync_dir(ledger_dir)
+        append_compile_journal(conn, run_id, "replaced", now_utc=now)
+
+        # Read back live files and verify the on-disk hash matches intent.
+        actual_hash = compute_actual_output_hash(ledger_dir, year_files)
+        if actual_hash != intended_hash:
+            raise CompileError(
+                f"Live ledger output hash mismatch: actual={actual_hash} != intended={intended_hash}"
+            )
+
+        finish_compile_run(conn, run_id, actual_output_hash=actual_hash, now_utc=now)
+        _replace_ledger_index(conn, run_id, approved_set, now)
+
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+
+        append_audit_event(
+            conn,
+            actor="operator",
+            action="compile",
+            target=run_id,
+            result="ok",
+            compile_run_id=run_id,
+            input_hash=in_hash,
+            output_hash=actual_hash,
+            ts_utc=now,
+        )
+
+        return CompileSummary(
+            compile_run_id=run_id,
+            entry_count=len(approved_set.transactions),
+            year_files=tuple(year_files),
+            output_hash=actual_hash,
+        )
