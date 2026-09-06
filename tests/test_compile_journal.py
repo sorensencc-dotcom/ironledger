@@ -1,0 +1,73 @@
+"""Tests for compile run lifecycle and append-only journal persistence."""
+
+from __future__ import annotations
+
+import sqlite3
+import pytest
+
+from ironledger.db import migrations
+from ironledger.db.connection import connect
+from ironledger.compile.journal import (
+    start_compile_run,
+    append_compile_journal,
+    finish_compile_run,
+    fail_compile_run,
+    get_active_started_run,
+    get_latest_successful_run,
+)
+
+
+@pytest.fixture
+def db() -> sqlite3.Connection:
+    conn = connect(":memory:")
+    migrations.migrate(conn)
+    return conn
+
+
+def test_compile_run_lifecycle_and_journal_sequence(db: sqlite3.Connection):
+    run_id = "run-100"
+    start_compile_run(
+        db,
+        compile_run_id=run_id,
+        beancount_version="3.0.0",
+        compiler_version="0.1.0",
+        input_hash="a" * 64,
+        intended_output_hash="b" * 64,
+        now_utc="2026-09-06T12:00:00Z",
+    )
+
+    started_run = get_active_started_run(db)
+    assert started_run is not None
+    assert started_run["compile_run_id"] == run_id
+
+    seq1 = append_compile_journal(db, run_id, "bean_checked", now_utc="2026-09-06T12:00:01Z")
+    assert seq1 == 2  # seq 1 was 'started' in start_compile_run
+
+    finish_compile_run(
+        db,
+        compile_run_id=run_id,
+        actual_output_hash="b" * 64,
+        now_utc="2026-09-06T12:00:02Z",
+    )
+
+    assert get_active_started_run(db) is None
+    latest = get_latest_successful_run(db)
+    assert latest is not None
+    assert latest["compile_run_id"] == run_id
+    assert latest["status"] == "succeeded"
+
+
+def test_fail_compile_run_records_failure(db: sqlite3.Connection):
+    run_id = "run-fail"
+    start_compile_run(
+        db,
+        compile_run_id=run_id,
+        beancount_version="3.0.0",
+        compiler_version="0.1.0",
+        input_hash="a" * 64,
+        intended_output_hash="b" * 64,
+    )
+    fail_compile_run(db, run_id, detail="bean-check exited 1")
+    assert get_active_started_run(db) is None
+    row = db.execute("SELECT status FROM compile_runs WHERE compile_run_id = ?", (run_id,)).fetchone()
+    assert row[0] == "failed"
