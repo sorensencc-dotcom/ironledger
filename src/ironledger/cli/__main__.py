@@ -21,7 +21,12 @@ from ironledger.review.loop import run_review_loop
 from ironledger.review.rules import RuleError, RuleExistsError, resolve_rule
 from ironledger.review.state import ReviewStateError
 
+from ironledger.compile.beancheck import BeanCheckResult
+from ironledger.compile.errors import BeanCheckFailedError, BeanCheckUnavailableError, CompileError, CompileInputError
+from ironledger.compile import hashing, journal, recover, writer
+
 _EXIT_OK = 0
+_EXIT_ERROR = 1
 _EXIT_AUTH = 3
 _EXIT_INGEST = 4
 _EXIT_STATE = 5
@@ -33,6 +38,20 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config-dir", default="config", type=Path)
     parser.add_argument("--evidence-dir", default="evidence", type=Path)
     sub = parser.add_subparsers(dest="command", required=True)
+
+    # compile command tree
+    comp = sub.add_parser("compile", help="compile approved staged transactions into Beancount ledger")
+    comp.add_argument("--ledger-dir", default=None, type=Path, help="path to the output ledger directory")
+    comp.add_argument("--confirm", default=None, help="confirmation phrase for operator authorization")
+    comp_sub = comp.add_subparsers(dest="compile_command", required=False)
+
+    comp_status = comp_sub.add_parser("status", help="show status of ledger compilation and crash recovery")
+    comp_status.add_argument("--ledger-dir", required=True, type=Path, help="path to the output ledger directory")
+    comp_status.add_argument("--json", action="store_true", help="render status as JSON")
+
+    comp_recover = comp_sub.add_parser("recover", help="recover an interrupted compile run")
+    comp_recover.add_argument("--ledger-dir", required=True, type=Path, help="path to the output ledger directory")
+    comp_recover.add_argument("--confirm", default=None, help="confirmation phrase for operator authorization")
 
     imp = sub.add_parser(
         "import",
@@ -127,6 +146,16 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.command == "compile":
+        comp_cmd = getattr(args, "compile_command", None)
+        if comp_cmd is None:
+            return _cmd_compile(args)
+        if comp_cmd == "status":
+            return _cmd_compile_status(args)
+        if comp_cmd == "recover":
+            return _cmd_compile_recover(args)
+        parser.error(f"unknown compile command {comp_cmd!r}")
+        return 2
     if args.command == "import":
         return _cmd_import(args)
     if args.command == "review":
@@ -149,6 +178,104 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fitid_add(args) if args.fitid_command == "add" else _cmd_fitid_list(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
+
+
+def _cmd_compile(args) -> int:
+    if args.ledger_dir is None:
+        print("error: the following arguments are required: --ledger-dir", file=sys.stderr)
+        return 2
+    conn = connect(str(args.db))
+    try:
+        migrations.migrate(conn)
+        try:
+            auth.require_operator(
+                conn,
+                action="compile",
+                subject="compile",
+                confirm=args.confirm,
+                stdin_isatty=sys.stdin.isatty(),
+                config_dir=args.config_dir,
+            )
+        except AuthorizationError as exc:
+            print(f"denied: {exc}", file=sys.stderr)
+            return _EXIT_AUTH
+
+        try:
+            summary = writer.compile_approved(conn, args.ledger_dir)
+        except (CompileInputError, BeanCheckFailedError, BeanCheckUnavailableError, CompileError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return _EXIT_ERROR
+
+        print(render.render_compile_summary(summary))
+        return _EXIT_OK
+    finally:
+        conn.close()
+
+
+def _cmd_compile_status(args) -> int:
+    conn = connect(str(args.db))
+    try:
+        migrations.migrate(conn)
+        latest_run = journal.get_latest_successful_run(conn)
+        active_run = journal.get_active_started_run(conn)
+
+        ledger_dir = Path(args.ledger_dir)
+        year_files: list[str] = []
+        txns_dir = ledger_dir / "txns"
+        if txns_dir.exists():
+            year_files = [f"txns/{p.name}" for p in txns_dir.glob("*.beancount")]
+
+        has_files = (ledger_dir / "main.beancount").exists() or (ledger_dir / "accounts.beancount").exists() or bool(year_files)
+        if has_files:
+            on_disk_hash = hashing.compute_actual_output_hash(ledger_dir, year_files)
+        else:
+            on_disk_hash = "none"
+
+        expected_hash = None
+        if latest_run:
+            expected_hash = latest_run.get("actual_output_hash") or latest_run.get("intended_output_hash")
+
+        hash_matches = bool(expected_hash and on_disk_hash == expected_hash)
+
+        status_data = {
+            "latest_run": latest_run,
+            "active_run": active_run,
+            "on_disk_hash": on_disk_hash,
+            "hash_matches": hash_matches,
+        }
+        print(render.render_compile_status(status_data, as_json=args.json))
+        return _EXIT_OK
+    finally:
+        conn.close()
+
+
+def _cmd_compile_recover(args) -> int:
+    conn = connect(str(args.db))
+    try:
+        migrations.migrate(conn)
+        try:
+            auth.require_operator(
+                conn,
+                action="compile recover",
+                subject="compile recover",
+                confirm=args.confirm,
+                stdin_isatty=sys.stdin.isatty(),
+                config_dir=args.config_dir,
+            )
+        except AuthorizationError as exc:
+            print(f"denied: {exc}", file=sys.stderr)
+            return _EXIT_AUTH
+
+        try:
+            rec = recover.recover_dangling_compile(conn, args.ledger_dir)
+        except CompileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return _EXIT_ERROR
+
+        print(render.render_recovery_report(rec))
+        return _EXIT_OK
+    finally:
+        conn.close()
 
 
 def _cmd_import(args) -> int:
