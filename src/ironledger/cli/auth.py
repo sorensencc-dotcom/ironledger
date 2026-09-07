@@ -10,7 +10,20 @@ from typing import Callable
 from ironledger.audit import append_audit_event
 from ironledger.ingest.errors import AuthorizationError
 
-__all__ = ["expected_phrase", "safe_mode_enabled", "require_operator", "require_safe_mode_off"]
+__all__ = [
+    "expected_phrase",
+    "safe_mode_enabled",
+    "require_operator",
+    "require_safe_mode_off",
+    "COMPILE_PHRASE",
+    "COMPILE_RECOVER_PHRASE",
+]
+
+# Phase 3: fixed authorization phrases for the Beancount compiler and its
+# recovery-journal path. Both dispatch through `require_operator` unchanged via
+# the `_PREFIX` entries below (prefix "authorize", subject == the dispatch key).
+COMPILE_PHRASE = "authorize compile"
+COMPILE_RECOVER_PHRASE = "authorize compile recover"
 
 _PREFIX = {
     "import": "import",
@@ -22,6 +35,8 @@ _PREFIX = {
     "rule-add": "rule",
     "rule-disable": "rule-disable",
     "review-session": "review-session",
+    "compile": "authorize",
+    "compile recover": "authorize",
 }
 
 # Display form of each dispatch key, used only for the `action` string written
