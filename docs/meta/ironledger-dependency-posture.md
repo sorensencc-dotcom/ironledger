@@ -14,7 +14,7 @@ Phase 3 introduces the compilation of approved staged transactions into human-re
 
 ### 2. Subprocess Invocation & PATH Assumptions
 
-- `bean-check` is invoked with a strict execution timeout (default 30 seconds) via `subprocess.run`.
+- `bean-check` is invoked with a strict execution timeout (default 10 seconds) via `subprocess.run`.
 - When `bean-check` is not present on the host system `PATH`:
   - Compiler invocations fail closed and raise `BeanCheckUnavailableError`.
   - Non-compilation subsystems (ingest, review, rule management, migrations, CLI queries) remain fully functional.
