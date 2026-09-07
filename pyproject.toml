@@ -21,6 +21,9 @@ packages = ["src/ironledger"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "integration: marks tests that require external tools or binaries like bean-check",
+]
 
 [tool.ironledger]
 # Phase 1 in progress: canonical ledger conventions and schema migrations only.

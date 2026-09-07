@@ -8,17 +8,17 @@ Phase 3 introduces the compilation of approved staged transactions into human-re
 
 ### 1. Zero Direct Python Import Boundary
 
-- eancount is **never imported** directly into the IronLedger Python runtime core (import beancount is forbidden across src/ironledger/).
-- The Python codebase renders canonical, deterministic plaintext Beancount syntax using native string formatting and templating rules defined in ironledger.compile.render.
-- Validation of generated journals is executed solely via subprocess invocation of the pinned external ean-check CLI binary (ironledger.compile.beancheck).
+- `beancount` is **never imported** directly into the IronLedger Python runtime core (`import beancount` is forbidden across `src/ironledger/`).
+- The Python codebase renders canonical, deterministic plaintext Beancount syntax using native string formatting and templating rules defined in `ironledger.compile.render`.
+- Validation of generated journals is executed solely via subprocess invocation of the pinned external `bean-check` CLI binary (`ironledger.compile.beancheck`).
 
 ### 2. Subprocess Invocation & PATH Assumptions
 
-- ean-check is invoked with a strict execution timeout (default 30 seconds) via subprocess.run.
-- When ean-check is not present on the host system PATH:
-  - Compiler invocations fail closed and raise BeanCheckUnavailableError.
+- `bean-check` is invoked with a strict execution timeout (default 30 seconds) via `subprocess.run`.
+- When `bean-check` is not present on the host system `PATH`:
+  - Compiler invocations fail closed and raise `BeanCheckUnavailableError`.
   - Non-compilation subsystems (ingest, review, rule management, migrations, CLI queries) remain fully functional.
-  - Integration tests requiring the live binary (@pytest.mark.integration) skip cleanly when ean-check is absent.
+  - Integration tests requiring the live binary (`@pytest.mark.integration`) skip cleanly when `bean-check` is absent.
 
 ### 3. Binary Extension Posture & Determinism
 
@@ -27,5 +27,5 @@ Phase 3 introduces the compilation of approved staged transactions into human-re
 
 ### 4. Lockfile & Environment Management
 
-- Development and CI environments pin eancount tooling via project dependencies.
-- Changes to compiler output schemas, ledger file layouts, or ean-check validation rules require a formal design amendment and exit gate review.
+- Development and CI environments pin `beancount` tooling via project dependencies.
+- Changes to compiler output schemas, ledger file layouts, or `bean-check` validation rules require a formal design amendment and exit gate review.
