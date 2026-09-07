@@ -127,10 +127,24 @@ def _replace_ledger_index(
 def acquire_compile_lock(ledger_dir: Path) -> Generator[Path, None, None]:
     lock_file = ledger_dir / ".compile.lock"
     ledger_dir.mkdir(parents=True, exist_ok=True)
-    if lock_file.exists():
-        raise CompileLockedError(f"Compile lock is currently held at {lock_file}")
+    # Atomic create-or-fail: O_CREAT | O_EXCL is a single syscall on POSIX and
+    # Windows, so there is no check-then-write race. A hard crash (SIGKILL /
+    # power-loss) that skips the `finally` below strands the file; the next
+    # caller then hits FileExistsError here and gets an actionable refusal
+    # instead of a silent check-then-write that could double-run a compile.
     try:
-        lock_file.write_text(f"pid={os.getpid()}\n", encoding="utf-8")
+        fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        raise CompileLockedError(
+            f"Compile lock is currently held at {lock_file}. "
+            f"If no compile is running, remove that file and retry."
+        )
+    try:
+        since = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        os.write(fd, f"pid={os.getpid()}\nsince={since}\n".encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
         yield lock_file
     finally:
         if lock_file.exists():
@@ -218,6 +232,16 @@ def compile_approved(
             dst.parent.mkdir(parents=True, exist_ok=True)
             _atomic_write_file(dst, rendered[rel])
 
+        # Drop any live txns/*.beancount not in the intended set (a year the
+        # approved set stopped covering). recover.py:178-185 does this; without
+        # the same prune here an orphan year file survives and `compile status`
+        # (globs the whole tree) reports a false "Hash Matches: NO" on a tree
+        # that is exactly as compiled.
+        intended_txns = {p for p in rendered if p.startswith("txns/")}
+        for stale in sorted((ledger_dir / "txns").glob("*.beancount")):
+            if f"txns/{stale.name}" not in intended_txns:
+                stale.unlink()
+
         _fsync_dir(ledger_dir)
         append_compile_journal(conn, run_id, "replaced", now_utc=now)
 
@@ -228,8 +252,13 @@ def compile_approved(
                 f"Live ledger output hash mismatch: actual={actual_hash} != intended={intended_hash}"
             )
 
-        finish_compile_run(conn, run_id, actual_output_hash=actual_hash, now_utc=now)
+        # Index BEFORE finish: a crash between these two must leave the run
+        # `started` (recover.py Row 2 re-runs and re-replaces idempotently), not
+        # `succeeded` over the previous run's index rows with no path back
+        # (get_active_started_run would return None and `compile recover` would
+        # report nothing to recover).
         _replace_ledger_index(conn, run_id, approved_set, now)
+        finish_compile_run(conn, run_id, actual_output_hash=actual_hash, now_utc=now)
 
         if staging_dir.exists():
             shutil.rmtree(staging_dir)

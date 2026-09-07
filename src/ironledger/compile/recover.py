@@ -108,6 +108,10 @@ def recover_dangling_compile(
         # `intended_output_hash`. Refuse; the run stays `started`.
         if staging_present and not staging_ok:
             append_compile_journal(conn, run_id, "refused", detail="staging hash mismatch", now_utc=now)
+            append_audit_event(
+                conn, actor="operator", action="compile recover", target=run_id,
+                result="error", compile_run_id=run_id, ts_utc=now,
+            )
             raise AmbiguousRecoveryError(
                 "staging hash mismatch: the staging directory is present but its hash does not "
                 "equal intended_output_hash; re-run `ironledger compile` from a clean state."
@@ -147,6 +151,10 @@ def recover_dangling_compile(
         # pre-write abort above), the live tree is in an unrecognized state.
         if not rerender_matches:
             append_compile_journal(conn, run_id, "refused", detail="live ledger in an unrecognized state", now_utc=now)
+            append_audit_event(
+                conn, actor="operator", action="compile recover", target=run_id,
+                result="error", compile_run_id=run_id, ts_utc=now,
+            )
             raise AmbiguousRecoveryError(
                 "Approved set no longer re-derives the crashed run's intended output, and the live "
                 "tree matches neither the previous successful output nor a recoverable staging copy."
@@ -157,6 +165,10 @@ def recover_dangling_compile(
         # from (a partial replace compounded by an external edit).
         if not staging_ok and not live_matches_intended and not live_matches_prev and not live_empty:
             append_compile_journal(conn, run_id, "refused", detail="live ledger in an unrecognized state", now_utc=now)
+            append_audit_event(
+                conn, actor="operator", action="compile recover", target=run_id,
+                result="error", compile_run_id=run_id, ts_utc=now,
+            )
             raise AmbiguousRecoveryError(
                 "Live ledger matches neither the previous output nor the intended output, "
                 "and no intact staging is present."
@@ -196,6 +208,10 @@ def recover_dangling_compile(
         actual_hash = _live_tree_hash(ledger_dir, rendered)
         if actual_hash != intended_hash:
             append_compile_journal(conn, run_id, "refused", detail="live ledger in an unrecognized state", now_utc=now)
+            append_audit_event(
+                conn, actor="operator", action="compile recover", target=run_id,
+                result="error", compile_run_id=run_id, ts_utc=now,
+            )
             raise AmbiguousRecoveryError(f"Post-write live hash {actual_hash} != intended {intended_hash}")
 
         # Idempotent finalize: safe to re-run even if the row is already 'recovered'.

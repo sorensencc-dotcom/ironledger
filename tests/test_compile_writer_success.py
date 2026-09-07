@@ -90,6 +90,66 @@ def test_compile_approved_end_to_end_success(db: sqlite3.Connection, tmp_path: P
         assert expected in states
 
 
+def test_ledger_index_replaced_before_run_marked_succeeded(db: sqlite3.Connection, tmp_path: Path):
+    """Crash-window ordering: the SQLite index must be replaced BEFORE
+    ``finish_compile_run`` marks the run succeeded/committed. If the process dies
+    between the two, the run stays ``started`` (recover.py Row 2 re-runs
+    idempotently) rather than reading ``succeeded`` over the previous run's index
+    rows with no path back. Proven by making ``finish_compile_run`` raise and
+    asserting the fresh index is already in place while the run is still
+    ``started``."""
+    _seed_valid(db)
+    success_res = BeanCheckResult(ok=True, exit_code=0, stdout="", stderr="", beancount_version="3.0.0", compiler_version="0.1.0")
+
+    with patch("ironledger.compile.writer.run_bean_check", return_value=success_res), \
+         patch("ironledger.compile.writer.finish_compile_run", side_effect=RuntimeError("crash after index swap")):
+        with pytest.raises(RuntimeError):
+            compile_approved(db, tmp_path, now_utc="2026-09-06T12:00:00Z")
+
+    run = db.execute("SELECT status FROM compile_runs").fetchone()
+    assert run[0] == "started"
+    # Index was populated BEFORE the (crashing) finish call.
+    assert db.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM ledger_postings").fetchone()[0] == 2
+
+
+def test_compile_prunes_stale_year_files_when_approved_set_narrows(db: sqlite3.Connection, tmp_path: Path):
+    """A recompile whose approved set no longer covers a year must delete that
+    year's live ``txns/*.beancount``. Recovery already does this
+    (recover.py:178-185); without the same prune in ``compile_approved`` an orphan
+    year file survives and ``compile status`` (globs the whole tree) reports a
+    false ``Hash Matches: NO``."""
+    success_res = BeanCheckResult(ok=True, exit_code=0, stdout="", stderr="", beancount_version="3.0.0", compiler_version="0.1.0")
+    _seed_valid(db)  # stx-1: 2026 transaction
+    # A second approved transaction in a different year (2024).
+    db.execute(
+        "INSERT INTO staged_transactions (staged_transaction_id, source_record_id, status, proposed_date, payee, narration, identity_algo_version, identity_method, identity_fingerprint, created_at_utc, decided_at_utc) "
+        f"VALUES ('stx-2', 'rec-1', 'approved', '2024-05-01', 'Store', 'Old', 1, 'fitid', '{'d'*64}', '2026-09-01T10:00:00Z', '2026-09-02T10:00:00Z')"
+    )
+    db.execute(
+        "INSERT INTO staged_postings (staged_posting_id, staged_transaction_id, source_record_id, role, posting_index, account, minor_units, currency, minor_unit_scale, created_at_utc) "
+        "VALUES ('sp-3', 'stx-2', 'rec-1', 'imported', 0, 'Assets:Checking', -500, 'USD', 2, '2026-09-01T10:00:00Z'), "
+        "       ('sp-4', 'stx-2', 'rec-1', 'contra', 1, 'Expenses:Supplies', 500, 'USD', 2, '2026-09-01T10:00:00Z')"
+    )
+    db.commit()
+
+    with patch("ironledger.compile.writer.run_bean_check", return_value=success_res):
+        compile_approved(db, tmp_path, now_utc="2026-09-06T12:00:00Z")
+        assert (tmp_path / "txns" / "2024.beancount").exists()
+        assert (tmp_path / "txns" / "2026.beancount").exists()
+
+        # Narrow the approved set: 2024 transaction is rejected.
+        db.execute("UPDATE staged_transactions SET status = 'rejected' WHERE staged_transaction_id = 'stx-2'")
+        db.commit()
+        summary = compile_approved(db, tmp_path, now_utc="2026-09-06T13:00:00Z")
+
+    # Orphan year file pruned; read-back hash matched (no CompileError raised).
+    assert not (tmp_path / "txns" / "2024.beancount").exists()
+    assert (tmp_path / "txns" / "2026.beancount").exists()
+    run = db.execute("SELECT status FROM compile_runs WHERE compile_run_id = ?", (summary.compile_run_id,)).fetchone()
+    assert run[0] == "succeeded"
+
+
 def test_compile_approved_hash_mismatch_leaves_run_recoverable(db: sqlite3.Connection, tmp_path: Path):
     _seed_valid(db)
     success_res = BeanCheckResult(ok=True, exit_code=0, stdout="", stderr="", beancount_version="3.0.0", compiler_version="0.1.0")

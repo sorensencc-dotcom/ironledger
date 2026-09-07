@@ -15,8 +15,14 @@ from ironledger.db.connection import connect
 from ironledger.compile.model import ApprovedPosting, ApprovedSet, ApprovedTransaction, load_approved_set, validate_approved_set
 from ironledger.compile.render import render_ledger, format_amount, escape_beancount_string
 from ironledger.compile.hashing import compute_input_hash, compute_intended_output_hash
-from ironledger.compile.errors import CompileInputError, BeanCheckUnavailableError, CompileLockedError
+from ironledger.compile.errors import (
+    CompileInputError,
+    BeanCheckUnavailableError,
+    CompileLockedError,
+    AmbiguousRecoveryError,
+)
 from ironledger.compile.beancheck import run_bean_check, BeanCheckResult
+from ironledger.compile.journal import start_compile_run
 from ironledger.compile.writer import compile_approved, acquire_compile_lock
 from ironledger.compile.recover import recover_dangling_compile
 from ironledger.cli.auth import require_operator, AuthorizationError, COMPILE_PHRASE, COMPILE_RECOVER_PHRASE
@@ -242,6 +248,34 @@ def test_contract_16_audit_events_carry_run_id(db: sqlite3.Connection, tmp_path:
     ).fetchall()
     assert rows and all(r[2] == summary.compile_run_id for r in rows)
     assert any(r[1] == "ok" for r in rows)
+
+    # ... and a REFUSED recovery is equally visible in the hash-chained audit
+    # stream: a dangling `started` run whose staging hash does not match intent
+    # is the most operationally significant event the system produces.
+    refused_run_id = "crun-refused0001"
+    start_compile_run(
+        db,
+        compile_run_id=refused_run_id,
+        beancount_version="3.0.0",
+        compiler_version="0.1.0",
+        input_hash="a" * 64,
+        intended_output_hash="b" * 64,
+        now_utc="2026-09-06T14:00:00Z",
+    )
+    staging = tmp_path / ".staging" / refused_run_id
+    staging.mkdir(parents=True)
+    (staging / "main.beancount").write_bytes(b"not the intended bytes")
+
+    with pytest.raises(AmbiguousRecoveryError):
+        recover_dangling_compile(db, tmp_path, now_utc="2026-09-06T14:05:00Z")
+
+    refusal_rows = db.execute(
+        "SELECT action, result, compile_run_id FROM audit_events WHERE compile_run_id = ?",
+        (refused_run_id,),
+    ).fetchall()
+    assert refusal_rows, "a refused recovery must emit an audit event"
+    assert all(r[2] == refused_run_id for r in refusal_rows)
+    assert any(r[1] == "error" for r in refusal_rows)
 
 
 # 17. Missing bean-check raises

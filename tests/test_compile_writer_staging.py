@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
@@ -48,6 +49,34 @@ def test_acquire_lock_prevents_concurrent_access(tmp_path: Path):
         with pytest.raises(CompileLockedError, match="Compile lock is currently held"):
             with acquire_compile_lock(tmp_path):
                 pass
+
+
+def test_stale_lock_from_hard_crash_blocks_with_actionable_message(tmp_path: Path):
+    """A hard crash (SIGKILL / power-loss) leaves ``.compile.lock`` on disk with no
+    process holding it and no ``finally`` having run. ``acquire_compile_lock`` must
+    refuse with a message that names the lock file AND states the remedy, and must
+    leave the stale file in place for the operator to clear deliberately."""
+    lock_file = tmp_path / ".compile.lock"
+    lock_file.write_text("pid=99999\nsince=2026-09-06T12:00:00Z\n", encoding="utf-8")
+
+    with pytest.raises(CompileLockedError) as excinfo:
+        with acquire_compile_lock(tmp_path):
+            pass
+
+    msg = str(excinfo.value)
+    assert str(lock_file) in msg
+    assert "remove" in msg.lower()
+    assert lock_file.exists()  # not silently stolen
+
+
+def test_acquire_lock_writes_self_describing_content(tmp_path: Path):
+    """The lock file records the holding pid and an ISO-8601 ``since=`` timestamp so
+    an operator inspecting a strand knows what to check before deleting it."""
+    with acquire_compile_lock(tmp_path) as lock_file:
+        body = lock_file.read_text(encoding="utf-8")
+        assert f"pid={os.getpid()}" in body
+        assert "since=" in body
+    assert not lock_file.exists()  # released on normal exit
 
 
 def test_bean_check_failure_isolates_staging_and_journals_error(db: sqlite3.Connection, tmp_path: Path):
