@@ -26,6 +26,7 @@ markers = [
 ]
 
 [tool.ironledger]
-# Phase 1 in progress: canonical ledger conventions and schema migrations only.
-# No ingestion, compilation, projection, MCP, or network code is authorized.
-phase = 1
+# Phase 3: the compilation pipeline is authorized and shipped
+# (ironledger compile / compile status / compile recover). Projection, MCP, and
+# network code remain out of scope.
+phase = 3
