@@ -64,29 +64,20 @@ def test_compile_journal_triggers_prevent_update_and_delete(db: sqlite3.Connecti
 
 def test_migration_0005_checksum_frozen():
     """Verify that the migration runner enforces checksum immutability for 0005."""
-    migration_file_path = Path(__file__).parent.parent / "src" / "ironledger" / "db" / "schema" / "0005_compile_journal.sql"
-    original_bytes = migration_file_path.read_bytes()
-
-    try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "test.db"
-
-            # Apply migrations to a persistent DB file
-            conn_first = connect(str(db_path))
-            migrations.migrate(conn_first)
-            assert migrations.current_version(conn_first) == 5
-            conn_first.close()
-
-            # Now mutate the migration file
-            mutated_bytes = original_bytes + b"\n-- mutated comment\n"
-            migration_file_path.write_bytes(mutated_bytes)
-
-            # Try to open the same DB and migrate again (should detect checksum mismatch)
-            conn_second = connect(str(db_path))
-            with pytest.raises(migrations.ChecksumMismatch, match="changed on disk"):
-                migrations.migrate(conn_second)
-            conn_second.close()
-
-    finally:
-        # Restore the original file
-        migration_file_path.write_bytes(original_bytes)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        schema_dir = Path(tmpdir) / "schema"
+        schema_dir.mkdir()
+        source_dir = Path(__file__).parent.parent / "src" / "ironledger" / "db" / "schema"
+        for source in source_dir.glob("*.sql"):
+            (schema_dir / source.name).write_bytes(source.read_bytes())
+        db_path = Path(tmpdir) / "test.db"
+        conn_first = connect(str(db_path))
+        migrations.migrate(conn_first, directory=schema_dir)
+        assert migrations.current_version(conn_first) == 5
+        conn_first.close()
+        target = schema_dir / "0005_compile_journal.sql"
+        target.write_bytes(target.read_bytes() + b"\n-- mutated comment\n")
+        conn_second = connect(str(db_path))
+        with pytest.raises(migrations.ChecksumMismatch, match="changed on disk"):
+            migrations.migrate(conn_second, directory=schema_dir)
+        conn_second.close()
