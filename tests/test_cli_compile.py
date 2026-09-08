@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
+import os
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -12,6 +13,7 @@ from ironledger.db import migrations
 from ironledger.db.connection import connect
 from ironledger.compile.beancheck import BeanCheckResult
 from ironledger.cli.__main__ import main
+from ironledger.compile.writer import compile_approved
 
 
 @pytest.fixture
@@ -93,3 +95,38 @@ def test_cli_compile_auth_failure_exits_code_3(env, tmp_path: Path):
         "--confirm", "wrong phrase"
     ])
     assert rc == 3
+
+
+def test_cli_compile_bad_input_exits_code_1(env, tmp_path: Path):
+    db_path, config_dir = env
+    _seed(db_path)
+    conn = connect(str(db_path))
+    conn.execute("UPDATE staged_postings SET minor_units = 999 WHERE role = 'contra'")
+    conn.commit(); conn.close()
+    assert main(["--db", str(db_path), "--config-dir", str(config_dir), "compile", "--ledger-dir", str(tmp_path / "ledger"), "--confirm", "authorize compile"]) == 1
+
+
+def test_cli_compile_recover_none(env, tmp_path: Path, capsys):
+    db_path, config_dir = env
+    assert main(["--db", str(db_path), "--config-dir", str(config_dir), "compile", "recover", "--ledger-dir", str(tmp_path / "ledger"), "--confirm", "authorize compile recover"]) == 0
+    assert "no dangling compile run to recover" in capsys.readouterr().out.lower()
+
+
+def test_cli_compile_recover_started_run(env, tmp_path: Path):
+    db_path, config_dir = env
+    _seed(db_path)
+    ledger_dir = tmp_path / "ledger"
+    success = BeanCheckResult(ok=True, exit_code=0, stdout="", stderr="", beancount_version="3.0.0", compiler_version="0.1.0")
+    conn = connect(str(db_path))
+    original = os.replace
+    count = {"n": 0}
+    def crash_second(src, dst):
+        count["n"] += 1
+        if count["n"] == 2:
+            raise OSError("crash")
+        return original(src, dst)
+    with patch("ironledger.compile.writer.run_bean_check", return_value=success), patch("os.replace", side_effect=crash_second):
+        with pytest.raises(OSError):
+            compile_approved(conn, ledger_dir)
+    conn.close()
+    assert main(["--db", str(db_path), "--config-dir", str(config_dir), "compile", "recover", "--ledger-dir", str(ledger_dir), "--confirm", "authorize compile recover"]) == 0
