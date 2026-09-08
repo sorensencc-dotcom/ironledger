@@ -8,7 +8,9 @@ and committed by Claude.
 
 ## Repo state at hand-off
 
-- `C:\dev\IronLedger`, branch `main`, HEAD `ac18f55`.
+- Branch `main`, HEAD `aac2270` (`= ac18f55` + this doc's own add commit).
+  Work in a writable checkout — `C:\dev\dev-sandbox\ironledger-phase3` — not
+  the read-only `C:\dev\IronLedger`.
 - Suite: `PYTHONPATH=src python -m pytest -q` → **339 passed, 2 skipped, 0 warnings**.
   Skips: `test_ingest_inbox` (symlinks), exit-contract item 6 (bean-check absent).
 - No remote. D-0. All commits authored `Iron-Hammer <iron-hammer@ironledger.local>`
@@ -17,8 +19,8 @@ and committed by Claude.
 
 ## Hard boundary (non-negotiable)
 
-1. Work only in `C:\dev\IronLedger` on `main`. No branch, no remote, no push,
-   no rebase, no `reset --hard`, no force-anything.
+1. Work only in the `C:\dev\dev-sandbox\ironledger-phase3` checkout on `main`.
+   No branch, no remote, no push, no rebase, no `reset --hard`, no force-anything.
 2. Do only the tasks below. No "while I'm here" edits, no refactors outside
    each task's named files.
 3. One commit per task group, messages given below. TDD every behavior change:
@@ -33,10 +35,11 @@ and committed by Claude.
 ## Preconditions to verify first
 
 ```
-pwsh -NoProfile -File C:\dev\scripts\verify-repo-context.ps1 -Path C:\dev\IronLedger
+pwsh -NoProfile -File C:\dev\scripts\verify-repo-context.ps1 -Path C:\dev\dev-sandbox\ironledger-phase3
 ```
-must print branch `main`, `PREFLIGHT_PASS`. `git rev-parse HEAD` must be `ac18f55`.
-Baseline suite must be 339 passed / 2 skipped before you start.
+must print branch `main`, `PREFLIGHT_PASS`. `git rev-parse HEAD` must be
+`aac2270` (the tip that carries this doc). Baseline suite must be 339 passed /
+2 skipped / 0 warnings before you start.
 
 ---
 
