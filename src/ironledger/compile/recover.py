@@ -112,6 +112,7 @@ def recover_dangling_compile(
                 conn, actor="operator", action="compile recover", target=run_id,
                 result="error", compile_run_id=run_id, ts_utc=now,
             )
+            conn.commit()  # persist the refusal journal + audit rows before unwinding
             raise AmbiguousRecoveryError(
                 "staging hash mismatch: the staging directory is present but its hash does not "
                 "equal intended_output_hash; re-run `ironledger compile` from a clean state."
@@ -136,7 +137,7 @@ def recover_dangling_compile(
         live_empty = _live_tree_empty(ledger_dir)
         live_hash = _live_tree_hash(ledger_dir, rendered) if rendered else None
         live_matches_intended = bool(rendered) and live_hash == intended_hash
-        live_matches_prev = prev_hash is not None and rendered and live_hash == prev_hash
+        live_matches_prev = prev_hash is not None and bool(rendered) and live_hash == prev_hash
 
         # Row 1: pre-write abort. Nothing was written and staging never completed:
         # the live tree is empty or still holds the previous successful output.
@@ -155,6 +156,7 @@ def recover_dangling_compile(
                 conn, actor="operator", action="compile recover", target=run_id,
                 result="error", compile_run_id=run_id, ts_utc=now,
             )
+            conn.commit()  # persist the refusal journal + audit rows before unwinding
             raise AmbiguousRecoveryError(
                 "Approved set no longer re-derives the crashed run's intended output, and the live "
                 "tree matches neither the previous successful output nor a recoverable staging copy."
@@ -169,6 +171,7 @@ def recover_dangling_compile(
                 conn, actor="operator", action="compile recover", target=run_id,
                 result="error", compile_run_id=run_id, ts_utc=now,
             )
+            conn.commit()  # persist the refusal journal + audit rows before unwinding
             raise AmbiguousRecoveryError(
                 "Live ledger matches neither the previous output nor the intended output, "
                 "and no intact staging is present."
@@ -212,6 +215,7 @@ def recover_dangling_compile(
                 conn, actor="operator", action="compile recover", target=run_id,
                 result="error", compile_run_id=run_id, ts_utc=now,
             )
+            conn.commit()  # persist the refusal journal + audit rows before unwinding
             raise AmbiguousRecoveryError(f"Post-write live hash {actual_hash} != intended {intended_hash}")
 
         # Index BEFORE the status flip: a crash between these two must leave the

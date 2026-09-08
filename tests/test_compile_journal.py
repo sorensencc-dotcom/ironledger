@@ -125,3 +125,22 @@ def test_deterministic_lookup_with_same_timestamp_tiebreaker(db: sqlite3.Connect
     latest = get_latest_successful_run(db)
     assert latest is not None
     assert latest["compile_run_id"] == run_id_2
+
+
+def test_fail_compile_run_only_affects_started_runs(db: sqlite3.Connection):
+    """#9: fail_compile_run must not clobber a run that already succeeded."""
+    run_id = "run-guard"
+    start_compile_run(
+        db, compile_run_id=run_id, beancount_version="3.0.0", compiler_version="0.1.0",
+        input_hash="a" * 64, intended_output_hash="b" * 64, now_utc="2026-09-06T12:00:00Z",
+    )
+    finish_compile_run(
+        db, compile_run_id=run_id, actual_output_hash="b" * 64, now_utc="2026-09-06T12:00:01Z",
+    )
+
+    fail_compile_run(db, run_id, detail="late failure", now_utc="2026-09-06T12:00:02Z")
+
+    status = db.execute(
+        "SELECT status FROM compile_runs WHERE compile_run_id = ?", (run_id,)
+    ).fetchone()[0]
+    assert status == "succeeded"

@@ -90,7 +90,7 @@ def fail_compile_run(
     ts = _now(now_utc)
     conn.execute(
         "UPDATE compile_runs SET status = 'failed', finished_at_utc = ? "
-        "WHERE compile_run_id = ?",
+        "WHERE compile_run_id = ? AND status = 'started'",
         (ts, compile_run_id),
     )
     conn.commit()

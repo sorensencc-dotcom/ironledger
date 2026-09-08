@@ -165,3 +165,28 @@ def test_recovery_sweeps_stale_atomic_write_temp_files(db: sqlite3.Connection, t
     assert not stray_txns.exists()
     for rel, want in rendered.items():
         assert (ledger_dir / rel).read_bytes() == want
+
+
+def test_refusal_audit_row_survives_a_rollback(db: sqlite3.Connection, tmp_path: Path):
+    """R-FIN-3: recover.py refusal paths must commit the journal + audit rows
+    before raising. Otherwise a rollback (or process exit) on the shared
+    connection drops the audit trail of the refusal."""
+    run_id = "crun-rfin3"
+    start_compile_run(
+        db, compile_run_id=run_id, beancount_version="3.0.0", compiler_version="0.1.0",
+        input_hash="a" * 64, intended_output_hash="b" * 64,
+    )
+    staging = tmp_path / ".staging" / run_id
+    staging.mkdir(parents=True)
+    (staging / "main.beancount").write_bytes(b"corrupted")
+
+    with pytest.raises(AmbiguousRecoveryError):
+        recover_dangling_compile(db, tmp_path)
+
+    db.rollback()
+
+    audit = db.execute(
+        "SELECT action, result FROM audit_events WHERE compile_run_id = ? ORDER BY seq DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    assert audit == ("compile recover", "error")

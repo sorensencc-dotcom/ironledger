@@ -98,3 +98,41 @@ def test_bean_check_failure_isolates_staging_and_journals_error(db: sqlite3.Conn
     assert run_row[0] == "failed"
     audit_row = db.execute("SELECT action, result FROM audit_events ORDER BY seq DESC LIMIT 1").fetchone()
     assert audit_row == ("compile", "error")
+
+
+def test_bean_check_unavailable_leaves_no_orphan_staging(db: sqlite3.Connection, tmp_path: Path):
+    """#3: run_bean_check raising BeanCheckUnavailableError happens before any
+    compile_runs row exists, so recovery can never reclaim the staging dir. The
+    writer must clean it up itself."""
+    from ironledger.compile.errors import BeanCheckUnavailableError
+
+    _seed_valid(db)
+    with patch(
+        "ironledger.compile.writer.run_bean_check",
+        side_effect=BeanCheckUnavailableError("bean-check executable not found on PATH"),
+    ):
+        with pytest.raises(BeanCheckUnavailableError):
+            compile_approved(db, tmp_path)
+
+    staging_root = tmp_path / ".staging"
+    leftover = list(staging_root.glob("crun-*")) if staging_root.exists() else []
+    assert leftover == []
+
+
+def test_lock_write_failure_does_not_strand_lock_file(tmp_path: Path):
+    """R-FIN-2: a failed write into the freshly-created lock file must unlink it,
+    not leave a 0-byte lock that blocks every future compile."""
+    real_write = os.write
+
+    def boom(fd, data):
+        raise OSError("simulated disk full")
+
+    with patch("os.write", side_effect=boom):
+        with pytest.raises(OSError, match="simulated disk full"):
+            with acquire_compile_lock(tmp_path):
+                pass
+
+    assert not (tmp_path / ".compile.lock").exists()
+    # And the lock is usable afterwards.
+    with acquire_compile_lock(tmp_path):
+        pass

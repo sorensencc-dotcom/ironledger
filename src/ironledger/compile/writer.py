@@ -142,7 +142,16 @@ def acquire_compile_lock(ledger_dir: Path) -> Generator[Path, None, None]:
     try:
         since = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         os.write(fd, f"pid={os.getpid()}\nsince={since}\n".encode("utf-8"))
-    finally:
+    except BaseException:
+        # A failed write (disk full, interrupt) would otherwise strand a 0-byte
+        # lock file that blocks every future compile until removed by hand.
+        os.close(fd)
+        try:
+            lock_file.unlink()
+        except OSError:
+            pass
+        raise
+    else:
         os.close(fd)
     try:
         yield lock_file
@@ -184,7 +193,14 @@ def compile_approved(
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
 
-        check_res = run_bean_check(staging_dir / "main.beancount", bean_check_bin=bean_check_bin)
+        try:
+            check_res = run_bean_check(staging_dir / "main.beancount", bean_check_bin=bean_check_bin)
+        except BaseException:
+            # No compile_runs row exists yet (start_compile_run is below), so
+            # recovery cannot reclaim this staging dir. Remove it rather than
+            # leaving an orphan under .staging/ on BeanCheckUnavailableError.
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            raise
 
         start_compile_run(
             conn,
@@ -214,6 +230,7 @@ def compile_approved(
                 compile_run_id=run_id,
                 ts_utc=now,
             )
+            conn.commit()  # persist the failure audit row before unwinding
             raise BeanCheckFailedError(
                 f"bean-check validation failed:\n{check_res.stderr}"
             )
