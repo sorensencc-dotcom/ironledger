@@ -202,7 +202,7 @@ def _cmd_compile(args) -> int:
 
         try:
             summary = writer.compile_approved(conn, args.ledger_dir)
-        except (CompileInputError, BeanCheckFailedError, BeanCheckUnavailableError, CompileError) as exc:
+        except CompileError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return _EXIT_ERROR
 

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Final
-
 from ironledger.compile.errors import CompileInputError
 from ironledger.conventions import ConventionError, validate_account_name, validate_same_currency_balance
 

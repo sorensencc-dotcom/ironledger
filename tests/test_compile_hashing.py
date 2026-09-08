@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-import pytest
-
 from ironledger.compile.model import ApprovedPosting, ApprovedSet, ApprovedTransaction
 from ironledger.compile.render import render_ledger
 from ironledger.compile.hashing import (
