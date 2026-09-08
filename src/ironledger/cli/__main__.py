@@ -215,7 +215,6 @@ def _cmd_compile(args) -> int:
 def _cmd_compile_status(args) -> int:
     conn = connect(str(args.db))
     try:
-        migrations.migrate(conn)
         latest_run = journal.get_latest_successful_run(conn)
         active_run = journal.get_active_started_run(conn)
 
