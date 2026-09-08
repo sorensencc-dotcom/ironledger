@@ -47,7 +47,7 @@ def test_empty_projection_manifest_creation_and_verification(empty_db: sqlite3.C
     assert len(manifest.manifest_self_hash) == 64
     assert manifest.row_counts["source_documents"] == 0
     assert manifest.row_counts["ledger_entries"] == 0
-    assert manifest.row_counts["schema_migrations"] == 5
+    assert manifest.row_counts["schema_migrations"] == len(migrations.discover_migrations())
 
     # Verification against database connection succeeds
     res = verify_manifest(manifest, conn=empty_db)

@@ -48,7 +48,7 @@ def _seed(conn: sqlite3.Connection) -> tuple[str, str]:
 
 
 def test_reaches_version_four(db: sqlite3.Connection):
-    assert migrations.current_version(db) == 5
+    assert migrations.current_version(db) == max(m.version for m in migrations.discover_migrations())
 
 
 def test_status_check_accepts_categorized_and_rejects_unknown(db: sqlite3.Connection):
