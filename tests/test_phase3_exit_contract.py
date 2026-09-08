@@ -115,12 +115,12 @@ def test_contract_6_real_bean_check_passes(db: sqlite3.Connection, tmp_path: Pat
     ("UPDATE staged_postings SET minor_units = 1500 WHERE role = 'imported'", "does not balance"),
     ("UPDATE staged_postings SET currency = 'EUR' WHERE role = 'contra'", "does not balance|multiple currencies"),
 ])
-def test_contract_7_bad_inputs_fail(db: sqlite3.Connection, mutate: str, match: str):
+def test_contract_7_bad_inputs_fail(db: sqlite3.Connection, tmp_path: Path, mutate: str, match: str):
     _seed(db)
     db.execute(mutate)
     db.commit()
     with pytest.raises(CompileInputError, match=match):
-        validate_approved_set(load_approved_set(db))
+        compile_approved(db, tmp_path, now_utc="2026-09-06T12:00:00Z")
 
 
 # 8. Refuse NULL contra
@@ -159,11 +159,11 @@ def test_contract_10_replay_byte_identical(db: sqlite3.Connection, tmp_path: Pat
 
 # 11. Every recovery decision-table row + a re-entrant recovery re-run
 def test_contract_11_recovery_table_rows_covered():
-    """Row coverage lives in tests/test_compile_recover.py and
-    tests/test_compile_recovery_integration.py; this asserts the suite exists and is collected."""
+    """Recovery-table tests must contain executable assertions, not placeholders."""
+    import inspect
     import tests.test_compile_recover as r
     import tests.test_compile_recovery_integration as ri
-    names = set(dir(r)) | set(dir(ri))
+    modules = [r, ri]
     for required in [
         "test_recover_pre_write_abort_marks_failed",
         "test_recover_staging_hash_mismatch_refuses",
@@ -172,7 +172,10 @@ def test_contract_11_recovery_table_rows_covered():
         "test_crash_mid_replace_recovers_cleanly",
         "test_crash_during_recovery_then_second_recover_completes",
     ]:
-        assert required in names, f"missing recovery-table coverage: {required}"
+        fn = next((getattr(module, required, None) for module in modules if hasattr(module, required)), None)
+        assert fn is not None, f"missing recovery-table coverage: {required}"
+        body = inspect.getsource(fn)
+        assert body.count("assert ") >= 1, f"recovery test is assertion-free: {required}"
 
 
 # 12. os.replace interrupted between two target files recovers deterministically; repeat recover is a no-op
