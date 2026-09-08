@@ -126,3 +126,57 @@ def test_crash_during_recovery_then_second_recover_completes(db: sqlite3.Connect
     # Item 12 tail: a third recover is a safe no-op.
     again = recover_dangling_compile(db, tmp_path, now_utc="2026-09-06T12:00:20Z")
     assert again.action in {"none", "recovered"}
+
+
+def test_crash_between_index_replace_and_status_flip_leaves_run_recoverable(
+    db: sqlite3.Connection, tmp_path: Path
+):
+    """R-FIN-1: recovery must replace the ledger_entries index BEFORE flipping the
+    run to 'recovered'. A crash in that window must leave the run 'started' (so a
+    second `compile recover` re-runs and self-heals), never a 'recovered' row over
+    a stale index that no command can reach."""
+    _seed(db)
+    success_res = BeanCheckResult(
+        ok=True, exit_code=0, stdout="", stderr="",
+        beancount_version="3.0.0", compiler_version="0.1.0",
+    )
+    original_replace = os.replace
+
+    # Leave a dangling started run by crashing the primary compile mid-replace.
+    n = 0
+    def crash_second(src, dst):
+        nonlocal n
+        n += 1
+        if n == 2:
+            raise OSError("crash mid-replace")
+        return original_replace(src, dst)
+    with patch("ironledger.compile.writer.run_bean_check", return_value=success_res), \
+         patch("os.replace", side_effect=crash_second):
+        with pytest.raises(OSError):
+            compile_approved(db, tmp_path)
+    run_id = db.execute(
+        "SELECT compile_run_id FROM compile_runs WHERE status = 'started'"
+    ).fetchone()[0]
+    assert db.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()[0] == 0
+
+    # First recovery: crash at the ledger-index replace step.
+    from ironledger.compile import recover as recover_mod
+    with patch.object(
+        recover_mod, "_replace_ledger_index",
+        side_effect=OSError("crash at index replace"),
+    ):
+        with pytest.raises(OSError, match="crash at index replace"):
+            recover_dangling_compile(db, tmp_path, now_utc="2026-09-06T12:00:00Z")
+
+    # The run must still be recoverable, not stranded 'recovered'.
+    assert db.execute(
+        "SELECT status FROM compile_runs WHERE compile_run_id = ?", (run_id,)
+    ).fetchone()[0] == "started"
+
+    # Second recovery, no injected fault: completes and populates the index.
+    rec = recover_dangling_compile(db, tmp_path, now_utc="2026-09-06T12:00:10Z")
+    assert rec.action == "recovered"
+    assert db.execute(
+        "SELECT status FROM compile_runs WHERE compile_run_id = ?", (run_id,)
+    ).fetchone()[0] == "recovered"
+    assert db.execute("SELECT COUNT(*) FROM ledger_entries").fetchone()[0] == 1

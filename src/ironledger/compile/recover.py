@@ -214,6 +214,13 @@ def recover_dangling_compile(
             )
             raise AmbiguousRecoveryError(f"Post-write live hash {actual_hash} != intended {intended_hash}")
 
+        # Index BEFORE the status flip: a crash between these two must leave the
+        # run 'started' so the next `compile recover` re-runs and re-replaces the
+        # index idempotently. Flipping to 'recovered' first would strand the run
+        # over a stale index that get_active_started_run can no longer reach
+        # (mirrors compile_approved's index-before-finish ordering, R-FIN-1).
+        _replace_ledger_index(conn, run_id, approved_set, now)  # replace-not-append, idempotent
+
         # Idempotent finalize: safe to re-run even if the row is already 'recovered'.
         conn.execute(
             "UPDATE compile_runs SET status = 'recovered', actual_output_hash = ?, "
@@ -223,8 +230,6 @@ def recover_dangling_compile(
         )
         conn.commit()
         append_compile_journal(conn, run_id, "recovered", now_utc=now)
-
-        _replace_ledger_index(conn, run_id, approved_set, now)  # replace-not-append, idempotent
 
         if staging_dir.exists():
             shutil.rmtree(staging_dir)
