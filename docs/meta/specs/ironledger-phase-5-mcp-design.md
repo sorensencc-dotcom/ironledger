@@ -157,18 +157,19 @@ Client launches `python -m ironledger.cli mcp --db … --ledger-dir …` as a su
 Protocol: MCP 2025-03-26 Streamable HTTP, loopback only. Implemented with `http.server` (stdlib). Single-threaded is enough.
 
 - MCP endpoint path is exactly `/mcp`. Other paths: HTTP 404, no JSON-RPC body required.
-- POST `/mcp`: JSON-RPC in, JSON-RPC out, `Content-Type: application/json`. This phase does **not** open SSE streams. POST of a notification (no `id`) → HTTP 202 empty body.
+- POST `/mcp`: JSON-RPC in, JSON-RPC out, response `Content-Type: application/json`. This phase does **not** open SSE streams. POST of a notification (no `id`) → HTTP 202 empty body. Request `Content-Type`: if **present**, the media type before `;` must be `application/json` (charset parameter allowed). Missing header is allowed. Anything else → **415**, no `handle_message`, no body audit. Check Content-Type after Host/Origin and before the 413 body cap.
 - GET `/mcp`: HTTP 405 Method Not Allowed (server does not offer an SSE listen stream; the spec allows this).
 - DELETE `/mcp`: HTTP 405 (no session teardown).
 - No `Mcp-Session-Id`. No resumability. No HTTP+SSE 2024-11-05 compat endpoints.
 
-Security (MCP Streamable HTTP MUST/SHOULD, tightened). **Handler order is locked.** Do not reorder. A rebinding client must receive 403 before 401 or 413:
+Security (MCP Streamable HTTP MUST/SHOULD, tightened). **Handler order is locked.** Do not reorder. A rebinding client must receive 403 before 401, 413, or 415:
 
 1. Bind socket to the `--bind` address only. `getsockname()[0]` is `127.0.0.1` or `::1`.
 2. Path and method: only POST `/mcp` continues (GET `/mcp` → 405; other path → 404).
 3. `Host` header required and must be loopback: `127.0.0.1`, `127.0.0.1:<port>`, `[::1]`, `[::1]:<port>`, `localhost`, `localhost:<port>`. Anything else → HTTP 403, no query, no body read. `localhost` is allowed on **Host** (local clients send it). `--bind localhost` remains refused (listen address is numeric only). DNS rebinding uses a non-loopback Host and is 403 (contract 24/26).
 4. `Origin` header: if present (including empty), it must be one of `http://127.0.0.1`, `http://127.0.0.1:<port>`, `http://localhost`, `http://localhost:<port>`, `http://[::1]`, `http://[::1]:<port>`, or `null`. Anything else → HTTP 403, no body read. Missing `Origin` is allowed (non-browser clients).
-5. Request body cap: **1 MiB**. Require `Content-Length` on POST `/mcp`. If `Content-Length` is missing, not a non-negative integer, or greater than 1,048,576, or `Transfer-Encoding` includes `chunked`, respond **413**, do not read the body, do not call `handle_message`, do not write the body into an audit event. A body that is shorter than `Content-Length` is a connection error (close; no tool result). Set a **5 second** socket timeout on the accepted connection before reading the body (`socket.setdefaulttimeout` is too global; set on the request socket / `rfile`). Timeout or undersize → close, no JSON-RPC result, `handle_message` not called. This cap is HTTP-only; stdio is one JSON object per newline.
+5. Request `Content-Type`: if present, media type before `;` must be `application/json`. Missing header allowed. Else **415**, no body read.
+6. Request body cap: **1 MiB**. Require `Content-Length` on POST `/mcp`. If `Content-Length` is missing, not a non-negative integer, or greater than 1,048,576, or `Transfer-Encoding` includes `chunked`, respond **413**, do not read the body, do not call `handle_message`, do not write the body into an audit event. A body that is shorter than `Content-Length` is a connection error (close; no tool result). Set a **5 second** socket timeout on the accepted connection before reading the body (`socket.setdefaulttimeout` is too global; set on the request socket / `rfile`). Timeout or undersize → close, no JSON-RPC result, `handle_message` not called. This cap is HTTP-only; stdio is one JSON object per newline.
 6. `Authorization: Bearer <token>` required on every POST `/mcp`. Missing, malformed, or wrong token → HTTP 401, `WWW-Authenticate: Bearer`, body not a tool result, no query. Compare with `hmac.compare_digest` against the hex token. Timing-safe. Do not distinguish "no file" from "wrong token" in the response body. 401 is only legal after Host and Origin have already passed.
 7. Then read at most `Content-Length` bytes. Decode as UTF-8 (strict). `UnicodeDecodeError` → HTTP 200, JSON-RPC `-32700` Parse error, `id` null, do not call `handle_message`. Valid UTF-8 is passed to `handle_message`. stdio: if a line is not valid UTF-8, write one `-32700` line to stdout and continue (process stays up).
 8. Do not send `Access-Control-Allow-Origin: *`. OPTIONS may 405.
@@ -178,6 +179,8 @@ Token file: 32 bytes from `secrets.token_bytes(32)`, written as lowercase hex. C
 On first HTTP bind, if the token file is missing, create it and print **only** this line to stderr: `mcp token written to <path>` (path, not secret). On reuse, print nothing about the token.
 
 ## 9. Audit
+
+`call_tool` order is locked (two SQLite files; no cross-db transaction): (1) run the projection query into memory, (2) `append_audit_event` on `--db`, (3) only then serialize hits into the JSON-RPC result. If step 2 raises: `isError: true`, no hits (contract 29). A crash after the HTTP/stdio bytes are already written cannot unsend them.
 
 Every `tools/call` that is a request (not a parse error) appends one `audit_events` row on `--db`:
 

@@ -112,3 +112,17 @@ The React 19 single-page application (`web/`) delivers a three-pane layout:
    - Global Safe Mode state indicator.
    - Projection Freshness pill with latency thresholds.
    - Command palette launcher (`Ctrl+K`).
+
+---
+
+## 5. Deployment and container topology
+
+The Operator Workbench provides two deployment targets:
+
+1. **Self-Contained Docker Architecture (`Dockerfile`, `docker-compose.yml`)**:
+   - **Multi-stage build**: Node 22-alpine compiles the React 19 SPA (`web/dist/`); Python 3.12-slim runtime bundles FastAPI, Uvicorn, and OFX tools with zero Beancount Python runtime dependencies.
+   - **Persistent Volume Mount**: Mounts repository root (`.:/data`) preserving `ironledger.db`, `projection.db`, `config/`, and `evidence/` on host.
+   - **Auto-restart Policy**: `restart: unless-stopped` ensuring the workbench runs as an uninterrupted background daemon.
+
+2. **Host CLI Execution (`ironledger web`)**:
+   - Local development and direct execution via Uvicorn serving static SPA assets mounted at `/`.

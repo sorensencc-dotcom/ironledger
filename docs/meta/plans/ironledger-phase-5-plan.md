@@ -576,7 +576,7 @@ git commit -m "feat(cli): ironledger mcp stdio and loopback HTTP"
 - Test: `tests/test_mcp_audit.py`
 
 **Interfaces:**
-- After `call_tool` knows `isError`, `append_audit_event` on `--db` with `actor="operator"`, `action` one of `mcp search` / `mcp balances` / `mcp status` / `mcp tools/call`, `target=name`, `result=ok|error`, `input_hash=ledger_output_hash` when opened. Never put the FTS query in `target`.
+- `call_tool` order: query into memory → `append_audit_event` on `--db` → serialize. If audit raises: `isError: true`, no hits. Never put the FTS query in `target`. `action` one of `mcp search` / `mcp balances` / `mcp status` / `mcp tools/call`, `actor="operator"`, `result=ok|error`, `input_hash=ledger_output_hash` when opened.
 - HTTP 401/403: `action="mcp auth"`, `target="http"`, `result="denied"`.
 - If `db` is None inside `call_tool` (should not happen from CLI), skip audit.
 - Audit insert failure on tool path: return `isError True`, no hits.

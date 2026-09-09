@@ -47,6 +47,10 @@ All metrics in this document were verified live against local `HEAD` on 2026-09-
 ### 3.3 CLI command (`src/ironledger/cli/commands/web.py`)
 - `ironledger web` subcommand with options: `--host`, `--port`, `--db`, `--projection-db`, `--reload`, and `--open-browser`.
 
+### 3.4 Container infrastructure (`Dockerfile`, `docker-compose.yml`)
+- Multi-stage Dockerfile compiling React 19 SPA and running FastAPI on Python 3.12-slim.
+- Docker Compose configuration mounting host repository root (`.:/data`) for continuous host persistence with `restart: unless-stopped` background automation.
+
 ---
 
 ## 4. Governance documents

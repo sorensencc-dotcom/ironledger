@@ -62,6 +62,14 @@
 | `src/ironledger/cli/commands/web.py` | Uvicorn server launcher with auto browser launch option |
 | `src/ironledger/cli/__main__.py` | `ironledger web` parser and execution dispatch |
 
+### 2.4 Container & infrastructure configuration
+
+| File path | Purpose |
+|---|---|
+| `Dockerfile` | Multi-stage container build (Node 22-alpine UI builder + Python 3.12-slim runtime) |
+| `docker-compose.yml` | Background container definition with volume mounts and auto-restart policy |
+| `.dockerignore` | Build context optimization excluding cache, git, and local virtualenvs |
+
 ---
 
 ## 3. Test coverage and validation inventory
