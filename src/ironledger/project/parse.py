@@ -239,6 +239,7 @@ def _parse_main(ledger_dir: Path) -> tuple[str, tuple[str, ...], list[str]]:
 def _parse_accounts(ledger_dir: Path) -> tuple[ParsedAccount, ...]:
     rel = "accounts.beancount"
     accounts: list[ParsedAccount] = []
+    seen: dict[str, ParsedAccount] = {}
     for line_no, line in _read_nonblank_lines(ledger_dir / rel, rel):
         open_m = _OPEN_RE.fullmatch(line)
         if open_m is None:
@@ -252,7 +253,18 @@ def _parse_accounts(ledger_dir: Path) -> tuple[ParsedAccount, ...]:
             validate_currency(currency)
         except ConventionError as exc:
             raise _parse_error(rel, line_no, f"unknown currency: {exc}", line) from exc
-        accounts.append(ParsedAccount(account=account, currency=currency, open_date=open_date))
+        existing = seen.get(account)
+        if existing is not None and existing.currency != currency:
+            raise _parse_error(
+                rel,
+                line_no,
+                f"account {account} has currencies {existing.currency} and {currency}",
+                line,
+            )
+        parsed = ParsedAccount(account=account, currency=currency, open_date=open_date)
+        if existing is None:
+            seen[account] = parsed
+        accounts.append(parsed)
     return tuple(accounts)
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ironledger.db.connection import connect
 from ironledger.project.builder import write_staging_projection
 from ironledger.project.parse import parse_ledger
@@ -47,3 +49,30 @@ def test_builder_balances_equal_sum_of_postings(tmp_path: Path):
     ).fetchall()
     assert hits  # payee is indexed
     conn.close()
+
+
+def test_second_currency_on_one_account_refuses(tmp_path: Path):
+    from ironledger.project.errors import ProjectInputError, ProjectParseError
+    from ironledger.project.parse import parse_ledger
+    from tests.project_fixtures import make_sample_set, write_rendered_ledger
+
+    ledger_dir = tmp_path / "ledger"
+    write_rendered_ledger(ledger_dir, make_sample_set())
+    accounts = ledger_dir / "accounts.beancount"
+    accounts.write_text(
+        accounts.read_text(encoding="utf-8") + "2026-09-01 open Assets:Checking EUR\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    with pytest.raises((ProjectInputError, ProjectParseError)):
+        parsed = parse_ledger(ledger_dir)
+        write_staging_projection(
+            parsed,
+            tmp_path / "staging",
+            compile_run_id="run-1",
+            ledger_input_hash="a" * 64,
+            ledger_output_hash="b" * 64,
+            beancount_version="3.2.3",
+            compiler_version="0.1.0",
+            built_at_utc="2026-09-08T12:00:00Z",
+        )
