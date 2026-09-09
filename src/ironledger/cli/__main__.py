@@ -22,8 +22,17 @@ from ironledger.review.rules import RuleError, RuleExistsError, resolve_rule
 from ironledger.review.state import ReviewStateError
 
 from ironledger.compile.beancheck import BeanCheckResult
-from ironledger.compile.errors import BeanCheckFailedError, BeanCheckUnavailableError, CompileError, CompileInputError
+from ironledger.compile.errors import (
+    BeanCheckFailedError,
+    BeanCheckUnavailableError,
+    CompileError,
+    CompileInputError,
+    CompileLockedError,
+)
 from ironledger.compile import hashing, journal, recover, writer
+from ironledger.project.activate import default_projection_dir, rebuild_projection
+from ironledger.project.errors import ProjectError
+from ironledger.project.query import assert_fresh, balances as project_balances, search as project_search
 
 _EXIT_OK = 0
 _EXIT_ERROR = 1
@@ -33,24 +42,35 @@ _EXIT_STATE = 5
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="ironledger")
-    parser.add_argument("--db", required=True, help="path to the SQLite ledger index")
+    parser = argparse.ArgumentParser(
+        prog="ironledger",
+        epilog=(
+            "Golden path (from the repo root, after compile has succeeded):\n"
+            "  python -m ironledger.cli project --db <db> --ledger-dir ledger "
+            '--confirm "authorize project"\n'
+            "  python -m ironledger.cli search --ledger-dir ledger coffee\n"
+            "  python -m ironledger.cli balances --ledger-dir ledger"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("--db", required=False, default=None, help="path to the SQLite ledger index")
+    parser.add_argument("--ledger-dir", dest="parent_ledger_dir", default=None, type=Path)
     parser.add_argument("--config-dir", default="config", type=Path)
     parser.add_argument("--evidence-dir", default="evidence", type=Path)
     sub = parser.add_subparsers(dest="command", required=True)
 
     # compile command tree
     comp = sub.add_parser("compile", help="compile approved staged transactions into Beancount ledger")
-    comp.add_argument("--ledger-dir", default=None, type=Path, help="path to the output ledger directory")
+    comp.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the output ledger directory")
     comp.add_argument("--confirm", default=None, help="confirmation phrase for operator authorization")
     comp_sub = comp.add_subparsers(dest="compile_command", required=False)
 
     comp_status = comp_sub.add_parser("status", help="show status of ledger compilation and crash recovery")
-    comp_status.add_argument("--ledger-dir", required=True, type=Path, help="path to the output ledger directory")
+    comp_status.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the output ledger directory")
     comp_status.add_argument("--json", action="store_true", help="render status as JSON")
 
     comp_recover = comp_sub.add_parser("recover", help="recover an interrupted compile run")
-    comp_recover.add_argument("--ledger-dir", required=True, type=Path, help="path to the output ledger directory")
+    comp_recover.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the output ledger directory")
     comp_recover.add_argument("--confirm", default=None, help="confirmation phrase for operator authorization")
 
     imp = sub.add_parser(
@@ -140,12 +160,66 @@ def _build_parser() -> argparse.ArgumentParser:
     fit_add.add_argument("--confirm", default=None)
     fit_list = fit_sub.add_parser("list", help="list FITID trust records")
     fit_list.add_argument("--json", action="store_true")
+
+    proj = sub.add_parser("project", help="rebuild the analytics projection from compiled ledger files")
+    proj.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
+    proj.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
+    proj.add_argument("--confirm", default=None, help="confirmation phrase for operator authorization")
+    proj_sub = proj.add_subparsers(dest="project_command", required=False)
+
+    proj_status = proj_sub.add_parser("status", help="show projection freshness and compile comparison")
+    proj_status.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
+    proj_status.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
+    proj_status.add_argument("--json", action="store_true", help="render status as JSON")
+
+    srch = sub.add_parser("search", help="search the live projection")
+    srch.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
+    srch.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
+    srch.add_argument("--json", action="store_true", help="render hits as JSON")
+    srch.add_argument("--limit", type=int, default=50)
+    srch.add_argument("--offset", type=int, default=0)
+    srch.add_argument("query")
+
+    bal = sub.add_parser("balances", help="show projection account balances")
+    bal.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
+    bal.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
+    bal.add_argument("--json", action="store_true", help="render balances as JSON")
     return parser
+
+
+def _require_db(args) -> bool:
+    if not args.db:
+        print("error: the following arguments are required: --db", file=sys.stderr)
+        return False
+    return True
+
+
+def _require_ledger_dir(args) -> Path | None:
+    ledger_dir = getattr(args, "ledger_dir", None) or getattr(args, "parent_ledger_dir", None)
+    if ledger_dir is None:
+        print("error: the following arguments are required: --ledger-dir", file=sys.stderr)
+        return None
+    return Path(ledger_dir)
+
+
+def _projection_dir(args, ledger_dir: Path) -> Path:
+    override = getattr(args, "projection_dir", None)
+    return Path(override) if override is not None else default_projection_dir(ledger_dir)
+
+
+def _needs_operational_db(args) -> bool:
+    if args.command in {"compile", "import", "review", "rule", "fitid-trust"}:
+        return True
+    if args.command == "project" and getattr(args, "project_command", None) is None:
+        return True
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if _needs_operational_db(args) and not _require_db(args):
+        return 2
     if args.command == "compile":
         comp_cmd = getattr(args, "compile_command", None)
         if comp_cmd is None:
@@ -176,13 +250,25 @@ def main(argv: list[str] | None = None) -> int:
         }[args.rule_command](args)
     if args.command == "fitid-trust":
         return _cmd_fitid_add(args) if args.fitid_command == "add" else _cmd_fitid_list(args)
+    if args.command == "project":
+        proj_cmd = getattr(args, "project_command", None)
+        if proj_cmd is None:
+            return _cmd_project(args)
+        if proj_cmd == "status":
+            return _cmd_project_status(args)
+        parser.error(f"unknown project command {proj_cmd!r}")
+        return 2
+    if args.command == "search":
+        return _cmd_search(args)
+    if args.command == "balances":
+        return _cmd_balances(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
 
 
 def _cmd_compile(args) -> int:
-    if args.ledger_dir is None:
-        print("error: the following arguments are required: --ledger-dir", file=sys.stderr)
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
         return 2
     conn = connect(str(args.db))
     try:
@@ -201,24 +287,29 @@ def _cmd_compile(args) -> int:
             return _EXIT_AUTH
 
         try:
-            summary = writer.compile_approved(conn, args.ledger_dir)
+            summary = writer.compile_approved(conn, ledger_dir)
         except CompileError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return _EXIT_ERROR
 
-        print(render.render_compile_summary(summary))
+        next_cmd = (
+            f"python -m ironledger.cli project --db {args.db} --ledger-dir {ledger_dir} "
+            f'--confirm "{auth.PROJECT_PHRASE}"'
+        )
+        print(render.render_compile_summary(summary, next_project_cmd=next_cmd))
         return _EXIT_OK
     finally:
         conn.close()
 
 
 def _cmd_compile_status(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
     conn = connect(str(args.db))
     try:
         latest_run = journal.get_latest_successful_run(conn)
         active_run = journal.get_active_started_run(conn)
-
-        ledger_dir = Path(args.ledger_dir)
         year_files: list[str] = []
         txns_dir = ledger_dir / "txns"
         if txns_dir.exists():
@@ -249,6 +340,9 @@ def _cmd_compile_status(args) -> int:
 
 
 def _cmd_compile_recover(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
     conn = connect(str(args.db))
     try:
         migrations.migrate(conn)
@@ -266,7 +360,7 @@ def _cmd_compile_recover(args) -> int:
             return _EXIT_AUTH
 
         try:
-            rec = recover.recover_dangling_compile(conn, args.ledger_dir)
+            rec = recover.recover_dangling_compile(conn, ledger_dir)
         except CompileError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return _EXIT_ERROR
@@ -682,6 +776,130 @@ def _cmd_fitid_list(args) -> int:
         return _EXIT_OK
     finally:
         conn.close()
+
+
+def _cmd_project(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
+    projection_dir = _projection_dir(args, ledger_dir)
+    conn = connect(str(args.db))
+    try:
+        migrations.migrate(conn)
+        try:
+            auth.require_operator(
+                conn,
+                action="project",
+                subject="project",
+                confirm=args.confirm,
+                stdin_isatty=sys.stdin.isatty(),
+                config_dir=args.config_dir,
+            )
+        except AuthorizationError as exc:
+            print(f"denied: {exc}", file=sys.stderr)
+            return _EXIT_AUTH
+
+        try:
+            summary = rebuild_projection(conn, ledger_dir, projection_dir)
+        except (ProjectError, CompileLockedError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return _EXIT_ERROR
+
+        print(
+            f"Projection rebuilt: {summary.entry_count} entries, "
+            f"{summary.posting_count} postings, hash {summary.ledger_output_hash}"
+        )
+        return _EXIT_OK
+    finally:
+        conn.close()
+
+
+def _live_project_status(ledger_dir: Path, projection_dir: Path, *, db: str | None) -> dict:
+    try:
+        conn = assert_fresh(ledger_dir, projection_dir, db=db)
+    except ProjectError:
+        return {"status": "mismatch", "hash_matches_files": False}
+    try:
+        row = conn.execute(
+            "SELECT ledger_output_hash FROM projection_meta WHERE singleton = 1"
+        ).fetchone()
+        ledger_output_hash = row[0] if row else ""
+    finally:
+        conn.close()
+    return {
+        "status": "ok",
+        "ledger_output_hash": ledger_output_hash,
+        "hash_matches_files": True,
+    }
+
+
+def _cmd_project_status(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
+    projection_dir = _projection_dir(args, ledger_dir)
+    sqlite_path = projection_dir / "projection.sqlite"
+    manifest_path = projection_dir / "projection.manifest.json"
+    as_json = bool(getattr(args, "json", False))
+
+    if not sqlite_path.is_file() and not manifest_path.is_file():
+        status_data: dict = {"status": "missing"}
+    else:
+        status_data = _live_project_status(ledger_dir, projection_dir, db=args.db)
+
+    if args.db:
+        op_conn = connect(str(args.db))
+        try:
+            latest = journal.get_latest_successful_run(op_conn)
+        finally:
+            op_conn.close()
+        status_data["latest_run"] = latest
+        expected = None if latest is None else latest.get("actual_output_hash")
+        on_disk = status_data.get("ledger_output_hash")
+        if expected and on_disk:
+            status_data["hash_matches_compile"] = on_disk == expected
+
+    print(render.render_project_status(status_data, as_json=as_json))
+    return _EXIT_OK
+
+
+def _cmd_search(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
+    projection_dir = _projection_dir(args, ledger_dir)
+    try:
+        conn = assert_fresh(ledger_dir, projection_dir, db=args.db)
+    except ProjectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return _EXIT_ERROR
+    try:
+        hits = project_search(conn, args.query, limit=args.limit, offset=args.offset)
+    except ProjectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return _EXIT_ERROR
+    finally:
+        conn.close()
+    print(render.render_search_hits(hits, as_json=args.json))
+    return _EXIT_OK
+
+
+def _cmd_balances(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
+    projection_dir = _projection_dir(args, ledger_dir)
+    try:
+        conn = assert_fresh(ledger_dir, projection_dir, db=args.db)
+    except ProjectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return _EXIT_ERROR
+    try:
+        rows = project_balances(conn)
+    finally:
+        conn.close()
+    print(render.render_balances(rows, as_json=args.json))
+    return _EXIT_OK
 
 
 if __name__ == "__main__":  # pragma: no cover

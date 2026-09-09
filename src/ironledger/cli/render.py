@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 from ironledger.compile.recover import RecoveryDecision
 from ironledger.compile.writer import CompileSummary
+from ironledger.project.query import BalanceRow, SearchHit
 
 __all__ = [
     "render_import_result",
@@ -17,6 +19,9 @@ __all__ = [
     "render_compile_summary",
     "render_compile_status",
     "render_recovery_report",
+    "render_search_hits",
+    "render_balances",
+    "render_project_status",
 ]
 
 
@@ -84,13 +89,16 @@ def render_rule_list(rows: list[dict], *, as_json: bool) -> str:
     )
 
 
-def render_compile_summary(summary: CompileSummary) -> str:
+def render_compile_summary(summary: CompileSummary, next_project_cmd: str | None = None) -> str:
     lines = [
         f"Compile run {summary.compile_run_id} succeeded:",
         f"  Entries compiled: {summary.entry_count} entries",
         f"  Year files: {', '.join(summary.year_files) if summary.year_files else 'none'}",
         f"  Output SHA-256: {summary.output_hash}",
     ]
+    if next_project_cmd:
+        lines.append("")
+        lines.append(next_project_cmd)
     return "\n".join(lines)
 
 
@@ -125,4 +133,47 @@ def render_compile_status(status_data: dict[str, Any], *, as_json: bool = False)
 
     lines.append(f"  On-Disk Hash:  {status_data.get('on_disk_hash', 'none')}")
     lines.append(f"  Hash Matches:  {'YES' if status_data.get('hash_matches') else 'NO'}")
+    return "\n".join(lines)
+
+
+def render_search_hits(hits: list[SearchHit], *, as_json: bool) -> str:
+    if as_json:
+        return json.dumps([asdict(h) for h in hits], indent=2, sort_keys=True)
+    return "\n".join(
+        f"{h.entry_date}  {h.payee}  {h.narration}  {h.account}  "
+        f"{h.minor_units}  {h.currency}  {h.staged_transaction_id}"
+        for h in hits
+    )
+
+
+def render_balances(rows: list[BalanceRow], *, as_json: bool) -> str:
+    if as_json:
+        return json.dumps([asdict(r) for r in rows], indent=2, sort_keys=True)
+    return "\n".join(f"{r.account}  {r.minor_units}  {r.currency}" for r in rows)
+
+
+def render_project_status(status_data: dict[str, Any], *, as_json: bool = False) -> str:
+    if as_json:
+        return json.dumps(status_data, indent=2, sort_keys=True)
+    if status_data.get("status") == "missing":
+        return "nothing built yet"
+
+    lines = [f"Project status: {status_data.get('status', 'unknown')}"]
+    if "ledger_output_hash" in status_data:
+        lines.append(f"  Ledger output hash: {status_data['ledger_output_hash']}")
+    lines.append(
+        f"  Hash matches files: {'YES' if status_data.get('hash_matches_files') else 'NO'}"
+    )
+    if "hash_matches_compile" in status_data:
+        lines.append(
+            f"  Hash matches compile: {'YES' if status_data['hash_matches_compile'] else 'NO'}"
+        )
+    if "latest_run" in status_data:
+        latest = status_data["latest_run"]
+        if latest:
+            lines.append(
+                f"  Latest compile: {latest.get('compile_run_id')} ({latest.get('status')})"
+            )
+        else:
+            lines.append("  Latest compile: none")
     return "\n".join(lines)
