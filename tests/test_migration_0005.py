@@ -31,7 +31,7 @@ def _seed_compile_run(conn: sqlite3.Connection, run_id: str = "run-1") -> str:
 
 
 def test_reaches_version_five(db: sqlite3.Connection):
-    assert migrations.current_version(db) == 5
+    assert migrations.current_version(db) >= 5
 
 
 def test_compile_journal_table_present_and_accepts_valid_row(db: sqlite3.Connection):
@@ -73,7 +73,7 @@ def test_migration_0005_checksum_frozen():
         db_path = Path(tmpdir) / "test.db"
         conn_first = connect(str(db_path))
         migrations.migrate(conn_first, directory=schema_dir)
-        assert migrations.current_version(conn_first) == 5
+        assert migrations.current_version(conn_first) >= 5
         conn_first.close()
         target = schema_dir / "0005_compile_journal.sql"
         target.write_bytes(target.read_bytes() + b"\n-- mutated comment\n")

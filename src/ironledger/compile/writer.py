@@ -38,11 +38,13 @@ from ironledger.compile.journal import (
     fail_compile_run,
     finish_compile_run,
     get_active_started_run,
+    get_latest_successful_run,
     start_compile_run,
 )
 from ironledger.compile.model import load_approved_set, validate_approved_set
 from ironledger.compile.render import render_ledger
 from ironledger.conventions import validate_utc_timestamp
+from ironledger.mutation import append_mutation_event
 from dataclasses import dataclass
 
 
@@ -296,6 +298,28 @@ def compile_approved(
 
         if staging_dir.exists():
             shutil.rmtree(staging_dir)
+
+        prev_run = get_latest_successful_run(conn)
+        sha_before = (
+            prev_run.get("actual_output_hash")
+            if prev_run and prev_run.get("actual_output_hash")
+            else ("0" * 64)
+        )
+        matched_rules_count = sum(
+            1 for t in approved_set.transactions if t.identity_method == "rule"
+        )
+
+        append_mutation_event(
+            conn,
+            operator_session=run_id,
+            action="compile",
+            staged_count=len(approved_set.transactions),
+            rules_applied=matched_rules_count,
+            rules_created=0,
+            sha256_before=sha_before,
+            sha256_after=actual_hash,
+            ts_utc=now,
+        )
 
         append_audit_event(
             conn,
