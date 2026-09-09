@@ -1,6 +1,6 @@
 # IronLedger Phase 4 evidence and exit verification
 
-Status: Phase 4 exit gate recorded in this session on 2026-09-09 after the operator asked to commit the golden-path argv fix and write this evidence file. Phase 5 may start as spec, then plan, then operator approval of that plan. No Phase 5 code is authorized by this verdict.
+Status: Phase 4 exit gate approved by the operator in the session transcript on 2026-09-09. Phase 5 may start as spec, then plan, then operator approval of that plan. No Phase 5 code is authorized by this verdict.
 Scope: rebuild a disposable SQLite analytics projection from the compiled Beancount ledger, then `search` and `balances` against that live projection. Focused-suite evidence plus a live README-argv subprocess. MCP, network listeners, SimpleFIN, RAG, mobile, backups, and Git publication of `ledger/` stay out of scope.
 
 ## 1. Provenance of this evidence
@@ -137,6 +137,6 @@ Exit codes: `0` success, `1` project/parse/stale/query error, `2` argv, `3` auth
 
 ## 9. Operator verdict
 
-Requested — 2026-09-09, transcript: this session; user's literal words "do it" after the offer "local commit of that fix, the Phase 4 evidence file, or leave it." Implementation range `922290a..be72f08` plus argv fix `6032cb0`. Focused suite 418 passed / 2 skipped. Spec §11 items 1–21 mapped above.
+Approved — 2026-09-09, transcript: this session; user's literal words "phase 4 done" after the argv fix commit (`6032cb0`) and the first evidence commit (`15765a5`). Earlier in the same session: "do it" for that local commit plus this evidence file. Implementation range `922290a..be72f08` plus argv fix `6032cb0`. Focused suite 418 passed / 2 skipped. Spec §11 items 1–21 mapped above.
 
 This document closes Phase 4 implementation on local `main`. It does not claim a 2–5 minute first-run from an empty checkout. Phase 5 (read-only MCP / network listener) is cleared to start only as: spec, then plan, then operator approval of that plan in the transcript, then code. No Phase 5 code is authorized by this verdict.
