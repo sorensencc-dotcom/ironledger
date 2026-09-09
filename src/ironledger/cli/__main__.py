@@ -196,6 +196,13 @@ def _build_parser() -> argparse.ArgumentParser:
     bal.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
     bal.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
     bal.add_argument("--json", action="store_true", help="render balances as JSON")
+
+    web = sub.add_parser("web", help="launch the Operator Workbench web interface")
+    web.add_argument("--host", default="127.0.0.1", help="host address to bind")
+    web.add_argument("--port", type=int, default=8000, help="port number to bind")
+    web.add_argument("--projection-db", default=None, help="path to projection SQLite database")
+    web.add_argument("--open-browser", action="store_true", help="open browser on startup")
+    web.add_argument("--reload", action="store_true", help="enable auto-reload on code changes")
     return parser
 
 
@@ -274,8 +281,26 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_search(args)
     if args.command == "balances":
         return _cmd_balances(args)
+    if args.command == "web":
+        return _cmd_web(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
+
+
+def _cmd_web(args) -> int:
+    from ironledger.cli.commands.web import run_web
+
+    db_path = args.db or "ironledger.db"
+    run_web(
+        db_path=db_path,
+        projection_db_path=args.projection_db,
+        config_dir=args.config_dir,
+        host=args.host,
+        port=args.port,
+        open_browser=args.open_browser,
+        reload=args.reload,
+    )
+    return _EXIT_OK
 
 
 def _cmd_compile(args) -> int:

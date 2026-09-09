@@ -41,21 +41,22 @@ def get_audit_log(
 ):
     """Retrieve append-only audit trail records."""
     rows = db.execute(
-        "SELECT event_id, sequence_number, timestamp_utc, actor, action, target, result, event_hash "
-        "FROM audit_events ORDER BY sequence_number DESC LIMIT ? OFFSET ?",
+        "SELECT seq, ts_utc, actor, action, target, result, event_hash "
+        "FROM audit_events ORDER BY seq DESC LIMIT ? OFFSET ?",
         (limit, offset),
     ).fetchall()
-    return [
-        {
-            "event_id": r[0],
-            "sequence_number": r[1],
-            "timestamp_utc": r[2],
-            "actor": r[3],
-            "action": r[4],
-            "target": r[5],
-            "result": r[6],
-            "event_hash": r[7],
-        }
-        for r in rows
-    ]
+    return {
+        "events": [
+            {
+                "sequence_number": r[0],
+                "timestamp_utc": r[1],
+                "actor": r[2],
+                "action": r[3],
+                "target": r[4],
+                "result": r[5],
+                "event_hash": r[6],
+            }
+            for r in rows
+        ]
+    }
 

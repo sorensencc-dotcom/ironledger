@@ -30,7 +30,8 @@ def get_db(request: Request) -> sqlite3.Connection:
 
 
 class CategorizeRequest(BaseModel):
-    target_account: str
+    target_account: Optional[str] = None
+    contra_account: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -136,8 +137,11 @@ def categorize_transaction(
     db: sqlite3.Connection = Depends(get_db),
 ):
     """Assign target contra account to a staged transaction."""
+    target_acc = payload.target_account or payload.contra_account
+    if not target_acc:
+        raise HTTPException(status_code=400, detail="target_account or contra_account is required")
     try:
-        state.categorize(db, stx_id, payload.target_account)
+        state.categorize(db, stx_id, target_acc)
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -284,7 +288,12 @@ def split_transaction(
             for r in updated_rows
         ]
 
-        return {"success": True, "staged_id": stx_id, "postings": all_postings}
+        return {
+            "success": True,
+            "staged_id": stx_id,
+            "status": "categorized",
+            "postings": all_postings,
+        }
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

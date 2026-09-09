@@ -29,6 +29,7 @@ class PostingSchema(BaseModel):
     currency: str
     minor_units: int
     scale: int
+    role: Optional[str] = None
 
     @field_validator("minor_units", mode="before")
     @classmethod
@@ -215,6 +216,7 @@ class CompileRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    ledger_dir: Optional[str] = None
     dry_run: bool = False
     rebuild_projection: bool = True
     safe_mode_token: Optional[str] = None

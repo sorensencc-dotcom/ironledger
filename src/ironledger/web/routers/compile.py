@@ -31,7 +31,11 @@ def compile_ledger(
 ) -> CompileResponse:
     """Compile approved staged transactions into plaintext Beancount files with safe-mode gating."""
     app_state = request.app.state
-    ledger_dir = getattr(app_state, "ledger_dir", Path("ledger"))
+    ledger_dir = (
+        Path(payload.ledger_dir).resolve()
+        if payload.ledger_dir
+        else getattr(app_state, "ledger_dir", Path("ledger"))
+    )
     projection_dir = getattr(app_state, "projection_dir", Path("projection"))
     config_dir = getattr(app_state, "config_dir", Path("config"))
 

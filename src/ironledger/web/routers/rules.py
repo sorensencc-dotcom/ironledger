@@ -27,7 +27,8 @@ def get_db(request: Request) -> sqlite3.Connection:
 class CreateRulePayload(BaseModel):
     match_type: str = "exact"
     pattern: str
-    target_account: str
+    target_account: Optional[str] = None
+    account: Optional[str] = None
     importing_account: Optional[str] = None
     priority: int = 100
     active: bool = True
@@ -45,12 +46,15 @@ def create_rule(
     db: sqlite3.Connection = Depends(get_db),
 ):
     """Create a new categorization rule."""
+    target_acc = payload.target_account or payload.account
+    if not target_acc:
+        raise HTTPException(status_code=400, detail="target_account or account is required")
     try:
         rule_id = add_rule(
             db,
             match_type=payload.match_type,
             pattern=payload.pattern,
-            target_account=payload.target_account,
+            target_account=target_acc,
             importing_account=payload.importing_account,
             priority=payload.priority,
         )
