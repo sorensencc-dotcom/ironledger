@@ -121,3 +121,35 @@ def test_compile_success_prints_next_project(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "authorize project" in out
     assert "python -m ironledger.cli project" in out
+
+
+def test_readme_argv_smoke(env, capsys):
+    db_path, config_dir, ledger_dir, projection_dir = env
+    assert main([
+        "--db", str(db_path), "--config-dir", str(config_dir),
+        "project", "--ledger-dir", str(ledger_dir),
+        "--projection-dir", str(projection_dir),
+        "--confirm", "authorize project",
+    ]) == 0
+    assert main(["--ledger-dir", str(ledger_dir), "search", "--projection-dir", str(projection_dir), "coffee"]) in {0, 1}
+    # MATCH is case-insensitive under unicode61; either 0 with hits or 0 with empty is fine if query token matches payee
+    rc_search = main(["--ledger-dir", str(ledger_dir), "search", "--projection-dir", str(projection_dir), "Coffee"])
+    assert rc_search == 0
+    rc_bal = main(["--ledger-dir", str(ledger_dir), "balances", "--projection-dir", str(projection_dir)])
+    assert rc_bal == 0
+
+
+def test_readme_golden_path_text():
+    text = Path("README.md").read_text(encoding="utf-8")
+    assert "python -m ironledger.cli project" in text
+    assert "python -m ironledger.cli search" in text
+    assert "python -m ironledger.cli balances" in text
+    assert "authorize project" in text
+
+
+def test_phase_banner_is_four():
+    import tomllib
+    data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert data["tool"]["ironledger"]["phase"] == 4
+    from ironledger import __doc__ as pkg_doc
+    assert "Phase 1 scope only" not in (pkg_doc or "")

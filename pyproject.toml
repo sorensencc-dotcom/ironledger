@@ -30,7 +30,7 @@ markers = [
 ]
 
 [tool.ironledger]
-# Phase 3: the compilation pipeline is authorized and shipped
-# (ironledger compile / compile status / compile recover). Projection, MCP, and
+# Phase 4: compile and projection are authorized and shipped
+# (ironledger compile / project / search / balances). MCP and
 # network code remain out of scope.
-phase = 3
+phase = 4

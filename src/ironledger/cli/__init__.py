@@ -1,1 +1,1 @@
-"""IronLedger command-line interface (Phase 2a subset)."""
+"""IronLedger command-line interface (Phase 4)."""

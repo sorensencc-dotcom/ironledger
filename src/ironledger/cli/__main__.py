@@ -1,4 +1,4 @@
-"""`ironledger` command tree (Phase 2a)."""
+"""`ironledger` command tree (Phase 4)."""
 
 from __future__ import annotations
 
