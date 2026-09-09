@@ -22,3 +22,8 @@ dist/
 
 # Linked git worktrees (using-git-worktrees)
 .worktrees/
+
+# Node / Frontend
+node_modules/
+web/dist/
+web/node_modules/
