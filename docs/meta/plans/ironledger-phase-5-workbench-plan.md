@@ -6,13 +6,14 @@
 
 **Architecture:** A new backend package `src/ironledger/web/` exposes read and mutation endpoints over `ironledger.db` and `projection.db`. All mutations enforce `config/safe-mode.json` checks and log to the hash-chained `audit_events` table. A modular React 19 SPA (`web/`) delivers a three-pane Unified Workbench with keyboard-first ergonomics (`↑`/`↓`/`Enter`/`Ctrl+Enter`), real-time Inspector with Beancount syntax previews, Rule Drift analysis, and safe-mode dry-run simulations.
 
-**Tech Stack:** Python 3.12+ (`fastapi`, `uvicorn`, `pydantic`), SQLite3 stdlib, React 19, TypeScript, Vite, Tailwind CSS, TanStack Table & Query, Lucide icons, Vitest, and Pytest.
+**Tech Stack:** Python 3.12+ (`fastapi`, `uvicorn`, `pydantic`), SQLite3 stdlib, React 19, TypeScript, Vite, Tailwind CSS, TanStack Table, TanStack Query, `@tanstack/react-virtual`, Lucide icons, Vitest, and Pytest.
 
-**Global Constraints:**
+**Global Constraints & Invariants:**
 - Zero `import beancount` runtime dependency across `src/ironledger/`.
-- Monetary amounts are strictly integer minor units (`int`) with explicit ISO-4217 scales.
+- Monetary amounts in API schemas are strictly integer minor units (`int`) with explicit ISO-4217 currency codes validated via `conventions.validate_amount_minor_units`. Floats are strictly rejected.
 - Safe Mode enforces strict gating on ledger compilation and projection rebuilds.
-- All file locks (`.compile.lock`, `.project.lock`) must be acquired through existing lock managers.
+- All compile operations must acquire `.compile.lock` via `compile.writer.acquire_lock`. All projection rebuilds must acquire `.project.lock`.
+- Safe mode dry-run simulation must produce zero byte modifications on disk and zero new rows in `audit_events`.
 - D-0: local repo `C:\dev\IronLedger`, no remote, do not push.
 
 ---
@@ -26,19 +27,19 @@
 | `src/ironledger/web/app.py` | FastAPI application setup, CORS, error handlers, static asset mounting |
 | `src/ironledger/web/schemas.py` | Pydantic request/response models with minor-unit integer amounts |
 | `src/ironledger/web/routers/staging.py` | Endpoints for staging queue, confidence scores, and approvals |
-| `src/ironledger/web/routers/rules.py` | Rule CRUD, rule candidate extraction, and drift metrics calculation |
+| `src/ironledger/web/routers/rules.py` | Rule CRUD, rule candidate extraction, and indexed drift metrics calculation |
 | `src/ironledger/web/routers/projection.py` | Balances tree, FTS5 search, and freshness latency check |
-| `src/ironledger/web/routers/compile.py` | Safe-mode-gated compile, dry-run simulation, and projection rebuild |
+| `src/ironledger/web/routers/compile.py` | Safe-mode-gated compile with lock acquisition, dry-run simulation, and projection rebuild |
 | `src/ironledger/web/routers/system.py` | Safe mode status, token management, and audit log history |
 
 ### Frontend (`web/`)
 | Path | Responsibility |
 |---|---|
-| `web/package.json` | React 19, Vite, Tailwind, TanStack Query/Table dependencies |
+| `web/package.json` | React 19, Vite, Tailwind, TanStack Query/Table/Virtual dependencies |
 | `web/src/App.tsx` | Root shell with Top HUD, Left Sidebar, Main Register, Right Sidecar |
 | `web/src/components/TopHUD.tsx` | Safe mode banner, Projection freshness pill, Token countdown |
 | `web/src/components/Sidebar.tsx` | Viewport router (Staging, Journal, Balances, Budget, Rules, Audit) |
-| `web/src/components/RegisterGrid.tsx` | Keyboard-driven data grid with confidence heatmaps |
+| `web/src/components/RegisterGrid.tsx` | Keyboard-driven virtualized data grid with confidence heatmaps |
 | `web/src/components/InspectorSidecar.tsx` | Matched rule details, rule drift alert, and Beancount syntax preview |
 | `web/src/components/RuleWizardModal.tsx` | Regex candidate generator and retroactive match preview |
 | `web/src/components/CommandPalette.tsx` | `Ctrl+K` global action dispatcher |
@@ -55,10 +56,10 @@
 - Test: `tests/test_web_schemas.py`
 
 **Interfaces:**
-- Consumes: `src/ironledger/conventions.py` (`validate_currency`, `currency_scale`)
+- Consumes: `src/ironledger/conventions.py` (`validate_currency`, `currency_scale`, `validate_amount_minor_units`)
 - Produces: `Pydantic` models for `StagedTransactionResponse`, `PostingSchema`, `RuleDriftResponse`, `CompileRequest`
 
-- [ ] **Step 1: Write failing schema tests**
+- [ ] **Step 1: Write failing schema tests rejecting floats and validating minor units**
 - [ ] **Step 2: Run test to verify failure** (`pytest tests/test_web_schemas.py`)
 - [ ] **Step 3: Implement schemas with strict integer minor-unit amount enforcement**
 - [ ] **Step 4: Run test to verify pass** (`pytest tests/test_web_schemas.py`)
@@ -84,7 +85,7 @@
 
 ---
 
-### Task 3: Rule Management & Drift Detection Router
+### Task 3: Rule Management & Indexed Drift Detection Router
 **Files:**
 - Create: `src/ironledger/web/routers/rules.py`
 - Test: `tests/test_web_rules.py`
@@ -95,7 +96,7 @@
 
 - [ ] **Step 1: Write failing rule and drift metric tests**
 - [ ] **Step 2: Run test to verify failure** (`pytest tests/test_web_rules.py`)
-- [ ] **Step 3: Implement rule candidate generator and Hit Confidence Trend (HCT) engine**
+- [ ] **Step 3: Implement rule candidate generator and indexed Hit Confidence Trend (HCT) engine**
 - [ ] **Step 4: Run test to verify pass** (`pytest tests/test_web_rules.py`)
 - [ ] **Step 5: Commit** (`git commit -m "feat(web): add rule management and drift detection router"`)
 
@@ -160,15 +161,15 @@
 
 ---
 
-### Task 8: Keyboard-Driven Register Grid & Confidence Heatmap
+### Task 8: Keyboard-Driven Register Grid with Virtualization
 **Files:**
 - Create: `web/src/components/RegisterGrid.tsx`
 - Test: `web/tests/RegisterGrid.test.tsx`
 
-- [ ] **Step 1: Write test for arrow key row selection and approval shortcut (`Enter`)**
-- [ ] **Step 2: Implement TanStack Table with keyboard event handlers and confidence heatmaps**
+- [ ] **Step 1: Write test for arrow key row selection, virtualization, and approval shortcut (`Enter`)**
+- [ ] **Step 2: Implement TanStack Table with `@tanstack/react-virtual`, keyboard event handlers, and confidence heatmaps**
 - [ ] **Step 3: Verify keyboard navigation and row selection pass**
-- [ ] **Step 4: Commit** (`git commit -m "feat(ui): add keyboard-first transaction register grid"`)
+- [ ] **Step 4: Commit** (`git commit -m "feat(ui): add virtualized keyboard-first transaction register grid"`)
 
 ---
 
