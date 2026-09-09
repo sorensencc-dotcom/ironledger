@@ -124,9 +124,18 @@ def _replace_ledger_index(
 
 
 @contextmanager
-def acquire_compile_lock(ledger_dir: Path) -> Generator[Path, None, None]:
-    lock_file = ledger_dir / ".compile.lock"
-    ledger_dir.mkdir(parents=True, exist_ok=True)
+def acquire_lock(
+    directory: Path,
+    name: str = ".compile.lock",
+    *,
+    error_cls: type[BaseException] | None = None,
+) -> Generator[Path, None, None]:
+    from ironledger.project.errors import ProjectLockedError, format_locked
+
+    if error_cls is None:
+        error_cls = CompileLockedError
+    lock_file = directory / name
+    directory.mkdir(parents=True, exist_ok=True)
     # Atomic create-or-fail: O_CREAT | O_EXCL is a single syscall on POSIX and
     # Windows, so there is no check-then-write race. A hard crash (SIGKILL /
     # power-loss) that skips the `finally` below strands the file; the next
@@ -135,10 +144,12 @@ def acquire_compile_lock(ledger_dir: Path) -> Generator[Path, None, None]:
     try:
         fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
-        raise CompileLockedError(
-            f"Compile lock is currently held at {lock_file}. "
-            f"If no compile is running, remove that file and retry."
-        )
+        if error_cls is CompileLockedError:
+            raise CompileLockedError(
+                f"Compile lock is currently held at {lock_file}. "
+                f"If no compile is running, remove that file and retry."
+            )
+        raise error_cls(format_locked(lock_file, kind="project"))
     try:
         since = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         os.write(fd, f"pid={os.getpid()}\nsince={since}\n".encode("utf-8"))
@@ -158,6 +169,12 @@ def acquire_compile_lock(ledger_dir: Path) -> Generator[Path, None, None]:
     finally:
         if lock_file.exists():
             lock_file.unlink()
+
+
+@contextmanager
+def acquire_compile_lock(ledger_dir: Path) -> Generator[Path, None, None]:
+    with acquire_lock(ledger_dir, name=".compile.lock", error_cls=CompileLockedError) as lock_file:
+        yield lock_file
 
 
 def compile_approved(
