@@ -82,3 +82,24 @@ def test_assert_fresh_missing_projection(tmp_path: Path):
     write_rendered_ledger(ledger_dir, make_sample_set())
     with pytest.raises(ProjectStaleError):
         assert_fresh(ledger_dir, tmp_path / "projection")
+
+
+def test_stale_after_ledger_bytes_change(live):
+    ledger_dir, projection_dir = live
+    (ledger_dir / "accounts.beancount").write_bytes(
+        (ledger_dir / "accounts.beancount").read_bytes() + b"; touched\n"
+    )
+    with pytest.raises(ProjectStaleError) as exc:
+        assert_fresh(ledger_dir, projection_dir, db="ironledger.db")
+    msg = str(exc.value)
+    assert "--ledger-dir" in msg
+    assert "--confirm \"authorize project\"" in msg
+    assert "python -m ironledger.cli project" in msg
+    assert "--db ironledger.db" in msg
+
+
+def test_schema_mismatch_is_stale(live, monkeypatch):
+    ledger_dir, projection_dir = live
+    monkeypatch.setattr("ironledger.project.query.PROJECT_SCHEMA_VERSION", 2)
+    with pytest.raises(ProjectStaleError, match="authorize project"):
+        assert_fresh(ledger_dir, projection_dir)
