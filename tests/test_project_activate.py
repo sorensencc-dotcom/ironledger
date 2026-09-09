@@ -57,3 +57,40 @@ def test_held_compile_lock_refuses(world):
         with pytest.raises(CompileLockedError):
             rebuild_projection(conn, ledger_dir, projection_dir)
     assert not (projection_dir / "projection.sqlite").exists()
+
+
+def test_crash_before_sqlite_replace_keeps_previous(world, monkeypatch):
+    conn, ledger_dir, projection_dir = world
+    summary = rebuild_projection(conn, ledger_dir, projection_dir, now_utc="2026-09-08T12:00:00Z")
+    previous = (projection_dir / "projection.sqlite").read_bytes()
+    import os
+    real = os.replace
+
+    def boom(src, dst):
+        if Path(dst).name == "projection.sqlite":
+            raise KeyboardInterrupt("simulated crash")
+        return real(src, dst)
+
+    monkeypatch.setattr("ironledger.project.activate.os.replace", boom)
+    with pytest.raises(KeyboardInterrupt):
+        rebuild_projection(conn, ledger_dir, projection_dir, now_utc="2026-09-08T12:01:00Z")
+    assert (projection_dir / "projection.sqlite").read_bytes() == previous
+
+
+def test_crash_after_sqlite_before_manifest_leaves_mismatch(world, monkeypatch):
+    conn, ledger_dir, projection_dir = world
+    rebuild_projection(conn, ledger_dir, projection_dir, now_utc="2026-09-08T12:00:00Z")
+    old_manifest = (projection_dir / "projection.manifest.json").read_bytes()
+    import os
+    real = os.replace
+
+    def boom(src, dst):
+        if Path(dst).name == "projection.manifest.json":
+            raise KeyboardInterrupt("simulated crash")
+        return real(src, dst)
+
+    monkeypatch.setattr("ironledger.project.activate.os.replace", boom)
+    with pytest.raises(KeyboardInterrupt):
+        rebuild_projection(conn, ledger_dir, projection_dir, now_utc="2026-09-08T12:01:00Z")
+    assert (projection_dir / "projection.sqlite").is_file()
+    assert (projection_dir / "projection.manifest.json").read_bytes() == old_manifest
