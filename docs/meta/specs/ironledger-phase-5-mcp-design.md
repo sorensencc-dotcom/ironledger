@@ -1,6 +1,6 @@
 # IronLedger Phase 5 read-only MCP design
 
-Status: design for operator review; no implementation approval.
+Status: operator-approved 2026-09-09 (eng-review CLEAR; transcript C). Implementation not started.
 Scope: expose the Phase 4 projection as a read-only MCP server. Default transport is stdio (no socket). Optional Streamable HTTP binds `127.0.0.1` or `::1` only, with a bearer token. Tools are `search`, `balances`, and `projection_status`. Date/account filters, category aggregation, runway, health, mutation tools, and a public listener stay out of scope.
 
 Locked in the Phase 5 discuss (2026-09-09): wrap Phase 4 query surface only; stdio default plus optional localhost HTTP; HTTP bind requires a 0600 bearer token at `projection/.mcp-token`; stdio is process-inherited and does not use the token.

@@ -48,7 +48,9 @@
 
 **Author:** commits use `Iron-Hammer <iron-hammer@ironledger.local>`.
 
-**Eng-review lock (2026-09-09, 1A):** Phase 5 is this MCP plan, not the FastAPI/React workbench. Workbench history lives on `ironledger/phase-5-workbench` (`a12919b..62b646e`). `main` is `d6632b6` (Phase 4 close). Do not merge the workbench as Phase 5. No MCP code until this plan is approved after eng-review.
+**Eng-review lock (2026-09-09, 1A):** Phase 5 is this MCP plan, not the FastAPI/React workbench. Workbench history lives on `ironledger/phase-5-workbench`. Do not merge the workbench as Phase 5.
+
+**Operator approval:** 2026-09-09, transcript C (commit spec+plan, then implement). Implementation paused on request (“do not implement yet”).
 
 ---
 
