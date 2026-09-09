@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldAlert, ShieldCheck, RefreshCw, Terminal, Play, Cpu } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, RefreshCw, Terminal, Play, Cpu, HelpCircle } from 'lucide-react';
 import type { FreshnessStatus, SafeModeStatus } from '../types';
 
 interface TopHUDProps {
@@ -90,6 +90,17 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
       {/* Action Controls */}
       <div className="flex items-center space-x-2">
+        <a
+          href="/docs/index.html"
+          target="_blank"
+          rel="noreferrer"
+          className="px-2.5 py-1 rounded text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-colors"
+          title="User Guide & Documentation"
+        >
+          <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Docs</span>
+        </a>
+
         <button
           onClick={onOpenCommandPalette}
           className="px-2.5 py-1 rounded text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-colors"

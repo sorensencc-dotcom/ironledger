@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Play, RefreshCw, Shield, Layers, Inbox, BookOpen } from 'lucide-react';
+import { Search, Play, RefreshCw, Shield, Layers, Inbox, BookOpen, HelpCircle } from 'lucide-react';
 import type { ActiveView } from './Sidebar';
 
 interface CommandPaletteProps {
@@ -21,6 +21,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const actions = [
+    {
+      id: 'open-docs',
+      title: 'Open User Guide & Documentation (Diataxis)',
+      category: 'Documentation',
+      icon: HelpCircle,
+      run: () => {
+        window.open('/docs/index.html', '_blank');
+        onClose();
+      },
+    },
     {
       id: 'goto-staging',
       title: 'Go to Staging Inbox',

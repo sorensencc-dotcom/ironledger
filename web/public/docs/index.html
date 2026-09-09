@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IronLedger Operator Guide & Documentation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['"Fira Code"', 'monospace'],
+            serif: ['"Playfair Display"', 'serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            terracotta: '#c4501a',
+            paper: '#f2ece2',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #cbd5e1;
+    }
+    .prose-code {
+      font-family: 'Fira Code', monospace;
+    }
+    /* Smooth scrolling */
+    html {
+      scroll-behavior: smooth;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased text-slate-300 bg-slate-950">
+
+  <!-- Top Sticky Header -->
+  <header class="sticky top-0 z-50 h-14 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-6 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center justify-center w-8 h-8 rounded bg-indigo-600 text-white font-mono font-bold text-sm shadow-md shadow-indigo-500/20">
+        IL
+      </div>
+      <div>
+        <span class="font-bold text-sm tracking-wide text-slate-100 flex items-center gap-2">
+          IronLedger
+          <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono">
+            User Guide & Spec
+          </span>
+        </span>
+      </div>
+    </div>
+    
+    <div class="flex items-center space-x-4 text-xs font-mono">
+      <a href="/" class="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 shadow transition-colors">
+        <span>&larr; Open Workbench</span>
+      </a>
+    </div>
+  </header>
+
+  <div class="flex-1 max-w-7xl w-full mx-auto flex">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 border-r border-slate-800/80 p-6 hidden md:block shrink-0 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto">
+      <div class="text-[11px] font-mono uppercase tracking-wider text-slate-500 font-semibold mb-3">
+        Diataxis Documentation
+      </div>
+      <nav class="space-y-1 text-xs">
+        <a href="#tutorial" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors">
+          1. Quickstart Tutorial
+        </a>
+        <a href="#how-to" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors">
+          2. How-To Guides
+        </a>
+        <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
+          <li><a href="#how-to-review" class="hover:text-indigo-400">&bull; Review & Approve</a></li>
+          <li><a href="#how-to-split" class="hover:text-indigo-400">&bull; Multi-Leg Split</a></li>
+          <li><a href="#how-to-rules" class="hover:text-indigo-400">&bull; Categorization Rules</a></li>
+          <li><a href="#how-to-safemode" class="hover:text-indigo-400">&bull; Safe Mode & Compile</a></li>
+          <li><a href="#how-to-docker" class="hover:text-indigo-400">&bull; Docker Automation</a></li>
+        </ul>
+        <a href="#reference" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">
+          3. Reference & API
+        </a>
+        <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
+          <li><a href="#ref-api" class="hover:text-indigo-400">&bull; REST API Catalog</a></li>
+          <li><a href="#ref-cli" class="hover:text-indigo-400">&bull; CLI Command Tree</a></li>
+          <li><a href="#ref-shortcuts" class="hover:text-indigo-400">&bull; Keyboard Shortcuts</a></li>
+        </ul>
+        <a href="#explanation" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">
+          4. Architecture & Invariants
+        </a>
+        <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
+          <li><a href="#exp-meta-ledger" class="hover:text-indigo-400">&bull; Meta-Ledger Hash-Chain</a></li>
+          <li><a href="#exp-drift" class="hover:text-indigo-400">&bull; Rule Drift (HCT)</a></li>
+          <li><a href="#exp-beancount" class="hover:text-indigo-400">&bull; Plaintext Authority</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- Main Content Stream -->
+    <main class="flex-1 p-6 md:p-10 max-w-4xl overflow-y-auto space-y-14">
+
+      <!-- Hero Header -->
+      <section class="space-y-4 border-b border-slate-800 pb-8">
+        <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-indigo-950/80 border border-indigo-800/60 text-indigo-300 font-mono text-xs">
+          <span>Enterprise Operator Guide</span> &bull; <span>Version 0.1.0</span>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white">
+          IronLedger Operator Guide & Reference
+        </h1>
+        <p class="text-base text-slate-400 leading-relaxed">
+          IronLedger is a local-first, single-operator financial operating system. Plaintext Beancount is the sole accounting authority; SQLite is a disposable, rebuildable analytical projection.
+        </p>
+      </section>
+
+      <!-- 1. TUTORIAL -->
+      <section id="tutorial" class="space-y-6">
+        <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold uppercase">Diataxis 1</span>
+          <h2 class="text-2xl font-bold text-white">Quickstart Tutorial: From Import to Plaintext Ledger</h2>
+        </div>
+        <p class="text-sm text-slate-400">
+          In this 3-step tutorial, you will ingest bank export records, categorize and approve them in the Operator Workbench, and compile them into verified Beancount plaintext files.
+        </p>
+
+        <div class="space-y-4">
+          <!-- Step 1 -->
+          <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">1</span>
+              Ingest Bank Statement Files
+            </h3>
+            <p class="text-xs text-slate-400">
+              Run the CLI import pipeline to stage OFX or CSV records into your local staging database:
+            </p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli import inbox/checking_export.ofx --confirm "import inbox/checking_export.ofx"</pre>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">2</span>
+              Open Operator Workbench
+            </h3>
+            <p class="text-xs text-slate-400">
+              Launch the visual workbench to review staging entries with sub-second keyboard shortcuts:
+            </p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli web --db ironledger.db --open-browser</pre>
+            <p class="text-xs text-slate-400">
+              Use <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">j</kbd> / <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">k</kbd> to select transactions, <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">Ctrl+R</kbd> to learn a rule, and <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">a</kbd> to approve.
+            </p>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">3</span>
+              Simulate and Compile to Beancount
+            </h3>
+            <p class="text-xs text-slate-400">
+              Trigger a safe-mode dry-run simulation first to inspect the unified plaintext diff, then compile directly to disk:
+            </p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli compile --ledger-dir ledger --confirm "authorize compile"</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. HOW-TO GUIDES -->
+      <section id="how-to" class="space-y-6">
+        <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <span class="text-xs font-mono px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 font-bold uppercase">Diataxis 2</span>
+          <h2 class="text-2xl font-bold text-white">How-To Guides</h2>
+        </div>
+
+        <!-- How to review & approve -->
+        <div id="how-to-review" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Review, Categorize, and Approve Staged Transactions</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Staged transactions require matching contra accounts before compilation. To review:
+          </p>
+          <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li>In the Staging Inbox, select any row with status <code class="font-mono text-amber-300">pending</code>.</li>
+            <li>Inspect the raw source evidence and Beancount syntax in the right Inspector Sidecar.</li>
+            <li>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 font-mono">a</kbd> or click <strong>Approve</strong>. If uncategorized, enter target account (e.g. <code class="font-mono text-indigo-300">Expenses:Food:Groceries</code>).</li>
+            <li>Approved transactions advance to <code class="font-mono text-emerald-300">approved</code> status, ready for compilation.</li>
+          </ol>
+        </div>
+
+        <!-- How to multi-leg split -->
+        <div id="how-to-split" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Execute a Multi-Leg Transaction Split</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            When a single payment covers multiple expenditure categories, split the contra leg:
+          </p>
+          <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li>Select the transaction in the Register Grid.</li>
+            <li>Call the split API or modal with balanced minor-unit postings:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">POST /api/staging/{id}/split
+{
+  "postings": [
+    {"account": "Assets:Checking", "currency": "USD", "minor_units": -5000, "scale": 2},
+    {"account": "Expenses:Groceries", "currency": "USD", "minor_units": 3500, "scale": 2},
+    {"account": "Expenses:Household", "currency": "USD", "minor_units": 1500, "scale": 2}
+  ]
+}</pre>
+            </li>
+            <li>The system validates that the sum of all postings equals exactly 0 minor units.</li>
+          </ol>
+        </div>
+
+        <!-- How to Safe Mode -->
+        <div id="how-to-safemode" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Operate Under Safe Mode Gating</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Safe mode protects against accidental or automated live disk modifications.
+          </p>
+          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li><strong>Dry-Run Simulations:</strong> Allowed at all times without confirmation token (<code class="font-mono text-indigo-300">POST /api/compile/simulate</code>).</li>
+            <li><strong>Live Compiles:</strong> Require passing <code class="font-mono text-emerald-300">"safe_mode_token": "authorize compile"</code> in the request payload.</li>
+            <li><strong>Safe Mode Disable:</strong> Place <code class="font-mono text-amber-300">{"enabled": false}</code> in <code class="font-mono text-slate-400">config/safe-mode.json</code> for full operator write access.</li>
+          </ul>
+        </div>
+
+        <!-- How to Docker -->
+        <div id="how-to-docker" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Run IronLedger Automatically via Docker</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Run the containerized workbench service with host persistence and auto-restart:
+          </p>
+          <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto"># Launch in background
+docker compose up -d
+
+# Inspect live logs
+docker compose logs -f
+
+# Shutdown container
+docker compose down</pre>
+        </div>
+      </section>
+
+      <!-- 3. REFERENCE -->
+      <section id="reference" class="space-y-6">
+        <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <span class="text-xs font-mono px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold uppercase">Diataxis 3</span>
+          <h2 class="text-2xl font-bold text-white">Reference & Technical Specification</h2>
+        </div>
+
+        <!-- REST API Catalog Table -->
+        <div id="ref-api" class="space-y-3">
+          <h3 class="text-base font-semibold text-white font-mono">REST API Endpoints</h3>
+          <div class="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
+            <table class="w-full text-left divide-y divide-slate-800">
+              <thead class="bg-slate-900 text-slate-400">
+                <tr>
+                  <th class="p-2.5">Method</th>
+                  <th class="p-2.5">Endpoint</th>
+                  <th class="p-2.5">Description</th>
+                  <th class="p-2.5">Gating</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 bg-slate-950/40 text-slate-300">
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/api/staging</td>
+                  <td class="p-2.5">List staged transactions with postings & scores</td>
+                  <td class="p-2.5 text-slate-500">None</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
+                  <td class="p-2.5">/api/staging/{id}/approve</td>
+                  <td class="p-2.5">Approve staged transaction</td>
+                  <td class="p-2.5 text-slate-500">None</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
+                  <td class="p-2.5">/api/staging/{id}/split</td>
+                  <td class="p-2.5">Split transaction contra leg (balanced sum=0)</td>
+                  <td class="p-2.5 text-slate-500">None</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/api/rules/{id}/drift</td>
+                  <td class="p-2.5">Calculate Hit Confidence Trend (HCT) & drift metrics</td>
+                  <td class="p-2.5 text-slate-500">None</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
+                  <td class="p-2.5">/api/compile/simulate</td>
+                  <td class="p-2.5">Zero-mutation dry run returning plaintext diff preview</td>
+                  <td class="p-2.5 text-slate-500">Safe</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
+                  <td class="p-2.5">/api/compile</td>
+                  <td class="p-2.5">Compile approved transactions to Beancount files</td>
+                  <td class="p-2.5 text-amber-400">Token Gated</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/api/system/mutations</td>
+                  <td class="p-2.5">Inspect append-only SHA-256 Meta-Ledger chain</td>
+                  <td class="p-2.5 text-slate-500">None</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Keyboard shortcuts -->
+        <div id="ref-shortcuts" class="space-y-3 pt-4">
+          <h3 class="text-base font-semibold text-white font-mono">Workbench Keyboard Shortcuts</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+            <div class="p-3 rounded bg-slate-900 border border-slate-800 flex justify-between items-center">
+              <span class="text-slate-400">Select Next / Previous Row</span>
+              <span class="text-indigo-300 font-bold">j / k or &darr; / &uarr;</span>
+            </div>
+            <div class="p-3 rounded bg-slate-900 border border-slate-800 flex justify-between items-center">
+              <span class="text-slate-400">Approve Transaction</span>
+              <span class="text-emerald-400 font-bold">a</span>
+            </div>
+            <div class="p-3 rounded bg-slate-900 border border-slate-800 flex justify-between items-center">
+              <span class="text-slate-400">Reject Transaction</span>
+              <span class="text-rose-400 font-bold">x</span>
+            </div>
+            <div class="p-3 rounded bg-slate-900 border border-slate-800 flex justify-between items-center">
+              <span class="text-slate-400">Open Command Palette</span>
+              <span class="text-indigo-300 font-bold">Ctrl + K</span>
+            </div>
+            <div class="p-3 rounded bg-slate-900 border border-slate-800 flex justify-between items-center">
+              <span class="text-slate-400">Rule Creator Wizard</span>
+              <span class="text-indigo-300 font-bold">Ctrl + R</span>
+            </div>
+            <div class="p-3 rounded bg-slate-900 border border-slate-800 flex justify-between items-center">
+              <span class="text-slate-400">Close Active Modal</span>
+              <span class="text-slate-300 font-bold">ESC</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. EXPLANATION -->
+      <section id="explanation" class="space-y-6">
+        <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <span class="text-xs font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold uppercase">Diataxis 4</span>
+          <h2 class="text-2xl font-bold text-white">Explanation & System Invariants</h2>
+        </div>
+
+        <div id="exp-meta-ledger" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Why Meta-Ledger Cryptographic Chaining Matters</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Financial systems often suffer from untracked data drift between review databases and final ledger files. IronLedger solves this via an append-only <code class="font-mono text-indigo-300">mutation_events</code> table. Every compilation write calculates the SHA-256 digest of the entire on-disk ledger directory before and after writing, linking them into an unbroken cryptographic chain anchored at genesis. SQLite database triggers strictly forbid any <code class="font-mono text-rose-400">UPDATE</code> or <code class="font-mono text-rose-400">DELETE</code> operations.
+          </p>
+        </div>
+
+        <div id="exp-drift" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Hit Confidence Trend (HCT) & Drift Detection</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Machine learned categorization rules decay over time as merchant narrations change. IronLedger computes an active Hit Confidence Trend metric:
+          </p>
+          <div class="p-3 rounded bg-slate-900 border border-slate-800 font-mono text-xs text-indigo-300">
+            HCT = max(0.0, 1.0 - (OverrideRate * 1.5) - DecayFactor(t))
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Rules with HCT &ge; 80% display in emerald. When override rates rise, rules degrade to amber warnings and are automatically blocked from automated bulk categorization.
+          </p>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="pt-8 border-t border-slate-800 text-xs font-mono text-slate-500 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>IronLedger Enterprise Financial OS &bull; Phase 5 Ratified</div>
+        <div class="flex items-center gap-4">
+          <a href="/" class="text-indigo-400 hover:underline">Workbench App</a>
+          <a href="/api/docs" class="text-indigo-400 hover:underline">FastAPI Swagger</a>
+        </div>
+      </footer>
+
+    </main>
+  </div>
+
+</body>
+</html>

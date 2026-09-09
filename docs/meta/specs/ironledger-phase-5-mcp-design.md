@@ -154,7 +154,7 @@ Client launches `python -m ironledger.cli mcp --db … --ledger-dir …` as a su
 
 ## 8. Streamable HTTP transport
 
-Protocol: MCP 2025-03-26 Streamable HTTP, loopback only. Implemented with `http.server` (stdlib). Single-threaded is enough.
+Protocol: MCP 2025-03-26 Streamable HTTP, loopback only. Implemented with `http.server` (stdlib). Single-threaded is enough. Shutdown is KeyboardInterrupt (`serve_forever` returns, exit 0). No extra idle timeout, SIGTERM handler, or thread pool. The 5s body-read timeout is the slow-client guard.
 
 - MCP endpoint path is exactly `/mcp`. Other paths: HTTP 404, no JSON-RPC body required.
 - POST `/mcp`: JSON-RPC in, JSON-RPC out, response `Content-Type: application/json`. This phase does **not** open SSE streams. POST of a notification (no `id`) → HTTP 202 empty body. Request `Content-Type`: if **present**, the media type before `;` must be `application/json` (charset parameter allowed). Missing header is allowed. Anything else → **415**, no `handle_message`, no body audit. Check Content-Type after Host/Origin and before the 413 body cap.
@@ -170,9 +170,9 @@ Security (MCP Streamable HTTP MUST/SHOULD, tightened). **Handler order is locked
 4. `Origin` header: if present (including empty), it must be one of `http://127.0.0.1`, `http://127.0.0.1:<port>`, `http://localhost`, `http://localhost:<port>`, `http://[::1]`, `http://[::1]:<port>`, or `null`. Anything else → HTTP 403, no body read. Missing `Origin` is allowed (non-browser clients).
 5. Request `Content-Type`: if present, media type before `;` must be `application/json`. Missing header allowed. Else **415**, no body read.
 6. Request body cap: **1 MiB**. Require `Content-Length` on POST `/mcp`. If `Content-Length` is missing, not a non-negative integer, or greater than 1,048,576, or `Transfer-Encoding` includes `chunked`, respond **413**, do not read the body, do not call `handle_message`, do not write the body into an audit event. A body that is shorter than `Content-Length` is a connection error (close; no tool result). Set a **5 second** socket timeout on the accepted connection before reading the body (`socket.setdefaulttimeout` is too global; set on the request socket / `rfile`). Timeout or undersize → close, no JSON-RPC result, `handle_message` not called. This cap is HTTP-only; stdio is one JSON object per newline.
-6. `Authorization: Bearer <token>` required on every POST `/mcp`. Missing, malformed, or wrong token → HTTP 401, `WWW-Authenticate: Bearer`, body not a tool result, no query. Compare with `hmac.compare_digest` against the hex token. Timing-safe. Do not distinguish "no file" from "wrong token" in the response body. 401 is only legal after Host and Origin have already passed.
-7. Then read at most `Content-Length` bytes. Decode as UTF-8 (strict). `UnicodeDecodeError` → HTTP 200, JSON-RPC `-32700` Parse error, `id` null, do not call `handle_message`. Valid UTF-8 is passed to `handle_message`. stdio: if a line is not valid UTF-8, write one `-32700` line to stdout and continue (process stays up).
-8. Do not send `Access-Control-Allow-Origin: *`. OPTIONS may 405.
+7. `Authorization: Bearer <token>` required on every POST `/mcp`. Missing, malformed, or wrong token → HTTP 401, `WWW-Authenticate: Bearer`, body not a tool result, no query. Compare with `hmac.compare_digest` against the hex token. Timing-safe. Do not distinguish "no file" from "wrong token" in the response body. 401 is only legal after Host, Origin, Content-Type, and the 413 checks have already passed.
+8. Then read at most `Content-Length` bytes. Decode as UTF-8 (strict). `UnicodeDecodeError` → HTTP 200, JSON-RPC `-32700` Parse error, `id` null, do not call `handle_message`. Valid UTF-8 is passed to `handle_message`. stdio: if a line is not valid UTF-8, write one `-32700` line to stdout and continue (process stays up).
+9. Do not send `Access-Control-Allow-Origin: *`. OPTIONS may 405.
 
 Token file: 32 bytes from `secrets.token_bytes(32)`, written as lowercase hex. Create and rotate write `projection/.mcp-token.tmp` (same directory as the live file) then `os.replace` onto `projection/.mcp-token`. Crash before replace: live file is the previous complete token or absent. POSIX `chmod 0o600` on the live path after **every** `load_or_create_token` (create, reuse, and corrupt-rewrite) and after `rotate_token`. A pre-existing `0644` file must become `0600` on the next load. On Windows, still call `chmod`; do not fail the phase if the OS only implements a subset of POSIX bits. Tests on POSIX: create `0644`, load, assert `st_mode & 0o777 == 0o600`. Windows tests assert the file exists and the HTTP 401/200 contract; they do not assert Unix mode.
 
@@ -265,6 +265,7 @@ All items below are gate-blocking. Named tests in `tests/test_phase5_exit_contra
 32. POST `/mcp` with valid Host, Origin, and bearer, `Content-Length: 100`, and a 2-byte body does not call `handle_message` and does not return a JSON-RPC result body. The test uses a raw socket. The server's read timeout is 5s so the suite and a slow client cannot hang the process.
 33. `projection/.mcp-token` containing `nope` (or any non-64-hex payload) is replaced by `load_or_create_token` with a 64-hex token. The returned value equals the file bytes. `nope` is not accepted by `verify_bearer`.
 34. stdio: a binary line of 1,048,577 bytes then `\n` yields one stdout JSON-RPC `-32700` and the loop continues. Memory for that request does not retain the oversize payload after the error is written.
+35. POST `/mcp` with `Content-Type: text/plain` (valid Host, Origin, bearer) returns **415**. `handle_message` is not called. Missing `Content-Type` with a valid JSON body still succeeds. `Content-Type: application/json; charset=utf-8` succeeds.
 
 ## 13. Open items carried into the plan, not this spec
 

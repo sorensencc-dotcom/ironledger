@@ -96,7 +96,7 @@ Created:
 | `tests/test_mcp_http.py` | HTTP bind, 401, Origin, Host |
 | `tests/test_cli_mcp.py` | CLI argv |
 | `tests/test_mcp_audit.py` | Audit events |
-| `tests/test_phase5_exit_contract.py` | Gate items 1–34 except 20 |
+| `tests/test_phase5_exit_contract.py` | Gate items 1–35 except 20 |
 
 Modified:
 
@@ -509,7 +509,7 @@ git commit -m "feat(mcp): newline-delimited stdio transport"
 - Produces:
   - `def serve_http(*, host: str, port: int, ledger_dir: Path, projection_dir: Path, db: str | None, rotate: bool = False) -> HTTPServer`
   - Call `assert_loopback(host)` before bind. `load_or_create_token` or `rotate_token`. Bind `(host, port)`.
-  - Handler order is locked (spec §8): path/method → Host 403 → Origin 403 → Content-Length/chunked 413 → Bearer 401 → read body → `handle_message`.
+  - Handler order is locked (spec §8): path/method → Host 403 → Origin 403 → Content-Type 415 → Content-Length/chunked 413 → Bearer 401 → read body → `handle_message`.
   - Before reading the body, set a 5.0s timeout on the request socket. Timeout or undersize body: close, no `handle_message`.
   - Audit insert failure on 401/403: still return 401/403, never 500.
   - POST `/mcp` only for JSON-RPC. GET `/mcp` → 405. other path → 404.
@@ -524,7 +524,7 @@ Tests bind the server with port `0` (`HTTPServer((host, 0), …)` after `assert_
 
 Use `threading.Thread(target=httpd.handle_request)` or `serve_forever` + `shutdown`. `urllib.request` for POST. Always `httpd.server_close()` in finally.
 
-Cover: 401 missing token, 401 wrong token (search not executed — use a projection_dir without sqlite and assert 401 rather than isError stale), valid token tools/list, Origin evil 403 even with valid token, Host evil 403 with no Authorization (not 401), GET 405, POST `/other` 404, getsockname 127.0.0.1, rotate invalidates old token, POST with `Content-Length: 1048577` → 413 and `handle_message` not called, POST with `Transfer-Encoding: chunked` → 413, POST body `b"\xff\xfe"` → HTTP 200 JSON-RPC `-32700`, POST notification `notifications/initialized` (no id) → HTTP 202 empty body, raw-socket POST with `Content-Length: 100` and 2-byte body does not call `handle_message` (timeout bounded).
+Cover: 401 missing token, 401 wrong token (search not executed — use a projection_dir without sqlite and assert 401 rather than isError stale), valid token tools/list, Origin evil 403 even with valid token, Host evil 403 with no Authorization (not 401), GET 405, POST `/other` 404, getsockname 127.0.0.1, rotate invalidates old token, POST with `Content-Length: 1048577` → 413 and `handle_message` not called, POST with `Transfer-Encoding: chunked` → 413, POST body `b"\xff\xfe"` → HTTP 200 JSON-RPC `-32700`, POST notification `notifications/initialized` (no id) → HTTP 202 empty body, raw-socket POST with `Content-Length: 100` and 2-byte body does not call `handle_message` (timeout bounded), `Content-Type: text/plain` → 415, missing Content-Type + JSON still 200.
 
 - [ ] **Steps 1–4** as usual
 
@@ -624,7 +624,7 @@ git commit -m "docs(ironledger): Phase 5 mcp gitignore, README, dep posture"
 - Create: `tests/test_phase5_exit_contract.py`
 
 **Interfaces:**
-- Named tests `test_contract_1` … `test_contract_34` except `test_contract_20` (full suite is `pytest -q`, documented in the module docstring like Phase 4 item 12).
+- Named tests `test_contract_1` … `test_contract_35` except `test_contract_20` (full suite is `pytest -q`, documented in the module docstring like Phase 4 item 12).
 - Each maps 1:1 to spec §12. Reuse helpers from earlier tests; do not weaken assertions.
 
 Item 9 “no listening TCP socket”: assert `serve_http` is not called when `run_stdio` runs (patch `ironledger.mcp.http.serve_http` / or check `mcp.http` was not asked to bind). Do not require netstat.
@@ -645,7 +645,7 @@ Item 21: `--help` lists mcp; `main(["mcp", "--db", db, "--ledger-dir", ledger])`
 
 ```bash
 git add tests/test_phase5_exit_contract.py
-git commit -m "test(mcp): Phase 5 exit contract items 1-24"
+git commit -m "test(mcp): Phase 5 exit contract items 1-35"
 ```
 
 ---
@@ -656,13 +656,13 @@ git commit -m "test(mcp): Phase 5 exit contract items 1-24"
 |---|---|
 | §3 P5-1 tools | 5, 6, 12.1/7 |
 | §3 P5-2 stdio vs HTTP | 7, 8, 9 |
-| §3 P5-3 token | 3, 8, 12.15 |
+| §3 P5-3 token | 3, 8, 12.15, 12.33 |
 | §4 CLI / argv | 9, 12.21–22 |
-| §5 protocol | 6, 12.8/23 |
+| §5 protocol | 6, 12.8/23/27/34 |
 | §6 tool payloads | 4, 5, 12.2–6 |
-| §7 stdio | 7, 12.9 |
-| §8 HTTP security | 2, 8, 12.10–14, 24–26 |
-| §9 audit | 10, 12.18 |
+| §7 stdio | 7, 12.9, 12.34 |
+| §8 HTTP security | 2, 8, 12.10–14, 24–26, 30–32, 35 |
+| §9 audit | 10, 12.18, 12.29–30 |
 | §10 layout | 1–8 (eight modules) |
 | §11 out of scope | 5, 12.7/19 |
 | §12 contract | 12 |
@@ -670,3 +670,99 @@ git commit -m "test(mcp): Phase 5 exit contract items 1-24"
 | Phase 4 non-regression | 4, 12.20 |
 
 No TBD / FIXME / placeholder tokens in this plan.
+
+---
+
+## NOT in scope
+
+- Date/account filters, category rollups, runway, health (P5-1).
+- Mutation MCP tools; FastAPI/React workbench as Phase 5 (on `ironledger/phase-5-workbench`, do not merge).
+- Official `mcp` package; SSE; session IDs; JSON-RPC batches.
+- Non-loopback bind; Tailscale/VPN; WebAuthn (Phase 8).
+- Per-request watchdog, SIGTERM handler, thread pool (21A).
+- Cross-db SQLite transaction for query+audit (two files).
+- `--bind localhost` (numeric bind only). Dropping `Host: localhost` (16A kept it).
+- Numbered performance gate; process-local hash cache for `assert_fresh`.
+- Public GitHub, LICENSE, push (D-0).
+- Deleting leftover untracked `web/` (working tree junk, not this plan).
+
+## What already exists
+
+- `project.query.search` / `balances` / `assert_fresh` — MCP tools call these; do not fork FTS.
+- CLI `_live_project_status` — Task 4 lifts it; CLI becomes a caller.
+- `append_audit_event` — MCP audits through it; no second chain.
+- `argparse.SUPPRESS` dest-split on `project --db` — copy for `mcp`.
+- Phase 4 error formula (`format_stale`, `format_query_error`) — tool `isError` text.
+- `acquire_lock` / compile / project mutators — MCP must not call them.
+
+## Failure modes
+
+| Path | Failure | Test | Handler | User sees |
+|---|---|---|---|---|
+| tools/call search | stale projection | c5 | isError formula | hashes + copy-paste project |
+| tools/call search | audit insert raises | c29 | isError, no hits | error, no rows |
+| HTTP POST | evil Host/Origin | c24/26/30 | 403 + mcp auth | 403 |
+| HTTP POST | no/wrong bearer | c11/12 | 401 | 401 WWW-Authenticate |
+| HTTP POST | oversize/chunked | c25 | 413 | 413 |
+| HTTP POST | slow/short body | c32 | 5s timeout, close | hang ≤5s then close |
+| HTTP POST | text/plain | c35 | 415 | 415 |
+| HTTP POST | invalid UTF-8 | c28 | -32700 | JSON-RPC parse error |
+| stdio | oversize line | c34 | -32700, continue | parse error, session lives |
+| stdio | unexpected exception | c27 | -32603 internal error | no traceback on stdout |
+| mutation name | compile via tools/call | c7 | isError, no rebuild | error, ledger unchanged |
+| Crash after HTTP write | unaudited bytes on wire | inherent | none | possible; two files |
+
+No silent-and-untested path remains at conf ≥7.
+
+## Worktree parallelization
+
+| Step | Modules | Depends on |
+|------|---------|------------|
+| T1–T3 errors/bind/token | `mcp/` | — |
+| T4 lift projection_status | `project/`, `cli/` | — |
+| T5–T6 tools/protocol | `mcp/` | T1, T4 |
+| T7–T8 stdio/http | `mcp/` | T3, T6 |
+| T9 CLI | `cli/` | T7, T8 |
+| T10 audit | `mcp/` | T5, T8 |
+| T11–T12 docs/contract | docs, tests | T9, T10 |
+
+Lane A: T1 → T2 → T3. Lane B: T4 (parallel with A). Merge. Then T5→T12 sequential on `mcp/` + `cli/`.
+
+Conflict: T4 and T9 both touch `cli/__main__.py` — run T4 before T9, not in parallel.
+
+## Implementation Tasks
+
+Synthesized from this review's findings. Each folds into an existing plan task; no extra SDD wave.
+
+- [ ] **T-R1 (P1, human: ~20min / CC: ~8min)** — token — chmod 0600 on every load; write tmp + `os.replace`
+  - Surfaced by: outside voice — reused 0644 file; non-atomic write
+  - Files: `src/ironledger/mcp/token.py`, `tests/test_mcp_token.py`
+  - Verify: `pytest tests/test_mcp_token.py -q`
+- [ ] **T-R2 (P1, human: ~20min / CC: ~8min)** — stdio — binary stdin, 1 MiB line cap
+  - Surfaced by: outside voice — unbounded line; text stdin vs UTF-8
+  - Files: `src/ironledger/mcp/stdio.py`, `cli/__main__.py`
+  - Verify: contract 34
+- [ ] **T-R3 (P1, human: ~15min / CC: ~5min)** — http — 5s read timeout; tests bind port 0; Content-Type 415
+  - Surfaced by: outside voice + 20B
+  - Files: `src/ironledger/mcp/http.py`, `tests/test_mcp_http.py`
+  - Verify: contract 32, 35
+- [ ] **T-R4 (P1, human: ~10min / CC: ~5min)** — tools — query → audit → serialize
+  - Surfaced by: Architecture/outside voice — two-file audit order
+  - Files: `src/ironledger/mcp/tools.py`
+  - Verify: contract 29
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 1 | CLEAR | 12 findings; folded or rejected in-session |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 1A workbench off main; HTTP order/caps; contract 1–35 |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | no UI in this slice |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **CODEX:** chmod-on-reuse, atomic token, stdio 1 MiB, binary stdin, 5s read timeout, `--db` owner, port-0 fixture, 401-audit-fail, query-then-audit, Content-Type 415. Rejected: drop Host localhost; extra watchdog.
+- **CROSS-MODEL:** Agreed on token/stdio/HTTP hardening. Disagreed on Host localhost (kept) and extra shutdown machinery (rejected).
+- **VERDICT:** ENG CLEARED — plan ready for operator approval then implementation. CEO optional. Design not required (no UI).
+
+NO UNRESOLVED DECISIONS
