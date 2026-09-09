@@ -15,6 +15,7 @@ Phase 3 introduces the compilation of approved staged transactions into human-re
 ### 2. Subprocess Invocation & PATH Assumptions
 
 - `bean-check` is invoked with a strict execution timeout (default 10 seconds) via `subprocess.run`.
+- The pinned tooling version is `beancount==3.2.3` (optional extra `dev` in `pyproject.toml`). That package ships the `bean-check` console script. It is not a runtime dependency of IronLedger.
 - When `bean-check` is not present on the host system `PATH`:
   - Compiler invocations fail closed and raise `BeanCheckUnavailableError`.
   - Non-compilation subsystems (ingest, review, rule management, migrations, CLI queries) remain fully functional.
@@ -27,5 +28,5 @@ Phase 3 introduces the compilation of approved staged transactions into human-re
 
 ### 4. Lockfile & Environment Management
 
-- Development and CI environments pin `beancount` tooling via project dependencies.
+- Development and CI environments pin `beancount` tooling via the `dev` extra (`beancount==3.2.3`). The runtime lockfile (`requirements.lock`) still pins only `ofxtools==1.1.1`.
 - Changes to compiler output schemas, ledger file layouts, or `bean-check` validation rules require a formal design amendment and exit gate review.
