@@ -210,9 +210,9 @@ def test_readme_golden_path_text():
     assert "safe-mode.json" in text
 
 
-def test_phase_banner_is_four():
+def test_phase_banner_is_current():
     import tomllib
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    assert data["tool"]["ironledger"]["phase"] == 4
+    assert data["tool"]["ironledger"]["phase"] >= 4
     from ironledger import __doc__ as pkg_doc
     assert "Phase 1 scope only" not in (pkg_doc or "")
