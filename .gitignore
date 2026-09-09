@@ -16,6 +16,7 @@ dist/
 # Secrets never enter the tree
 .env
 *.secret
+**/.mcp-token
 
 # SDD scratch workspace (subagent-driven-development ledger/artifacts)
 .superpowers/

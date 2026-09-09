@@ -56,3 +56,19 @@ python -m ironledger.cli balances --ledger-dir ledger
 
 `search` prints date, payee, account, integer minor units, and currency.
 `ironledger` on PATH is optional; tests and this README call `python -m ironledger.cli`.
+
+---
+
+## MCP Server (Model Context Protocol)
+
+IronLedger includes a built-in, zero-dependency read-only Model Context Protocol server exposing `search`, `balances`, and `projection_status`.
+
+```powershell
+$env:PYTHONPATH='src'
+
+# Standard I/O transport (for Claude Desktop, Codex, Antigravity)
+python -m ironledger.cli mcp --transport stdio --db ironledger.db --ledger-dir ledger
+
+# Streamable HTTP transport on loopback with Bearer auth token
+python -m ironledger.cli mcp --transport http --bind 127.0.0.1 --port 8765 --db ironledger.db --ledger-dir ledger
+```

@@ -30,3 +30,14 @@ Phase 3 introduces the compilation of approved staged transactions into human-re
 
 - Development and CI environments pin `beancount` tooling via the `dev` extra (`beancount==3.2.3`). The runtime lockfile (`requirements.lock`) still pins only `ofxtools==1.1.1`.
 - Changes to compiler output schemas, ledger file layouts, or `bean-check` validation rules require a formal design amendment and exit gate review.
+
+## Phase 5 Dependency Posture: Zero-Dependency MCP Protocol Implementation
+
+Phase 5 introduces a read-only Model Context Protocol (MCP) server supporting stdio and Streamable HTTP loopback transports.
+
+### 1. Zero Direct Python MCP Package Import Boundary
+
+- The official third-party `mcp` Python SDK is **never imported** directly into the IronLedger Python runtime core (`import mcp` or `from mcp` is strictly forbidden across `src/ironledger/`).
+- IronLedger implements the JSON-RPC 2.0 protocol and MCP specifications natively using standard library modules (`json`, `http.server`, `socket`, `hashlib`, `hmac`, `secrets`, `sys`, `pathlib`).
+- Runtime `dependencies` in `pyproject.toml` remains strictly `["ofxtools==1.1.1"]`.
+- No new external network or runtime dependencies are introduced.
