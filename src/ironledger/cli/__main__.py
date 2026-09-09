@@ -46,7 +46,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="ironledger",
         epilog=(
             "Golden path (from the repo root, after compile has succeeded):\n"
-            "  python -m ironledger.cli project --db <db> --ledger-dir ledger "
+            "  python -m ironledger.cli project --db ironledger.db --ledger-dir ledger "
             '--confirm "authorize project"\n'
             "  python -m ironledger.cli search --ledger-dir ledger coffee\n"
             "  python -m ironledger.cli balances --ledger-dir ledger"
@@ -162,12 +162,24 @@ def _build_parser() -> argparse.ArgumentParser:
     fit_list.add_argument("--json", action="store_true")
 
     proj = sub.add_parser("project", help="rebuild the analytics projection from compiled ledger files")
+    proj.add_argument(
+        "--db",
+        required=False,
+        default=argparse.SUPPRESS,
+        help="path to the SQLite ledger index",
+    )
     proj.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
     proj.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
     proj.add_argument("--confirm", default=None, help="confirmation phrase for operator authorization")
     proj_sub = proj.add_subparsers(dest="project_command", required=False)
 
     proj_status = proj_sub.add_parser("status", help="show projection freshness and compile comparison")
+    proj_status.add_argument(
+        "--db",
+        required=False,
+        default=argparse.SUPPRESS,
+        help="path to the SQLite ledger index",
+    )
     proj_status.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
     proj_status.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
     proj_status.add_argument("--json", action="store_true", help="render status as JSON")

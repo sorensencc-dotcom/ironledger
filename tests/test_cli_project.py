@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -33,6 +36,65 @@ def test_help_lists_project_search_balances(capsys):
     assert "balances" in out
     assert "python -m ironledger.cli" in out
     assert "authorize project" in out
+
+
+def test_project_accepts_db_after_subcommand(env, capsys):
+    """README / compile next-step / stale Fix all put --db after `project`."""
+    db_path, config_dir, ledger_dir, projection_dir = env
+    rc = main([
+        "--config-dir", str(config_dir),
+        "project",
+        "--db", str(db_path),
+        "--ledger-dir", str(ledger_dir),
+        "--projection-dir", str(projection_dir),
+        "--confirm", "authorize project",
+    ])
+    assert rc == 0
+    assert "Projection rebuilt" in capsys.readouterr().out
+
+
+def test_readme_golden_path_subprocess(tmp_path: Path):
+    """Subprocess the exact README argv. main() with reordered flags hid this."""
+    db_path = tmp_path / "ironledger.db"
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "safe-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    ledger_dir = tmp_path / "ledger"
+    write_rendered_ledger(ledger_dir, make_sample_set())
+    seed_successful_compile_run(db_path, ledger_dir)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path("src").resolve())
+    env["PYTHONIOENCODING"] = "utf-8"
+    project = subprocess.run(
+        [
+            sys.executable, "-m", "ironledger.cli",
+            "project", "--db", "ironledger.db", "--ledger-dir", "ledger",
+            "--confirm", "authorize project",
+        ],
+        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+    )
+    assert project.returncode == 0, project.stderr
+    assert "Projection rebuilt" in project.stdout
+    search = subprocess.run(
+        [
+            sys.executable, "-m", "ironledger.cli",
+            "search", "--ledger-dir", "ledger", "coffee",
+        ],
+        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+    )
+    assert search.returncode == 0, search.stderr
+    assert "Coffee" in search.stdout
+    assert "1234" in search.stdout
+    balances = subprocess.run(
+        [
+            sys.executable, "-m", "ironledger.cli",
+            "balances", "--ledger-dir", "ledger",
+        ],
+        cwd=tmp_path, env=env, capture_output=True, text=True, check=False,
+    )
+    assert balances.returncode == 0, balances.stderr
+    assert "Assets:Checking" in balances.stdout
+    assert "-1234" in balances.stdout
 
 
 def test_search_parses_without_db(env, capsys):
@@ -141,10 +203,11 @@ def test_readme_argv_smoke(env, capsys):
 
 def test_readme_golden_path_text():
     text = Path("README.md").read_text(encoding="utf-8")
-    assert "python -m ironledger.cli project" in text
-    assert "python -m ironledger.cli search" in text
-    assert "python -m ironledger.cli balances" in text
+    assert "python -m ironledger.cli project --db ironledger.db --ledger-dir ledger" in text
+    assert "python -m ironledger.cli search --ledger-dir ledger coffee" in text
+    assert "python -m ironledger.cli balances --ledger-dir ledger" in text
     assert "authorize project" in text
+    assert "safe-mode.json" in text
 
 
 def test_phase_banner_is_four():

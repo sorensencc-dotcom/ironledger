@@ -588,7 +588,7 @@ def test_contract_14_help_and_epilog(capsys):
     assert "python -m ironledger.cli project" in readme
     assert "python -m ironledger.cli search" in readme
     assert "python -m ironledger.cli balances" in readme
-    assert "python -m ironledger.cli project --db <db> --ledger-dir ledger" in out
+    assert "python -m ironledger.cli project --db ironledger.db --ledger-dir ledger" in out
     assert "python -m ironledger.cli search --ledger-dir ledger coffee" in out
     assert "python -m ironledger.cli balances --ledger-dir ledger" in out
 
