@@ -32,7 +32,7 @@ from ironledger.compile.errors import (
 from ironledger.compile import hashing, journal, recover, writer
 from ironledger.project.activate import default_projection_dir, rebuild_projection
 from ironledger.project.errors import ProjectError
-from ironledger.project.query import assert_fresh, balances as project_balances, search as project_search
+from ironledger.project.query import assert_fresh, balances as project_balances, projection_status, search as project_search
 
 _EXIT_OK = 0
 _EXIT_ERROR = 1
@@ -852,23 +852,6 @@ def _cmd_project(args) -> int:
         conn.close()
 
 
-def _live_project_status(ledger_dir: Path, projection_dir: Path, *, db: str | None) -> dict:
-    try:
-        conn = assert_fresh(ledger_dir, projection_dir, db=db)
-    except ProjectError:
-        return {"status": "mismatch", "hash_matches_files": False}
-    try:
-        row = conn.execute(
-            "SELECT ledger_output_hash FROM projection_meta WHERE singleton = 1"
-        ).fetchone()
-        ledger_output_hash = row[0] if row else ""
-    finally:
-        conn.close()
-    return {
-        "status": "ok",
-        "ledger_output_hash": ledger_output_hash,
-        "hash_matches_files": True,
-    }
 
 
 def _cmd_project_status(args) -> int:
@@ -876,27 +859,8 @@ def _cmd_project_status(args) -> int:
     if ledger_dir is None:
         return 2
     projection_dir = _projection_dir(args, ledger_dir)
-    sqlite_path = projection_dir / "projection.sqlite"
-    manifest_path = projection_dir / "projection.manifest.json"
     as_json = bool(getattr(args, "json", False))
-
-    if not sqlite_path.is_file() and not manifest_path.is_file():
-        status_data: dict = {"status": "missing"}
-    else:
-        status_data = _live_project_status(ledger_dir, projection_dir, db=args.db)
-
-    if args.db:
-        op_conn = connect(str(args.db))
-        try:
-            latest = journal.get_latest_successful_run(op_conn)
-        finally:
-            op_conn.close()
-        status_data["latest_run"] = latest
-        expected = None if latest is None else latest.get("actual_output_hash")
-        on_disk = status_data.get("ledger_output_hash")
-        if expected and on_disk:
-            status_data["hash_matches_compile"] = on_disk == expected
-
+    status_data = projection_status(ledger_dir, projection_dir, db=args.db)
     print(render.render_project_status(status_data, as_json=as_json))
     return _EXIT_OK
 

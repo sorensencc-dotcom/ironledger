@@ -10,6 +10,7 @@ from ironledger.compile.hashing import compute_actual_output_hash
 from ironledger.db.connection import connect
 from ironledger.manifests import ManifestError, parse_manifest, verify_manifest
 from ironledger.project.errors import (
+    ProjectError,
     ProjectInputError,
     ProjectStaleError,
     format_query_error,
@@ -188,3 +189,53 @@ def balances(conn: sqlite3.Connection) -> list[BalanceRow]:
         )
         for row in rows
     ]
+
+
+def projection_status(
+    ledger_dir: Path,
+    projection_dir: Path,
+    *,
+    db: str | None = None,
+) -> dict:
+    """Return structured projection status without raising."""
+    ledger_dir = Path(ledger_dir)
+    projection_dir = Path(projection_dir)
+    sqlite_path = projection_dir / "projection.sqlite"
+    manifest_path = projection_dir / "projection.manifest.json"
+
+    if not sqlite_path.is_file() and not manifest_path.is_file():
+        status_data: dict = {"status": "missing"}
+    else:
+        try:
+            conn = assert_fresh(ledger_dir, projection_dir, db=db)
+        except ProjectError:
+            status_data = {"status": "mismatch", "hash_matches_files": False}
+        else:
+            try:
+                row = conn.execute(
+                    "SELECT ledger_output_hash FROM projection_meta WHERE singleton = 1"
+                ).fetchone()
+                ledger_output_hash = row[0] if row else ""
+            finally:
+                conn.close()
+            status_data = {
+                "status": "ok",
+                "ledger_output_hash": ledger_output_hash,
+                "hash_matches_files": True,
+            }
+
+    if db:
+        from ironledger.compile import journal
+
+        op_conn = connect(str(db))
+        try:
+            latest = journal.get_latest_successful_run(op_conn)
+        finally:
+            op_conn.close()
+        status_data["latest_run"] = latest
+        expected = None if latest is None else latest.get("actual_output_hash")
+        on_disk = status_data.get("ledger_output_hash")
+        if expected and on_disk:
+            status_data["hash_matches_compile"] = on_disk == expected
+
+    return status_data

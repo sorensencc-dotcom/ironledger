@@ -103,3 +103,18 @@ def test_schema_mismatch_is_stale(live, monkeypatch):
     monkeypatch.setattr("ironledger.project.query.PROJECT_SCHEMA_VERSION", 2)
     with pytest.raises(ProjectStaleError, match="authorize project"):
         assert_fresh(ledger_dir, projection_dir)
+
+
+def test_projection_status_missing(tmp_path: Path):
+    from ironledger.project.query import projection_status
+    got = projection_status(tmp_path / "ledger", tmp_path / "projection")
+    assert got == {"status": "missing"}
+
+
+def test_projection_status_rebuilt(live):
+    from ironledger.project.query import projection_status
+    ledger_dir, projection_dir = live
+    got = projection_status(ledger_dir, projection_dir)
+    assert got.get("status") == "ok"
+    assert got.get("hash_matches_files") is True
+    assert len(got.get("ledger_output_hash", "")) == 64
