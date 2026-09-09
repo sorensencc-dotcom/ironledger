@@ -10,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from ironledger.db.connection import connect
-from ironledger.web.routers import staging
+from ironledger.web.routers import rules, staging
 
 __all__ = ["create_app"]
+
 
 
 def create_app(
@@ -65,6 +66,7 @@ def create_app(
 
     # Include routers
     app.include_router(staging.router)
+    app.include_router(rules.router)
 
     # Mount static assets if build directory exists
     if static_dir and Path(static_dir).exists():
