@@ -25,6 +25,11 @@ packages = ["src/ironledger"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning:fastapi.*",
+    "ignore::DeprecationWarning:starlette.*",
+    "ignore::PendingDeprecationWarning:starlette.*",
+]
 markers = [
     "integration: marks tests that require external tools or binaries like bean-check",
 ]
