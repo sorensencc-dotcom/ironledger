@@ -30,8 +30,12 @@ def run_web(
         Path(config_dir).resolve() if config_dir else resolved_db.parent / 'config'
     )
 
-    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    # Path to web/dist from src/ironledger/cli/commands/web.py
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent.parent
     static_dist = repo_root / 'web' / 'dist'
+    if not static_dist.is_dir():
+        # Fallback to current working directory if running in project root
+        static_dist = Path.cwd() / 'web' / 'dist'
     static_dir = static_dist if static_dist.is_dir() else None
 
     app = create_app(
