@@ -79,7 +79,6 @@ export interface CompileResult {
 }
 
 export interface AuditEvent {
-  event_id: string;
   sequence_number: number;
   timestamp_utc: string;
   actor: string;
@@ -87,5 +86,20 @@ export interface AuditEvent {
   target: string;
   result: string;
   event_hash: string;
+}
+
+export interface MutationEvent {
+  seq: number;
+  mutation_id: string;
+  ts_utc: string;
+  operator_session: string;
+  action: string;
+  staged_count: number;
+  rules_applied: number;
+  rules_created: number;
+  sha256_before: string;
+  sha256_after: string;
+  prev_mutation_hash: string;
+  mutation_hash: string;
 }
 

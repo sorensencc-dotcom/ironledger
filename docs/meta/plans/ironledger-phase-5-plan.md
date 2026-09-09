@@ -6,6 +6,40 @@
 
 **Architecture:** A new `src/ironledger/mcp/` package (eight modules, locked) implements a stdlib JSON-RPC / MCP 2025-03-26 subset. `tools.py` dispatches into `project.query` (and a lifted status helper). `stdio.py` and `http.py` are transports only. No mutation path, no `mcp` package, no SSE, no non-loopback bind.
 
+```
+  agent / client
+       |
+       |  argv: --db (audit only) --ledger-dir --projection-dir
+       |  --bind absent => stdio     --bind 127.0.0.1|::1 --port N => HTTP
+       v
+  +------------------+     +----------------------------------------------+
+  | stdio.py         |     | http.py   POST /mcp only                     |
+  | newline JSON-RPC |     | 1 path/method  2 Host 403  3 Origin 403      |
+  | one object/line  |     | 4 Content-Length/chunked 413 (max 1 MiB)     |
+  +--------+---------+     | 5 Bearer 401   6 read body                   |
+           |               +----------------------+-----------------------+
+           |                                      |
+           +------------------+-------------------+
+                              v
+                    protocol.py  JSON-RPC
+                    initialize / ping / tools/list / tools/call
+                              |
+                              v
+                    tools.py   allowlist:
+                    search | balances | projection_status
+                    (no compile/import/review/project/rule)
+                              |
+              +---------------+---------------+
+              v                               v
+     project.query                     audit_events on --db
+     projection.sqlite                 action=mcp search|balances|status
+     assert_fresh / search /           |mcp tools/call|mcp auth
+     balances / projection_status      never store query string or token
+              |
+              X  never opens --db for query data
+              X  never require_operator, never rebuild_projection
+```
+
 **Tech Stack:** Python 3.12+ standard library (`json`, `http.server`, `secrets`, `hmac`, `socket`, `argparse`). No new runtime dependency. Tests use `pytest`.
 
 **Repo:** `C:\dev\IronLedger` (local `main`, no remote, decision D-0). Run tests with `python -m pytest -q` from the repo root. Baseline before Task 1: **418 passed / 2 skipped** without `bean-check` on PATH; **419 / 1** with. Phase 5 tests only add.
@@ -600,7 +634,7 @@ git commit -m "test(mcp): Phase 5 exit contract items 1-24"
 | §5 protocol | 6, 12.8/23 |
 | §6 tool payloads | 4, 5, 12.2–6 |
 | §7 stdio | 7, 12.9 |
-| §8 HTTP security | 2, 8, 12.10–14, 24 |
+| §8 HTTP security | 2, 8, 12.10–14, 24–26 |
 | §9 audit | 10, 12.18 |
 | §10 layout | 1–8 (eight modules) |
 | §11 out of scope | 5, 12.7/19 |

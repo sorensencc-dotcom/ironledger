@@ -21,20 +21,24 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 }) => {
   const isSafe = safeMode?.enabled ?? true;
 
-  // Freshness Pill styling
-  const freshnessStatus = freshness?.status ?? 'critical';
-  let freshnessColor = 'bg-rose-900/40 text-rose-300 border-rose-700/60';
-  let freshnessLabel = 'Projection: Desync';
-  if (freshnessStatus === 'fresh') {
-    freshnessColor = 'bg-emerald-900/40 text-emerald-300 border-emerald-700/60';
-    freshnessLabel = `Projection: Fresh (${freshness?.latency_seconds.toFixed(1)}s)`;
-  } else if (freshnessStatus === 'stale') {
-    freshnessColor = 'bg-amber-900/40 text-amber-300 border-amber-700/60';
-    freshnessLabel = `Projection: Stale (${freshness?.latency_seconds.toFixed(1)}s)`;
+  // Multi-threshold Freshness Indicator (<5s green, 5-30s amber, >30s rose pulse)
+  const latency = freshness?.latency_seconds ?? 999;
+  let freshnessColor = 'bg-rose-950/60 text-rose-300 border-rose-700/80 animate-pulse';
+  let freshnessDot = 'bg-rose-500 shadow-rose-500/50';
+  let freshnessLabel = `Projection: Desync (${latency >= 999 ? 'No sync' : `${latency.toFixed(1)}s`})`;
+
+  if (latency < 5) {
+    freshnessColor = 'bg-emerald-950/50 text-emerald-300 border-emerald-700/60';
+    freshnessDot = 'bg-emerald-400 shadow-emerald-400/50';
+    freshnessLabel = `Projection: Synced (${latency.toFixed(1)}s)`;
+  } else if (latency <= 30) {
+    freshnessColor = 'bg-amber-950/50 text-amber-300 border-amber-700/60';
+    freshnessDot = 'bg-amber-400 shadow-amber-400/50';
+    freshnessLabel = `Projection: Stale (${latency.toFixed(1)}s)`;
   }
 
   return (
-    <header className="h-14 border-b border-slate-700 bg-slate-900 px-4 flex items-center justify-between z-20 shrink-0">
+    <header className="h-14 border-b border-slate-700 bg-slate-900 px-4 flex items-center justify-between z-20 shrink-0 select-none">
       {/* Brand */}
       <div className="flex items-center space-x-3">
         <div className="flex items-center justify-center w-8 h-8 rounded bg-indigo-600 text-white font-mono font-bold text-sm shadow-md shadow-indigo-500/20">
@@ -43,8 +47,8 @@ export const TopHUD: React.FC<TopHUDProps> = ({
         <div>
           <h1 className="font-semibold text-sm tracking-wide text-slate-100 flex items-center gap-2">
             IronLedger
-            <span className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-normal">
-              v0.1.0
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono font-normal">
+              v0.1.0-phase5
             </span>
           </h1>
         </div>
@@ -52,28 +56,35 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
       {/* Center Status HUDs */}
       <div className="flex items-center space-x-3 font-mono text-xs">
-        {/* Safe Mode Guard Banner */}
+        {/* Safe Mode Guard Banner with Explicit Permissions */}
         <div
-          className={`px-2.5 py-1 rounded border flex items-center gap-1.5 transition-colors ${
+          className={`px-2.5 py-1 rounded border flex items-center gap-2 transition-colors ${
             isSafe
               ? 'bg-rose-950/50 text-rose-300 border-rose-800/60'
               : 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60'
           }`}
+          title={isSafe ? 'Safe Mode Active: Live compiles require confirmation token' : 'Safe Mode Unlocked: Operator full live write access'}
         >
-          {isSafe ? <ShieldAlert className="w-3.5 h-3.5 text-rose-400" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />}
-          <span>{isSafe ? 'SAFE MODE: ACTIVE' : 'SAFE MODE: UNLOCKED'}</span>
+          {isSafe ? <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold">{isSafe ? 'SAFE MODE' : 'UNLOCKED'}</span>
+            <span className="text-[10px] text-slate-400">
+              ({isSafe ? 'Simulate: OK | Compile: Token' : 'All Permitted'})
+            </span>
+          </div>
         </div>
 
         {/* Projection Freshness Pill */}
-        <div className={`px-2.5 py-1 rounded border flex items-center gap-1.5 ${freshnessColor}`}>
-          <RefreshCw className={`w-3.5 h-3.5 ${freshnessStatus === 'stale' ? 'animate-spin' : ''}`} />
+        <div className={`px-2.5 py-1 rounded border flex items-center gap-2 transition-colors ${freshnessColor}`}>
+          <span className={`w-2 h-2 rounded-full ${freshnessDot} shadow-sm`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${latency > 5 ? 'animate-spin' : ''}`} />
           <span>{freshnessLabel}</span>
         </div>
 
         {/* Session Token HUD */}
         <div className="px-2.5 py-1 rounded border border-slate-700 bg-slate-800/60 text-slate-300 flex items-center gap-1.5">
           <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-          <span>OPERATOR: LOCALHOST (D-0)</span>
+          <span>D-0 LOCALHOST</span>
         </div>
       </div>
 

@@ -12,6 +12,7 @@ import type {
   BalanceItem,
   CompileResult,
   FreshnessStatus,
+  MutationEvent,
   Rule,
   SafeModeStatus,
   StagedTransaction,
@@ -27,6 +28,7 @@ export default function App() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
+  const [mutations, setMutations] = useState<MutationEvent[]>([]);
 
   const [safeMode, setSafeMode] = useState<SafeModeStatus | null>(null);
   const [freshness, setFreshness] = useState<FreshnessStatus | null>(null);
@@ -79,6 +81,7 @@ export default function App() {
       api.getBalances().then(setBalances).catch(console.error);
     } else if (activeView === 'audit') {
       api.getAudit().then(setAuditLog).catch(console.error);
+      api.getMutations().then(setMutations).catch(console.error);
     }
   }, [activeView]);
 
@@ -243,25 +246,87 @@ export default function App() {
         {activeView === 'audit' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-slate-100">Meta-Ledger Audit Trail</h2>
-              <span className="text-xs text-slate-500">{auditLog.length} events</span>
+              <div>
+                <h2 className="text-base font-bold text-slate-100">Meta-Ledger & Audit Trail</h2>
+                <p className="text-xs text-slate-500">Append-only cryptographically hash-chained state mutations</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    api.getAudit().then(setAuditLog).catch(console.error);
+                    api.getMutations().then(setMutations).catch(console.error);
+                  }}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                >
+                  Refresh Chain
+                </button>
+              </div>
             </div>
-            <div className="divide-y divide-slate-800/60 text-xs">
-              {auditLog.map((a) => (
-                <div key={a.event_id} className="py-2.5 flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="text-slate-200 font-semibold">{a.action}</div>
-                    <div className="text-slate-500 text-[10px]">
-                      Seq #{a.sequence_number} &bull; {a.timestamp_utc} &bull; Actor: {a.actor}
+
+            {/* Mutation Events List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Ledger State Mutations ({mutations.length})</h3>
+                <span className="text-[10px] text-emerald-400 font-bold">SHA-256 Chain Verified</span>
+              </div>
+              <div className="divide-y divide-slate-800/60 text-xs border border-slate-800 rounded bg-slate-900/60 p-2">
+                {mutations.length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 text-xs">No mutation events recorded yet.</div>
+                ) : (
+                  mutations.map((m) => (
+                    <div key={m.mutation_id} className="py-2.5 px-2 flex flex-col space-y-1.5 hover:bg-slate-800/40 rounded transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold text-[10px]">
+                            SEQ #{m.seq}
+                          </span>
+                          <span className="text-slate-200 font-bold uppercase">{m.action}</span>
+                        </div>
+                        <span className="text-slate-500 text-[10px]">{m.ts_utc}</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] text-slate-400">
+                        <div>Staged: <span className="text-slate-200 font-bold">{m.staged_count}</span></div>
+                        <div>Applied: <span className="text-slate-200 font-bold">{m.rules_applied}</span></div>
+                        <div>Created: <span className="text-slate-200 font-bold">{m.rules_created}</span></div>
+                        <div>Actor: <span className="text-indigo-400">{m.operator_session}</span></div>
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-500 flex items-center gap-2 truncate">
+                        <span>Hash:</span>
+                        <span className="text-emerald-400/80 truncate font-mono">{m.mutation_hash}</span>
+                      </div>
                     </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                    a.result === 'ok' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'
-                  }`}>
-                    {a.result}
-                  </span>
-                </div>
-              ))}
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Audit Log Events List */}
+            <div className="space-y-3 pt-4">
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Operator Audit Events ({auditLog.length})</h3>
+              <div className="divide-y divide-slate-800/60 text-xs border border-slate-800 rounded bg-slate-900/60 p-2">
+                {auditLog.length === 0 ? (
+                  <div className="p-4 text-center text-slate-500 text-xs">No audit events recorded yet.</div>
+                ) : (
+                  auditLog.map((a) => (
+                    <div key={`${a.sequence_number}-${a.event_hash}`} className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-800/40 rounded transition-colors">
+                      <div className="space-y-0.5">
+                        <div className="text-slate-200 font-semibold flex items-center gap-2">
+                          <span>{a.action}</span>
+                          <span className="text-slate-500 text-[10px]">({a.target})</span>
+                        </div>
+                        <div className="text-slate-500 text-[10px]">
+                          Seq #{a.sequence_number} &bull; {a.timestamp_utc} &bull; Actor: {a.actor}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                        a.result === 'ok' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'
+                      }`}>
+                        {a.result}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}

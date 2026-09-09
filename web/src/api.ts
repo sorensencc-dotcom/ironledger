@@ -3,6 +3,7 @@ import type {
   BalanceItem,
   CompileResult,
   FreshnessStatus,
+  MutationEvent,
   Posting,
   Rule,
   RuleDrift,
@@ -151,7 +152,6 @@ export const api = {
     return res.json();
   },
 
-  // System
   async getSafeMode(): Promise<SafeModeStatus> {
     const res = await fetch(`${API_BASE}/system/safe-mode`);
     if (!res.ok) throw new Error(`Failed to check safe mode: ${res.statusText}`);
@@ -161,7 +161,15 @@ export const api = {
   async getAudit(): Promise<AuditEvent[]> {
     const res = await fetch(`${API_BASE}/system/audit`);
     if (!res.ok) throw new Error(`Failed to fetch audit: ${res.statusText}`);
-    return res.json();
+    const data = await res.json();
+    return data.events || [];
+  },
+
+  async getMutations(): Promise<MutationEvent[]> {
+    const res = await fetch(`${API_BASE}/system/mutations`);
+    if (!res.ok) throw new Error(`Failed to fetch mutations: ${res.statusText}`);
+    const data = await res.json();
+    return data.mutations || [];
   },
 };
 

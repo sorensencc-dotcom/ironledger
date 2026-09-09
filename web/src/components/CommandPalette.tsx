@@ -62,6 +62,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     },
     {
+      id: 'filter-pending',
+      title: 'Filter Staging: Pending Only',
+      category: 'Filters',
+      icon: Inbox,
+      run: () => {
+        onSelectView('staging');
+        onClose();
+      },
+    },
+    {
       id: 'run-simulate',
       title: 'Run Safe Mode Dry-Run Simulation',
       category: 'Actions',

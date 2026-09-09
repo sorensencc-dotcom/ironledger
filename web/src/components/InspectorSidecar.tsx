@@ -90,11 +90,11 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
         </div>
 
         {drift ? (
-          <div className="p-2.5 rounded bg-slate-800/60 border border-slate-700/60 space-y-2 font-mono text-[11px]">
+          <div className="p-2.5 rounded bg-slate-800/60 border border-slate-700/60 space-y-2.5 font-mono text-[11px]">
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Drift Status:</span>
               <span
-                className={`px-1.5 py-0.2 rounded font-bold uppercase ${
+                className={`px-1.5 py-0.2 rounded font-bold uppercase text-[10px] ${
                   drift.drift_status === 'healthy'
                     ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
                     : 'bg-amber-950 text-amber-400 border border-amber-800'
@@ -103,17 +103,36 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
                 {drift.drift_status}
               </span>
             </div>
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Confidence Trend:</span>
-              <span className="text-slate-200">{(drift.confidence_trend * 100).toFixed(0)}%</span>
+
+            {/* Hit Confidence Trend Heatmap / Bar */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-slate-400 text-[10px]">
+                <span>Hit Confidence Trend (HCT):</span>
+                <span className="text-slate-200 font-bold">{(drift.confidence_trend * 100).toFixed(0)}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden flex">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    drift.confidence_trend >= 0.8
+                      ? 'bg-emerald-500'
+                      : drift.confidence_trend >= 0.5
+                      ? 'bg-amber-500'
+                      : 'bg-rose-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(5, drift.confidence_trend * 100))}%` }}
+                />
+              </div>
             </div>
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Override Rate:</span>
-              <span className="text-slate-200">{(drift.override_rate * 100).toFixed(1)}%</span>
-            </div>
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Total Hits:</span>
-              <span className="text-slate-200">{drift.total_hits}</span>
+
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800 text-[10px]">
+              <div className="flex flex-col">
+                <span className="text-slate-500">Override Rate</span>
+                <span className="text-slate-200 font-bold">{(drift.override_rate * 100).toFixed(1)}%</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-slate-500">Total Hits</span>
+                <span className="text-slate-200 font-bold">{drift.total_hits}</span>
+              </div>
             </div>
           </div>
         ) : (
