@@ -1,4 +1,4 @@
-"""`ironledger` command tree (Phase 4)."""
+"""`ironledger` command tree (Phase 5)."""
 
 from __future__ import annotations
 
@@ -33,6 +33,10 @@ from ironledger.compile import hashing, journal, recover, writer
 from ironledger.project.activate import default_projection_dir, rebuild_projection
 from ironledger.project.errors import ProjectError
 from ironledger.project.query import assert_fresh, balances as project_balances, projection_status, search as project_search
+from ironledger.mcp.bind import assert_loopback
+from ironledger.mcp.errors import McpBindError
+from ironledger.mcp.http import serve_http
+from ironledger.mcp.stdio import run_stdio
 
 _EXIT_OK = 0
 _EXIT_ERROR = 1
@@ -197,6 +201,14 @@ def _build_parser() -> argparse.ArgumentParser:
     bal.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
     bal.add_argument("--json", action="store_true", help="render balances as JSON")
 
+    mcp = sub.add_parser("mcp", help="run the read-only MCP server (stdio or loopback HTTP)")
+    mcp.add_argument("--db", required=False, default=argparse.SUPPRESS, help="path to the SQLite ledger index")
+    mcp.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
+    mcp.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
+    mcp.add_argument("--bind", default=None, help="loopback IP to bind for Streamable HTTP (127.0.0.1 or ::1)")
+    mcp.add_argument("--port", type=int, default=None, help="port to listen on for Streamable HTTP (1..65535)")
+    mcp.add_argument("--rotate-token", action="store_true", help="rotate bearer token before listen")
+
     web = sub.add_parser("web", help="launch the Operator Workbench web interface")
     web.add_argument("--db", default=argparse.SUPPRESS, help="path to the SQLite ledger index")
     web.add_argument("--host", default="127.0.0.1", help="host address to bind")
@@ -228,7 +240,7 @@ def _projection_dir(args, ledger_dir: Path) -> Path:
 
 
 def _needs_operational_db(args) -> bool:
-    if args.command in {"compile", "import", "review", "rule", "fitid-trust"}:
+    if args.command in {"compile", "import", "review", "rule", "fitid-trust", "mcp"}:
         return True
     if args.command == "project" and getattr(args, "project_command", None) is None:
         return True
@@ -282,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_search(args)
     if args.command == "balances":
         return _cmd_balances(args)
+    if args.command == "mcp":
+        return _cmd_mcp(args)
     if args.command == "web":
         return _cmd_web(args)
     parser.error(f"unknown command {args.command!r}")
@@ -906,3 +920,55 @@ def _cmd_balances(args) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
+
+def _cmd_mcp(args) -> int:
+    ledger_dir = _require_ledger_dir(args)
+    if ledger_dir is None:
+        return 2
+    projection_dir = _projection_dir(args, ledger_dir)
+
+    bind = getattr(args, "bind", None)
+    port = getattr(args, "port", None)
+    rotate = bool(getattr(args, "rotate_token", False))
+
+    if bind is None and port is not None:
+        print("error: --port requires --bind", file=sys.stderr)
+        return 2
+    if bind is not None and port is None:
+        print("error: --bind requires --port", file=sys.stderr)
+        return 2
+    if rotate and bind is None:
+        print("error: --rotate-token requires --bind", file=sys.stderr)
+        return 2
+
+    if bind is not None:
+        try:
+            assert_loopback(bind)
+        except McpBindError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        if port < 1 or port > 65535:
+            print(f"error: port must be between 1 and 65535, got {port}", file=sys.stderr)
+            return 2
+        server = serve_http(
+            host=bind,
+            port=port,
+            ledger_dir=ledger_dir,
+            projection_dir=projection_dir,
+            db=args.db,
+            rotate=rotate,
+        )
+        try:
+            server.serve_forever()
+        finally:
+            server.server_close()
+        return 0
+
+    return run_stdio(
+        sys.stdin.buffer,
+        sys.stdout.buffer,
+        sys.stderr,
+        ledger_dir=ledger_dir,
+        projection_dir=projection_dir,
+        db=args.db,
+    )

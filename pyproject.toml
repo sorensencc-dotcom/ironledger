@@ -35,7 +35,7 @@ markers = [
 ]
 
 [tool.ironledger]
-# Phase 4: compile and projection are authorized and shipped
+# Phase 5: compile and projection are authorized and shipped
 # (ironledger compile / project / search / balances). MCP and
 # network code remain out of scope.
-phase = 4
+phase = 5
