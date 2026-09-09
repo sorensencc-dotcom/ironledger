@@ -1,0 +1,14 @@
+services:
+  ironledger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ironledger-workbench
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount the local data and ledger directories for persistence and host-inspection
+      - .:/data
+    environment:
+      - PYTHONUNBUFFERED=1
