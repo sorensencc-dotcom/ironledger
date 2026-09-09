@@ -200,6 +200,7 @@ def generate_projection_manifest(
     output_hash: str | None = None,
     db_path: Path | None = None,
     created_ts_utc: str | None = None,
+    schema_version: int | None = None,
 ) -> Manifest:
     """Generate a verified projection manifest from a live SQLite database."""
     # 1. Verify SQLite integrity
@@ -208,7 +209,7 @@ def generate_projection_manifest(
         raise ManifestError(f"SQLite integrity check failed: {integrity_status}")
 
     # 2. Extract schema version
-    schema_ver = migrations.current_version(conn)
+    schema_ver = schema_version if schema_version is not None else migrations.current_version(conn)
 
     # 3. Compute row counts across all user tables
     table_rows = conn.execute(
@@ -265,6 +266,7 @@ def verify_manifest(
     manifest: Manifest | str,
     conn: sqlite3.Connection | None = None,
     base_dir: Path | None = None,
+    schema_version: int | None = None,
 ) -> ManifestVerificationResult:
     """Verify manifest integrity, self-digest, database counts, and file digests.
 
@@ -306,7 +308,10 @@ def verify_manifest(
         if integrity_status != "ok":
             raise ManifestVerificationError(f"database integrity check failed: {integrity_status}")
 
-        current_ver = migrations.current_version(conn)
+        if schema_version is not None:
+            current_ver = schema_version
+        else:
+            current_ver = migrations.current_version(conn)
         if parsed.schema_version != current_ver:
             raise ManifestVerificationError(
                 f"schema version mismatch: manifest records {parsed.schema_version}, database is {current_ver}"
