@@ -81,7 +81,9 @@ Batches (JSON arrays) are rejected: JSON-RPC `-32600` Invalid Request. Messages 
 
 Business errors (stale projection, empty query, invalid FTS, limit out of range) are `tools/call` results with `isError: true` and `content: [{ "type": "text", "text": <Phase 4 error formula> }]`, not JSON-RPC transport errors, and not Python tracebacks on stdout.
 
-Stdout (stdio) contains only newline-delimited JSON-RPC messages. Logs go to stderr and must not include the bearer token or `Authorization` header.
+Any other exception inside `handle_message` (including `sqlite3.Error`, `OSError`, and bugs in `call_tool`) becomes JSON-RPC `-32603` Internal error. Preserve `id` when the request parsed. `error.message` is the literal `internal error` — not `str(exc)` (paths, SQL, tokens). Do not write a traceback to stdout. stderr may log the exception type name only, never the bearer token or `Authorization` header.
+
+Stdout (stdio) contains only newline-delimited JSON-RPC messages.
 
 ## 6. Tools
 
@@ -145,7 +147,7 @@ Lift `_live_project_status` out of `cli/__main__.py` into `project.query` (or a 
 
 Client launches `python -m ironledger.cli mcp --db … --ledger-dir …` as a subprocess.
 
-- Read UTF-8 lines from stdin. Each line is one JSON-RPC message.
+- Read stdin as **binary**, decode UTF-8 per line (strict). Each line is one JSON-RPC message. Max line length **1 MiB** (`MAX_HTTP_BODY`). If a line exceeds 1 MiB, discard through the next `\n` (or EOF), write one JSON-RPC `-32700`, continue. Do not keep the oversize bytes.
 - Write one JSON-RPC message per line to stdout for each request. Notifications produce no stdout line.
 - EOF on stdin: exit 0.
 - Parse failure: JSON-RPC `-32700` with `id` null, then continue (do not crash the process).
@@ -164,14 +166,14 @@ Security (MCP Streamable HTTP MUST/SHOULD, tightened). **Handler order is locked
 
 1. Bind socket to the `--bind` address only. `getsockname()[0]` is `127.0.0.1` or `::1`.
 2. Path and method: only POST `/mcp` continues (GET `/mcp` → 405; other path → 404).
-3. `Host` header required and must be loopback: `127.0.0.1`, `127.0.0.1:<port>`, `[::1]`, `[::1]:<port>`, `localhost`, `localhost:<port>`. Anything else → HTTP 403, no query, no body read.
+3. `Host` header required and must be loopback: `127.0.0.1`, `127.0.0.1:<port>`, `[::1]`, `[::1]:<port>`, `localhost`, `localhost:<port>`. Anything else → HTTP 403, no query, no body read. `localhost` is allowed on **Host** (local clients send it). `--bind localhost` remains refused (listen address is numeric only). DNS rebinding uses a non-loopback Host and is 403 (contract 24/26).
 4. `Origin` header: if present (including empty), it must be one of `http://127.0.0.1`, `http://127.0.0.1:<port>`, `http://localhost`, `http://localhost:<port>`, `http://[::1]`, `http://[::1]:<port>`, or `null`. Anything else → HTTP 403, no body read. Missing `Origin` is allowed (non-browser clients).
-5. Request body cap: **1 MiB**. Require `Content-Length` on POST `/mcp`. If `Content-Length` is missing, not a non-negative integer, or greater than 1,048,576, or `Transfer-Encoding` includes `chunked`, respond **413**, do not read the body, do not call `handle_message`, do not write the body into an audit event. A body that is shorter than `Content-Length` is a connection error (close; no tool result). This cap is HTTP-only; stdio is one JSON object per newline.
+5. Request body cap: **1 MiB**. Require `Content-Length` on POST `/mcp`. If `Content-Length` is missing, not a non-negative integer, or greater than 1,048,576, or `Transfer-Encoding` includes `chunked`, respond **413**, do not read the body, do not call `handle_message`, do not write the body into an audit event. A body that is shorter than `Content-Length` is a connection error (close; no tool result). Set a **5 second** socket timeout on the accepted connection before reading the body (`socket.setdefaulttimeout` is too global; set on the request socket / `rfile`). Timeout or undersize → close, no JSON-RPC result, `handle_message` not called. This cap is HTTP-only; stdio is one JSON object per newline.
 6. `Authorization: Bearer <token>` required on every POST `/mcp`. Missing, malformed, or wrong token → HTTP 401, `WWW-Authenticate: Bearer`, body not a tool result, no query. Compare with `hmac.compare_digest` against the hex token. Timing-safe. Do not distinguish "no file" from "wrong token" in the response body. 401 is only legal after Host and Origin have already passed.
-7. Then read at most `Content-Length` bytes and pass them to `handle_message`.
+7. Then read at most `Content-Length` bytes. Decode as UTF-8 (strict). `UnicodeDecodeError` → HTTP 200, JSON-RPC `-32700` Parse error, `id` null, do not call `handle_message`. Valid UTF-8 is passed to `handle_message`. stdio: if a line is not valid UTF-8, write one `-32700` line to stdout and continue (process stays up).
 8. Do not send `Access-Control-Allow-Origin: *`. OPTIONS may 405.
 
-Token file: 32 bytes from `secrets.token_bytes(32)`, written as lowercase hex, POSIX `chmod 0o600` after create and after rotate. On Windows, still call `chmod`; do not fail the phase if the OS only implements a subset of POSIX bits. Tests on POSIX assert `stat.st_mode & 0o777 == 0o600`. Windows tests assert the file exists and the HTTP 401/200 contract; they do not assert Unix mode.
+Token file: 32 bytes from `secrets.token_bytes(32)`, written as lowercase hex. Create and rotate write `projection/.mcp-token.tmp` (same directory as the live file) then `os.replace` onto `projection/.mcp-token`. Crash before replace: live file is the previous complete token or absent. POSIX `chmod 0o600` on the live path after **every** `load_or_create_token` (create, reuse, and corrupt-rewrite) and after `rotate_token`. A pre-existing `0644` file must become `0600` on the next load. On Windows, still call `chmod`; do not fail the phase if the OS only implements a subset of POSIX bits. Tests on POSIX: create `0644`, load, assert `st_mode & 0o777 == 0o600`. Windows tests assert the file exists and the HTTP 401/200 contract; they do not assert Unix mode.
 
 On first HTTP bind, if the token file is missing, create it and print **only** this line to stderr: `mcp token written to <path>` (path, not secret). On reuse, print nothing about the token.
 
@@ -186,11 +188,11 @@ Every `tools/call` that is a request (not a parse error) appends one `audit_even
 - `input_hash`: projection `ledger_output_hash` when the projection opened; otherwise null
 - Do **not** store the FTS query string, tool arguments JSON, bearer token, or `Authorization` header
 
-HTTP 401/403 append `action="mcp auth"`, `target="http"`, `result="denied"`. One event per rejected request.
+HTTP 401/403 append `action="mcp auth"`, `target="http"`, `result="denied"`. One event per rejected request. These events do not require reading the JSON body (Host/Origin/Authorization already failed). If the audit insert raises, still return the same 401 or 403 (never 500, never tool rows).
 
 stdio does not emit `mcp auth` events.
 
-Audit write failure must not return projection rows: fail the tool with `isError` (or abort the HTTP request with 500 after 401 is already sent? 401 path: try audit, still return 401 even if audit fails). Tool-call path: if audit insert fails, `isError: true`, no hits.
+Tool-call path: if audit insert fails, `isError: true`, no hits (contract 29).
 
 ## 10. Module layout
 
@@ -252,6 +254,14 @@ All items below are gate-blocking. Named tests in `tests/test_phase5_exit_contra
 24. Host header `evil.example:8765` on POST `/mcp` with a valid token → 403.
 25. POST `/mcp` with `Content-Length` > 1048576, or with `Transfer-Encoding: chunked`, returns 413. `handle_message` is not invoked. The audit stream does not contain the request body. 413 is only reached when Host and Origin already passed.
 26. POST `/mcp` with `Origin: https://evil.example` and a valid bearer token → 403 (not 401, not 200). POST with `Host: evil.example:8765` and no Authorization header → 403 (not 401).
+27. `handle_message` with `call_tool` raising `RuntimeError("secret")` returns JSON-RPC `-32603`, `error.message` is `internal error`, and `secret` does not appear in the returned string. stdio stdout for that request is exactly one JSON object plus newline.
+28. HTTP POST `/mcp` with body `0xff,0xfe` (valid Host, Origin, bearer, Content-Length) returns HTTP 200 whose JSON-RPC error code is `-32700`. `handle_message` is not called. stdio a non-UTF-8 line yields one `-32700` stdout line and the loop continues.
+29. `append_audit_event` raising during `tools/call` `search` yields `isError: true` and no hit payload (no `Coffee` / posting rows in the JSON text). The live projection is unchanged.
+30. POST `/mcp` with a valid bearer token and `Origin: https://evil.example` returns 403 and appends `audit_events` with `action="mcp auth"`, `target="http"`, `result="denied"`. No tool JSON body. The FTS query string is not stored.
+31. POST `/mcp` with a valid bearer token and JSON-RPC notification `{"jsonrpc":"2.0","method":"notifications/initialized"}` (no `id`) returns HTTP 202 and an empty body. No JSON-RPC response object.
+32. POST `/mcp` with valid Host, Origin, and bearer, `Content-Length: 100`, and a 2-byte body does not call `handle_message` and does not return a JSON-RPC result body. The test uses a raw socket. The server's read timeout is 5s so the suite and a slow client cannot hang the process.
+33. `projection/.mcp-token` containing `nope` (or any non-64-hex payload) is replaced by `load_or_create_token` with a 64-hex token. The returned value equals the file bytes. `nope` is not accepted by `verify_bearer`.
+34. stdio: a binary line of 1,048,577 bytes then `\n` yields one stdout JSON-RPC `-32700` and the loop continues. Memory for that request does not retain the oversize payload after the error is written.
 
 ## 13. Open items carried into the plan, not this spec
 

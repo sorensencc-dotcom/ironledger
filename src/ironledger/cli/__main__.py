@@ -198,6 +198,7 @@ def _build_parser() -> argparse.ArgumentParser:
     bal.add_argument("--json", action="store_true", help="render balances as JSON")
 
     web = sub.add_parser("web", help="launch the Operator Workbench web interface")
+    web.add_argument("--db", default=argparse.SUPPRESS, help="path to the SQLite ledger index")
     web.add_argument("--host", default="127.0.0.1", help="host address to bind")
     web.add_argument("--port", type=int, default=8000, help="port number to bind")
     web.add_argument("--projection-db", default=None, help="path to projection SQLite database")

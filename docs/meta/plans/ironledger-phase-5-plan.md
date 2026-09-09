@@ -96,7 +96,7 @@ Created:
 | `tests/test_mcp_http.py` | HTTP bind, 401, Origin, Host |
 | `tests/test_cli_mcp.py` | CLI argv |
 | `tests/test_mcp_audit.py` | Audit events |
-| `tests/test_phase5_exit_contract.py` | Gate items 1–26 except 20 |
+| `tests/test_phase5_exit_contract.py` | Gate items 1–34 except 20 |
 
 Modified:
 
@@ -264,8 +264,8 @@ git commit -m "feat(mcp): refuse non-loopback bind hosts"
 - Consumes: `secrets`, `hmac`, `os.chmod`
 - Produces:
   - `TOKEN_NAME = ".mcp-token"`
-  - `load_or_create_token(projection_dir: Path) -> str` — 64 lowercase hex chars; create dir if needed; do not create `projection.sqlite`; `chmod 0o600` on create
-  - `rotate_token(projection_dir: Path) -> str` — always write a new token
+  - `load_or_create_token(projection_dir: Path) -> str` — 64 lowercase hex chars; create dir if needed; do not create `projection.sqlite`; write `.mcp-token.tmp` then `os.replace`; `chmod 0o600` on every load
+  - `rotate_token(projection_dir: Path) -> str` — always write a new token via `.mcp-token.tmp` then `os.replace`
   - `verify_bearer(header: str | None, token: str) -> bool` — True iff header is `Bearer <token>` (single space) and `hmac.compare_digest`
 
 Reuse existing file on `load_or_create_token` if it is exactly 64 hex chars. Corrupt/short file → rotate in place (treat as missing and rewrite). Do not log the token.
@@ -313,6 +313,28 @@ def test_verify_bearer():
     assert verify_bearer(None, token) is False
     assert verify_bearer("Bearer", token) is False
     assert verify_bearer(f"bearer {token}", token) is False
+
+
+def test_corrupt_token_rewritten(tmp_path: Path):
+    path = tmp_path / ".mcp-token"
+    path.write_text("nope", encoding="utf-8")
+    token = load_or_create_token(tmp_path)
+    assert len(token) == 64
+    int(token, 16)
+    assert path.read_text(encoding="utf-8").strip() == token
+    assert verify_bearer("Bearer nope", token) is False
+
+
+def test_reuse_chmods_0600(tmp_path: Path):
+    import os, stat
+    if os.name == "nt":
+        pytest.skip("Windows chmod subset")
+    token = load_or_create_token(tmp_path)
+    path = tmp_path / ".mcp-token"
+    os.chmod(path, 0o644)
+    again = load_or_create_token(tmp_path)
+    assert again == token
+    assert path.stat().st_mode & 0o777 == 0o600
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -320,7 +342,7 @@ def test_verify_bearer():
 Run: `python -m pytest tests/test_mcp_token.py -q`
 Expected: FAIL
 
-- [ ] **Step 3: Write minimal implementation** in `token.py` using `secrets.token_bytes(32).hex()`, write UTF-8 LF, `os.chmod(path, 0o600)`.
+- [ ] **Step 3: Write minimal implementation** in `token.py` using `secrets.token_bytes(32).hex()`, write UTF-8 LF to `.mcp-token.tmp`, `os.replace` onto `.mcp-token`, `os.chmod(live, 0o600)` on every load.
 
 - [ ] **Step 4: Run tests**
 
@@ -436,8 +458,9 @@ Rules:
 - `tools/list` → `{ "tools": list_tools() }`
 - `tools/call` params `name` + `arguments`; result is MCP `CallToolResult` (`content` + `isError`)
 - `resources/list` / `prompts/list` → `-32601`
+- Unexpected exception from `call_tool` (or anything after a parsed request) → `-32603` with `error.message == "internal error"`, same `id` as the request. Stdout is that one JSON object. No traceback on stdout.
 
-- [ ] **Step 1: Failing tests** for parse error, batch, initialize, ping, tools/list names, tools/call search (needs rebuilt projection), resources/list -32601, initialized notification returns None.
+- [ ] **Step 1: Failing tests** for parse error, batch, initialize, ping, tools/list names, tools/call search (needs rebuilt projection), resources/list -32601, initialized notification returns None, and `call_tool` patched to `raise RuntimeError("secret path")` → `-32603`, `"internal error"` in the body, `"secret path"` not in stdout.
 
 - [ ] **Step 2–4:** implement and pass
 
@@ -458,10 +481,12 @@ git commit -m "feat(mcp): JSON-RPC initialize, ping, tools/list, tools/call"
 
 **Interfaces:**
 - Produces: `def run_stdio(stdin, stdout, stderr, *, ledger_dir: Path, projection_dir: Path, db: str | None) -> int`
-- Read lines until EOF. Each request line → one stdout line ending `\n`. Notifications: no stdout line. Return `0`.
+- `stdin` is a **binary** buffered stream (`sys.stdin.buffer`). Read until `\n` or `MAX_HTTP_BODY + 1` bytes. Oversize → discard through `\n`, one `-32700` stdout line, continue.
+- Each in-limit request line → one stdout line ending `\n`. Notifications: no stdout line. Return `0`.
+- A line that is not valid UTF-8 → one stdout line with JSON-RPC `-32700`, then continue. Do not crash.
 - Must not write a banner to stdout. Logs only on stderr, and stderr must not contain a 64-hex token even if a token file exists.
 
-- [ ] **Step 1: Test with `io.StringIO`:** write an initialize request line, run `run_stdio`, `json.loads` the single stdout line, assert `serverInfo.name`, assert stdout has no prefix before `{`.
+- [ ] **Step 1: Test with `io.BytesIO` stdin and `io.BytesIO` stdout:** write an initialize request line (UTF-8 + `b"\n"`), run `run_stdio`, `json.loads` the single stdout line, assert `serverInfo.name`, assert stdout has no prefix before `{`. Also: 1,048,577 bytes + `\n` → `-32700` and loop still handles a following initialize.
 
 - [ ] **Step 2–4**
 
@@ -485,6 +510,8 @@ git commit -m "feat(mcp): newline-delimited stdio transport"
   - `def serve_http(*, host: str, port: int, ledger_dir: Path, projection_dir: Path, db: str | None, rotate: bool = False) -> HTTPServer`
   - Call `assert_loopback(host)` before bind. `load_or_create_token` or `rotate_token`. Bind `(host, port)`.
   - Handler order is locked (spec §8): path/method → Host 403 → Origin 403 → Content-Length/chunked 413 → Bearer 401 → read body → `handle_message`.
+  - Before reading the body, set a 5.0s timeout on the request socket. Timeout or undersize body: close, no `handle_message`.
+  - Audit insert failure on 401/403: still return 401/403, never 500.
   - POST `/mcp` only for JSON-RPC. GET `/mcp` → 405. other path → 404.
   - If `Transfer-Encoding` contains `chunked`, or `Content-Length` is missing / not a non-negative int / `> 1048576`, return **413** and do not call `handle_message`. Constant `MAX_HTTP_BODY = 1_048_576`.
   - Bearer via `verify_bearer`. Fail → 401 + `WWW-Authenticate: Bearer`. 401 only after Host and Origin passed.
@@ -493,11 +520,11 @@ git commit -m "feat(mcp): newline-delimited stdio transport"
   - Notification POST → 202 empty.
   - Request POST → 200 `application/json` body from `handle_message`.
 
-Tests start the server on port `0` (OS-assigned) **inside the already-bound HTTPServer** — wait: spec forbids `--port 0` on the CLI, but tests may construct `HTTPServer((host, 0), …)` after `assert_loopback` to get an ephemeral port. CLI Task 9 still rejects `--port 0`. Document that `serve_http` accepts a concrete port; tests can pass a free port from `sock.bind(("127.0.0.1", 0)); port = sock.getsockname()[1]; sock.close()`.
+Tests bind the server with port `0` (`HTTPServer((host, 0), …)` after `assert_loopback`) and read `httpd.server_address[1]`. Do **not** open-and-close a throwaway socket first (TOCTOU under parallel pytest). CLI Task 9 still rejects `--port 0` (exit 2). `serve_http` for production is called with the operator's 1..65535 port; the test fixture may pass `0`.
 
 Use `threading.Thread(target=httpd.handle_request)` or `serve_forever` + `shutdown`. `urllib.request` for POST. Always `httpd.server_close()` in finally.
 
-Cover: 401 missing token, 401 wrong token (search not executed — use a projection_dir without sqlite and assert 401 rather than isError stale), valid token tools/list, Origin evil 403 even with valid token, Host evil 403 with no Authorization (not 401), GET 405, POST `/other` 404, getsockname 127.0.0.1, rotate invalidates old token, POST with `Content-Length: 1048577` → 413 and `handle_message` not called, POST with `Transfer-Encoding: chunked` → 413.
+Cover: 401 missing token, 401 wrong token (search not executed — use a projection_dir without sqlite and assert 401 rather than isError stale), valid token tools/list, Origin evil 403 even with valid token, Host evil 403 with no Authorization (not 401), GET 405, POST `/other` 404, getsockname 127.0.0.1, rotate invalidates old token, POST with `Content-Length: 1048577` → 413 and `handle_message` not called, POST with `Transfer-Encoding: chunked` → 413, POST body `b"\xff\xfe"` → HTTP 200 JSON-RPC `-32700`, POST notification `notifications/initialized` (no id) → HTTP 202 empty body, raw-socket POST with `Content-Length: 100` and 2-byte body does not call `handle_message` (timeout bounded).
 
 - [ ] **Steps 1–4** as usual
 
@@ -519,8 +546,8 @@ git commit -m "feat(mcp): loopback Streamable HTTP with bearer token"
 
 **Interfaces:**
 - Add parser `mcp` with `--db` `argparse.SUPPRESS` (same dest-split as `project` so `--db` after `mcp` works), `--ledger-dir`, `--projection-dir`, `--bind`, `--port` type=int, `--rotate-token` store_true.
-- `_needs_operational_db`: include `command == "mcp"`.
-- Dispatch: no bind → `run_stdio(sys.stdin, sys.stdout, sys.stderr, ...)`. bind → `assert_loopback`, reject port not in 1..65535, `serve_http` then `serve_forever` until KeyboardInterrupt, return 0.
+- `_needs_operational_db`: include `command == "mcp"`. Missing `--db` is exit 2 **there** (`_require_db`), same as `project` rebuild. `_cmd_mcp` assumes `args.db` is set; it does not print a second missing-`--db` error. `--db` after `mcp` uses `argparse.SUPPRESS` dest-split like `project`.
+- Dispatch: no bind → `run_stdio(sys.stdin.buffer, sys.stdout.buffer, sys.stderr, ...)`. bind → `assert_loopback`, reject port not in 1..65535, `serve_http` then `serve_forever` until KeyboardInterrupt, return 0. stdout writes are UTF-8 JSON + `\n` on the binary buffer.
 - `--bind` without `--port`, `--port` without `--bind`, `--rotate-token` without `--bind`: print error, return 2. Do this in `_cmd_mcp` (not only argparse required=) so tests can assert return code 2 via `main(argv)` without SystemExit from `parser.error` — **or** use `parser.error` which exits 2 via SystemExit. Match existing CLI: `project` uses `_require_db` return 2. Prefer `_cmd_mcp` returning 2 for the three argv combinations so `main([...])` is testable without catching SystemExit. `--port 0` is exit 2.
 - `require_operator` must not be imported on this path in a way that it runs. Safe mode on: still start stdio.
 
@@ -554,7 +581,7 @@ git commit -m "feat(cli): ironledger mcp stdio and loopback HTTP"
 - If `db` is None inside `call_tool` (should not happen from CLI), skip audit.
 - Audit insert failure on tool path: return `isError True`, no hits.
 
-- [ ] **Step 1: Tests** using fixtures: rebuild, `call_tool("search", {"query":"Coffee"}, ...)`, `SELECT action, target, result FROM audit_events`; assert query string `"Coffee"` not in any column values. HTTP 401 test reuses server helper from Task 8 and asserts last audit row.
+- [ ] **Step 1: Tests** using fixtures: rebuild, `call_tool("search", {"query":"Coffee"}, ...)`, `SELECT action, target, result FROM audit_events`; assert query string `"Coffee"` not in any column values. HTTP 401 test reuses server helper from Task 8 and asserts last audit row. Patch `append_audit_event` to raise: `call_tool("search", {"query":"Coffee"})` → `isError: true` and the text contains no `Coffee` and no posting_id from the sample set. Origin-403 POST (valid token, `Origin: https://evil.example`) → HTTP 403 and last audit row `action="mcp auth"`, `result="denied"`.
 
 - [ ] **Step 2–4**
 
@@ -597,7 +624,7 @@ git commit -m "docs(ironledger): Phase 5 mcp gitignore, README, dep posture"
 - Create: `tests/test_phase5_exit_contract.py`
 
 **Interfaces:**
-- Named tests `test_contract_1` … `test_contract_26` except `test_contract_20` (full suite is `pytest -q`, documented in the module docstring like Phase 4 item 12).
+- Named tests `test_contract_1` … `test_contract_34` except `test_contract_20` (full suite is `pytest -q`, documented in the module docstring like Phase 4 item 12).
 - Each maps 1:1 to spec §12. Reuse helpers from earlier tests; do not weaken assertions.
 
 Item 9 “no listening TCP socket”: assert `serve_http` is not called when `run_stdio` runs (patch `ironledger.mcp.http.serve_http` / or check `mcp.http` was not asked to bind). Do not require netstat.
