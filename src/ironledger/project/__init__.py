@@ -6,6 +6,7 @@ from ironledger.project.errors import (
     ProjectParseError,
     ProjectStaleError,
 )
+from ironledger.project.migrate import PROJECT_SCHEMA_VERSION
 
 __all__ = [
     "ProjectError",
@@ -14,4 +15,5 @@ __all__ = [
     "ProjectLockedError",
     "ProjectStaleError",
     "ProjectInputError",
+    "PROJECT_SCHEMA_VERSION",
 ]
