@@ -17,6 +17,7 @@ __all__ = [
     "require_safe_mode_off",
     "COMPILE_PHRASE",
     "COMPILE_RECOVER_PHRASE",
+    "PROJECT_PHRASE",
 ]
 
 # Phase 3: fixed authorization phrases for the Beancount compiler and its
@@ -24,6 +25,10 @@ __all__ = [
 # the `_PREFIX` entries below (prefix "authorize", subject == the dispatch key).
 COMPILE_PHRASE = "authorize compile"
 COMPILE_RECOVER_PHRASE = "authorize compile recover"
+
+# Phase 4: analytics projection. Same `require_operator` dispatch as compile;
+# prefix "authorize", subject == the dispatch key ("project").
+PROJECT_PHRASE = "authorize project"
 
 _PREFIX = {
     "import": "import",
@@ -37,6 +42,7 @@ _PREFIX = {
     "review-session": "review-session",
     "compile": "authorize",
     "compile recover": "authorize",
+    "project": "authorize",
 }
 
 # Display form of each dispatch key, used only for the `action` string written
