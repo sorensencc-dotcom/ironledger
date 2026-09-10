@@ -918,9 +918,6 @@ def _cmd_balances(args) -> int:
     return _EXIT_OK
 
 
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(main())
-
 def _cmd_mcp(args) -> int:
     ledger_dir = _require_ledger_dir(args)
     if ledger_dir is None:
@@ -972,3 +969,7 @@ def _cmd_mcp(args) -> int:
         projection_dir=projection_dir,
         db=args.db,
     )
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

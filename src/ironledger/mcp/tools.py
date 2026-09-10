@@ -121,12 +121,18 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
                 _audit_tool(db, action='mcp search', target='search', result='error', input_hash=input_hash)
                 return {'isError': True, 'content': [{'type': 'text', 'text': 'limit and offset must be integers'}]}
             hits_raw = search(conn, query, limit=limit, offset=offset)
-            _audit_tool(db, action='mcp search', target='search', result='ok', input_hash=input_hash)
+            try:
+                _audit_tool(db, action='mcp search', target='search', result='ok', input_hash=input_hash)
+            except Exception:
+                return {'isError': True, 'content': [{'type': 'text', 'text': 'Audit logging failed'}]}
             hits = [dataclasses.asdict(h) for h in hits_raw]
             return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps({'hits': hits}, indent=2, sort_keys=True)}]}
         elif name == 'balances':
             bals_raw = balances(conn)
-            _audit_tool(db, action='mcp balances', target='balances', result='ok', input_hash=input_hash)
+            try:
+                _audit_tool(db, action='mcp balances', target='balances', result='ok', input_hash=input_hash)
+            except Exception:
+                return {'isError': True, 'content': [{'type': 'text', 'text': 'Audit logging failed'}]}
             bals = [dataclasses.asdict(b) for b in bals_raw]
             return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps({'balances': bals}, indent=2, sort_keys=True)}]}
     except ProjectError as exc:
@@ -135,7 +141,5 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
         except Exception:
             pass
         return {'isError': True, 'content': [{'type': 'text', 'text': str(exc)}]}
-    except Exception as exc:
-        return {'isError': True, 'content': [{'type': 'text', 'text': 'Audit failure: ' + str(exc)}]}
     finally:
         conn.close()

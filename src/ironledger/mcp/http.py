@@ -23,10 +23,31 @@ ALLOWED_HOSTS = frozenset({
 def _is_loopback_host(host_header: str | None) -> bool:
     if not host_header:
         return False
-    h = host_header.split(':')[0]
-    if host_header.startswith('[') and ']' in host_header:
-        h = host_header[:host_header.index(']') + 1]
-    return h in ALLOWED_HOSTS
+    # Handle IPv6 bracket format [::1]:port or [::1]
+    if host_header.startswith('['):
+        if ']' not in host_header:
+            return False
+        bracket_end = host_header.index(']')
+        host_part = host_header[:bracket_end + 1]
+        rest = host_header[bracket_end + 1:]
+        if rest:
+            if not rest.startswith(':'):
+                return False
+            port_part = rest[1:]
+            if not port_part.isdigit():
+                return False
+        return host_part in ALLOWED_HOSTS
+
+    # Handle standard host:port or host
+    parts = host_header.split(':')
+    if len(parts) == 1:
+        return parts[0].lower() in ALLOWED_HOSTS
+    elif len(parts) == 2:
+        host_part, port_part = parts
+        if not port_part.isdigit():
+            return False
+        return host_part.lower() in ALLOWED_HOSTS
+    return False
 
 def _is_allowed_origin(origin_header: str | None) -> bool:
     if origin_header is None:
@@ -153,7 +174,7 @@ class McpHttpHandler(BaseHTTPRequestHandler):
             if len(body_bytes) != content_length:
                 self.close_connection = True
                 return
-        except (timeout, socket.timeout, OSError):
+        except (TimeoutError, socket.timeout, OSError):
             self.close_connection = True
             return
 
