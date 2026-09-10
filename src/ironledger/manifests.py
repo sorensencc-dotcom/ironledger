@@ -143,7 +143,8 @@ def render_manifest(manifest: Manifest) -> str:
     lines = ["# IRONLEDGER MANIFEST", json.dumps(header_data, sort_keys=True), "# ENTRIES"]
     sorted_entries = sorted(manifest.entries, key=lambda e: e.path.replace("\\", "/"))
     for entry in sorted_entries:
-        lines.append(f"{entry.sha256_hex}  {entry.path.replace('\\', '/')}")
+        normalized_path = entry.path.replace("\\", "/")
+        lines.append(f"{entry.sha256_hex}  {normalized_path}")
 
     return "\n".join(lines) + "\n"
 
