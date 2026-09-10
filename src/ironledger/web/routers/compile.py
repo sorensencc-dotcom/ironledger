@@ -5,11 +5,14 @@ from __future__ import annotations
 import difflib
 import sqlite3
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ironledger.audit import append_audit_event
-from ironledger.cli.auth import safe_mode_enabled
+from ironledger.governance.safemode import (
+    SafeModeAuthorizationError,
+    require_governed_authorization,
+    safe_mode_enabled,
+)
 from ironledger.compile.model import load_approved_set, validate_approved_set
 from ironledger.compile.render import render_ledger
 from ironledger.compile.writer import compile_approved
@@ -42,23 +45,22 @@ def compile_ledger(
     if payload.dry_run:
         return _run_simulation(db, ledger_dir)
 
-    # Mutation path: Enforce safe mode
-    if safe_mode_enabled(config_dir):
-        # Check token / phrase
-        valid_token = payload.safe_mode_token and payload.safe_mode_token.strip() == "authorize compile"
-        if not valid_token:
-            append_audit_event(
-                db,
-                actor="operator",
-                action="compile (denied: safe mode is on)",
-                target="ledger",
-                result="denied",
-            )
-            db.commit()
-            raise HTTPException(
-                status_code=403,
-                detail="Compile not authorized: safe mode is on and valid authorization token was not provided.",
-            )
+    # Mutation path: Enforce safe mode via governed authorization gate
+    try:
+        require_governed_authorization(
+            db,
+            token=payload.safe_mode_token,
+            phrase=payload.safe_mode_token,
+            scope="compile",
+            target_digest="ledger",
+            config_dir=config_dir,
+            actor="operator",
+        )
+    except SafeModeAuthorizationError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Compile not authorized: {exc}",
+        ) from exc
 
     try:
         summary = compile_approved(db, ledger_dir)
@@ -96,12 +98,40 @@ def simulate_compile(
 @router.post("/project/rebuild")
 def trigger_project_rebuild(
     request: Request,
+    payload: Optional[dict[str, Any]] = None,
     db: sqlite3.Connection = Depends(get_db),
 ):
     """Rebuild SQLite projection from plaintext ledger on disk."""
     app_state = request.app.state
     ledger_dir = getattr(app_state, "ledger_dir", Path("ledger"))
     projection_dir = getattr(app_state, "projection_dir", Path("projection"))
+    config_dir = getattr(app_state, "config_dir", Path("config"))
+
+    token = None
+    phrase = None
+    if isinstance(payload, dict):
+        token = payload.get("safe_mode_token") or payload.get("token")
+        phrase = payload.get("phrase") or payload.get("confirm")
+        if "ledger_dir" in payload and payload["ledger_dir"]:
+            ledger_dir = Path(payload["ledger_dir"]).resolve()
+        if "projection_dir" in payload and payload["projection_dir"]:
+            projection_dir = Path(payload["projection_dir"]).resolve()
+
+    try:
+        require_governed_authorization(
+            db,
+            token=token,
+            phrase=phrase,
+            scope="project",
+            target_digest="projection",
+            config_dir=config_dir,
+            actor="operator",
+        )
+    except SafeModeAuthorizationError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Projection rebuild not authorized: {exc}",
+        ) from exc
 
     try:
         summary = rebuild_projection(db, ledger_dir, projection_dir)

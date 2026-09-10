@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Request
 
-from ironledger.cli.auth import safe_mode_enabled
+from ironledger.governance.safemode import safe_mode_enabled
 from ironledger.web.schemas import SafeModeStatusResponse
 
 router = APIRouter(prefix="/api/system", tags=["system"])

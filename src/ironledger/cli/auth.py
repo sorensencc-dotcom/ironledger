@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import Callable
 
 from ironledger.audit import append_audit_event
+from ironledger.governance.safemode import (
+    SafeModeAuthorizationError,
+    create_step_up_token,
+    get_safe_mode_secret,
+    require_governed_authorization,
+    safe_mode_enabled,
+    verify_step_up_token,
+)
 from ironledger.ingest.errors import AuthorizationError
 
 __all__ = [
@@ -18,6 +26,11 @@ __all__ = [
     "COMPILE_PHRASE",
     "COMPILE_RECOVER_PHRASE",
     "PROJECT_PHRASE",
+    "SafeModeAuthorizationError",
+    "create_step_up_token",
+    "verify_step_up_token",
+    "get_safe_mode_secret",
+    "require_governed_authorization",
 ]
 
 # Phase 3: fixed authorization phrases for the Beancount compiler and its
@@ -70,15 +83,6 @@ def expected_phrase(action: str, subject: str) -> str:
         raise ValueError(f"no phrase defined for action {action!r}") from exc
     return f"{prefix} {subject}"
 
-
-def safe_mode_enabled(config_dir: str | Path) -> bool:
-    path = Path(config_dir) / "safe-mode.json"
-    if not path.is_file():
-        return True
-    try:
-        return bool(json.loads(path.read_text(encoding="utf-8")).get("enabled", True))
-    except json.JSONDecodeError:
-        return True
 
 
 def require_operator(
