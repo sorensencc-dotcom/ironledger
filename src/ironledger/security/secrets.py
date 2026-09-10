@@ -55,7 +55,9 @@ def _make_no_redirect_opener(
 ) -> urllib.request.OpenerDirector:
     class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
-            raise SSRFViolationError(f"HTTP redirect to {newurl!r} blocked by SSRF guard")
+            raise SSRFViolationError(
+                f"HTTP redirect to {mask_access_url(newurl)!r} blocked by SSRF guard"
+            )
 
     handlers: list[type[urllib.request.BaseHandler] | urllib.request.BaseHandler] = [
         NoRedirectHandler
@@ -70,6 +72,12 @@ def validate_ssrf_safe(url: str) -> None:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https":
         raise SSRFViolationError(f"URL must use https scheme; got {parsed.scheme!r}")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise SSRFViolationError("Non-standard port blocked") from exc
+    if port is not None and port != 443:
+        raise SSRFViolationError("Non-standard port blocked")
     host = parsed.hostname or ""
     if host not in SIMPLEFIN_ALLOWED_HOSTS:
         raise SSRFViolationError(f"Host {host!r} is not in the allowlist {SIMPLEFIN_ALLOWED_HOSTS}")
@@ -134,7 +142,7 @@ def claim_setup_token(token_b64: str, conn: sqlite3.Connection) -> str:
     opener = _make_no_redirect_opener(ssl_context=ctx)
     req = urllib.request.Request(claim_url, method="POST", data=b"")
     try:
-        with opener.open(req) as resp:
+        with opener.open(req, timeout=30.0) as resp:
             access_url = resp.read().decode("utf-8").strip()
     except urllib.error.URLError:
         _emit_credential_audit(conn, source="claim", outcome="failure")

@@ -125,6 +125,27 @@ def test_ssrf_accepts_beta_bridge_host(monkeypatch):
     validate_ssrf_safe("https://beta-bridge.simplefin.org/simplefin")
 
 
+def test_ssrf_rejects_non_standard_port():
+    with pytest.raises(SSRFViolationError, match="Non-standard port blocked"):
+        validate_ssrf_safe("https://bridge.simplefin.org:8443/simplefin")
+
+
+def test_ssrf_rejects_http_port():
+    with pytest.raises(SSRFViolationError, match="Non-standard port blocked"):
+        validate_ssrf_safe("https://bridge.simplefin.org:80/simplefin")
+
+
+def test_ssrf_accepts_explicit_port_443(monkeypatch):
+    import socket
+
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **kw: [(None, None, None, None, ("1.2.3.4", 443))],
+    )
+    validate_ssrf_safe("https://bridge.simplefin.org:443/simplefin")
+
+
 def test_get_access_url_reads_env(monkeypatch, conn):
     monkeypatch.setenv(
         "IRONLEDGER_SIMPLEFIN_ACCESS_URL", "https://u:p@bridge.simplefin.org/simplefin"
@@ -239,6 +260,7 @@ def test_claim_setup_token_success(monkeypatch, conn):
         masked = claim_setup_token(token_b64, conn)
 
         assert masked == "https://***:***@bridge.simplefin.org/simplefin"
+        assert mock_opener.open.call_args[1].get("timeout") == 30.0
         mock_set_keyring.assert_called_once_with(
             "ironledger", "simplefin_access_url", returned_access_url
         )
@@ -268,6 +290,7 @@ def test_claim_setup_token_network_error(monkeypatch, conn):
 
         with pytest.raises(urllib.error.URLError):
             claim_setup_token(token_b64, conn)
+        assert mock_opener.open.call_args[1].get("timeout") == 30.0
 
     rows = conn.execute(
         "SELECT action, result FROM audit_events WHERE action='CREDENTIAL_ACCESS_ATTEMPT'"
@@ -295,3 +318,29 @@ def test_redirect_handler_blocks_redirect():
             headers={},
             newurl="https://evil.com/leak",
         )
+
+
+def test_redirect_handler_masks_credentials_in_message():
+    from ironledger.security.secrets import _make_no_redirect_opener
+
+    opener = _make_no_redirect_opener()
+    redirect_handlers = [
+        h for h in opener.handlers if isinstance(h, urllib.request.HTTPRedirectHandler)
+    ]
+    assert len(redirect_handlers) == 1
+    handler = redirect_handlers[0]
+
+    with pytest.raises(SSRFViolationError) as excinfo:
+        handler.redirect_request(
+            req=MagicMock(),
+            fp=None,
+            code=302,
+            msg="Found",
+            headers={},
+            newurl="https://leaked_user:leaked_pass@evil.com/leak",
+        )
+    err_msg = str(excinfo.value)
+    assert "https://***:***@evil.com/leak" in err_msg
+    assert "leaked_user" not in err_msg
+    assert "leaked_pass" not in err_msg
+
