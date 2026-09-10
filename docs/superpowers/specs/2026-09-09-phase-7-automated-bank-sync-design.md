@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-09  
-**Status:** Hardened Specification (Findings 1-12 Resolved)  
+**Status:** Hardened Specification (Second Review — Findings 1–6 Resolved)  
 
 ---
 
@@ -19,7 +19,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 2. **Zero-Float Currency Coercion:** All aggregator decimal representations are transformed to signed integer minor units (cents) via deterministic arithmetic and strict grammar validation.
 3. **Hermetic Raw Evidence Integrity:** Exact wire bytes from raw HTTP responses are written to a temp file, flushed and fsynced, verified via SHA-256, and atomically renamed to `evidence/source_documents/<file_sha256>.raw`. Read-only permissions are enforced on Windows via `SetFileAttributesW(FILE_ATTRIBUTE_READONLY)` and POSIX `0o444`.
 4. **Isolated Credential Boundary & Safe Ingestion:** Setup tokens are never passed via CLI process arguments (passed via stdin/prompt). Access URLs/passwords are never logged, never stored in SQLite, and held in bounded-lifetime memory accessors.
-5. **SSRF Guard & TLS 1.3 Enforcement:** Setup token claim endpoints and aggregator endpoints are restricted to explicit host allowlists (`bridge.simplefin.org`, `beta-bridge.simplefin.org`), must be HTTPS, prohibit private/loopback IP ranges, and disable HTTP redirects. TLS uses explicit `SSLContext` requiring TLS 1.3 or TLS 1.2 minimum with strict cert/hostname validation.
+5. **SSRF Guard & TLS 1.2+ (TLS 1.3 Preferred):** Setup token claim endpoints and aggregator endpoints are restricted to explicit host allowlists (`bridge.simplefin.org`, `beta-bridge.simplefin.org`), must be HTTPS, prohibit private/loopback IP ranges, and disable HTTP redirects. TLS uses explicit `SSLContext` with `minimum_version = TLSv1_2` (TLS 1.3 negotiated when server supports it) and strict cert/hostname validation.
 6. **Fail-Closed Execution & Idempotency:** Overlapping poll intervals use account-scoped identity fingerprinting (`simplefin:id:<account_id>:<tx_id>`) backed by a SQLite UNIQUE constraint (`UNIQUE(external_id)`) with `INSERT ... ON CONFLICT DO NOTHING`. Polling while an active lock exists halts immediately.
 
 ---
@@ -79,6 +79,13 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
   1. `IRONLEDGER_SIMPLEFIN_ACCESS_URL` (Environment Variable)
   2. OS Keyring (`keyring.get_password('ironledger', 'simplefin_access_url')`)
   3. If missing: raise audited `CredentialsNotFoundError`.
+- **Secret-Access Audit Event — `CREDENTIAL_ACCESS_ATTEMPT`:**
+  - Emitted on **every** credential resolution attempt (both success and failure).
+  - **Schema:** `{"event": "CREDENTIAL_ACCESS_ATTEMPT", "actor": "system", "target": "simplefin_access_url", "source": "<env|keyring|missing>", "outcome": "<success|failure>", "error": "<masked_message_or_null>", "timestamp": "<iso8601_utc>"}`.
+  - The credential value itself is never included. The `error` field must pass through `mask_access_url()` before serialisation.
+  - Audit write executes **inside** the same `BEGIN IMMEDIATE` transaction as the staging insert when credential access occurs during a poll run. If the audit write fails, the transaction is rolled back and the poll aborts — audit loss is not permitted.
+  - For `auth claim` and `auth status` commands, the audit write is a standalone immediate commit (no staging transaction present).
+
 
 ### Task 7.2: SimpleFIN Bridge Client Engine & Raw Evidence Archiving
 - **Target Module:** `src/ironledger/ingest/simplefin.py`
@@ -87,6 +94,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
   - Enforce `context.minimum_version = ssl.TLSVersion.TLSv1_2` (negotiating TLS 1.3 when supported by server).
   - Explicit `context.verify_mode = ssl.CERT_REQUIRED`, `context.check_hostname = True`.
   - HTTP `Authorization: Basic <base64(user:pass)>` header constructed directly without embedding user:pass in the target URL string.
+  - **Residual Risk — DNS Rebinding (Accepted):** IP validation resolves the hostname before the request; `urllib` then re-resolves independently, creating a window where DNS rebinding could substitute a private address. This is accepted because: (a) the host is allowlisted to `bridge.simplefin.org` / `beta-bridge.simplefin.org`, not operator-controlled hostnames; (b) TLS cert validation binds the session to the legitimate server's certificate. Mitigation via custom socket pinning is deferred to Phase 8 hardening. Test `tests/test_sync_security.py` must include a comment documenting this residual risk.
 - **Date Range Query:** `GET https://bridge.simplefin.org/simplefin/accounts?start-date=<unix_utc>&end-date=<unix_utc>` with timestamps strictly as UTC integers (`int(datetime.now(timezone.utc).timestamp())`).
 - **Hermetic Raw Evidence Archival Protocol:**
   1. Read exact wire bytes into memory.
@@ -96,7 +104,8 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
   5. Check if target `evidence/source_documents/<file_sha256>.raw` exists:
      - If exists, verify exact byte equality. If hash matches but bytes mismatch (corruption), raise `EvidenceIntegrityError`. If identical, unlink tmp file (idempotent).
      - If not exists, atomically rename `.tmp` to `.raw` (`os.replace`).
-  6. Apply read-only attributes: Windows `win32api.SetFileAttributes` / `ctypes` (`FILE_ATTRIBUTE_READONLY = 0x01`); POSIX `os.chmod(0o444)`.
+  6. Apply read-only attributes: Windows `win32api.SetFileAttributes` / `ctypes` (`FILE_ATTRIBUTE_READONLY = 0x01`); POSIX `os.chmod(0o444)`.\r
+     - **Mutability Invariant Scope (Best-Effort):** The rename-then-chmod sequence is non-atomic; a concurrent writer can modify the file between those operations. On Windows, `FILE_ATTRIBUTE_READONLY` prevents direct writes but does not prevent replacement by a process with directory write permission. This invariant is therefore **best-effort read-only**: it deters accidental modification and establishes forensic intent, but is not a cryptographic tamper-proof guarantee. The SHA-256 hash stored in the audit log is the authoritative integrity anchor.\r
   7. Emit append-only audit event `EVIDENCE_ARCHIVED` with raw wire hash and byte count before database staging begins.
 
 ### Task 7.3: Feed Parsing, Grammar Normalization & DB-Enforced Deduplication
@@ -105,7 +114,8 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 - **Strict Amount Normalization & Grammar:**
   - Input grammar: `^[+-]?\d+(\.\d{1,2})?$` (rejects spaces, thousands commas, exponent notations, >2 decimal places).
   - Explicit sign extraction (`-1` if leading `-` else `+1`).
-  - Integer dollars and padded cents calculation: `dollars * 100 + cents * sign`. Zero floats.
+  - Integer dollars and padded cents calculation: `sign * (dollars * 100 + cents)`. Zero floats.
+  - Required test cases: `-12` → `-1200`, `-0.34` → `-34`, `+12` → `+1200`, `0` → `0`.
 - **Account-Scoped Identity Fingerprinting (v1 Algorithm):**
   - Primary Identity: `simplefin:id:<account_id>:<tx_id>` when `tx_id` is present.
   - Composite Fallback: `composite:v1:<sha256(canonical_json([account_id, posted_date, amount_cents, currency, description, memo]))>` ensuring zero delimiter collision and currency isolation.
@@ -119,10 +129,17 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 - **Lockfile Contract (`.sync.lock`):**
   - Lock content: JSON `{"pid": <pid>, "started_at": "<iso8601_utc>", "hostname": "<host>"}`.
   - Acquisition: Exclusive atomic file creation (`os.open(..., os.O_CREAT | os.O_EXCL | os.O_WRONLY)`).
-  - Stale Lock Inspection: If file exists, parse PID and started_at timestamp:
-    - Check PID liveness (`psutil.pid_exists(pid)` or `os.kill(pid, 0)`).
-    - If PID is dead, or if age > 30 minutes with dead process, safely reclaim and log `STALE_LOCK_RECLAIMED`.
-    - If PID is active and running IronLedger sync, fail closed with `SyncLockActiveError`.
+  - Stale Lock Inspection — parse the JSON on detection; apply the following outcome table in order:
+
+    | Condition | Outcome |
+    |---|---|
+    | JSON malformed / unreadable | Log `LOCK_PARSE_ERROR`, treat as stale, reclaim and log `STALE_LOCK_RECLAIMED`. |
+    | `hostname` ≠ current host | Fail closed: `SyncLockActiveError` (foreign host lock is never reclaimed). |
+    | PID exists and process name matches `ironledger` | Fail closed: `SyncLockActiveError`. |
+    | PID exists but belongs to an unrelated process (PID reuse) | Reclaim and log `STALE_LOCK_RECLAIMED` with note `pid_reuse`. |
+    | PID does not exist (dead process) | Reclaim and log `STALE_LOCK_RECLAIMED`. |
+    | `started_at` age > 30 minutes AND PID dead | Redundant with row above; same reclaim action. Provided for clarity only. |
+    | Permission error reading/deleting lock file | Log `LOCK_PERMISSION_ERROR`, fail closed: `SyncLockActiveError`. |
 - **CLI Commands (Zero Secret Leakage):**
   - `ironledger sync auth claim` (Prompts interactively or reads from stdin `--stdin`).
   - `ironledger sync auth status` (Outputs masked connection info and token validity).
