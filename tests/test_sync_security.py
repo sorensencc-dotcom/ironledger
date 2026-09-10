@@ -72,7 +72,10 @@ def test_fetch_accounts_aware_non_utc_datetimes(conn, tmp_path, monkeypatch):
     expected_start_ts = int(start_dt.astimezone(timezone.utc).timestamp())
     expected_end_ts = int(end_dt.astimezone(timezone.utc).timestamp())
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    mock_opener = MagicMock()
+    mock_opener.open.return_value = mock_resp
+
+    with patch("ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener):
         result = fetch_accounts(
             conn,
             start_date=start_dt,
@@ -81,7 +84,8 @@ def test_fetch_accounts_aware_non_utc_datetimes(conn, tmp_path, monkeypatch):
         )
 
     assert result == {"accounts": []}
-    req = mock_urlopen.call_args[0][0]
+    mock_opener.open.assert_called_once()
+    req = mock_opener.open.call_args[0][0]
     assert f"start-date={expected_start_ts}&end-date={expected_end_ts}" in req.full_url
     naive_replacement_ts = int(start_dt.replace(tzinfo=timezone.utc).timestamp())
     assert expected_start_ts != naive_replacement_ts
@@ -113,8 +117,11 @@ def test_fetch_accounts_retains_custom_port(conn, tmp_path, monkeypatch):
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = False
 
+    mock_opener = MagicMock()
+    mock_opener.open.return_value = mock_resp
+
     with patch("ironledger.ingest.formats.simplefin.validate_ssrf_safe"), \
-         patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+         patch("ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener):
         fetch_accounts(
             conn,
             start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -122,5 +129,21 @@ def test_fetch_accounts_retains_custom_port(conn, tmp_path, monkeypatch):
             evidence_dir=tmp_path,
         )
 
-    req = mock_urlopen.call_args[0][0]
+    req = mock_opener.open.call_args[0][0]
     assert req.full_url.startswith("https://bridge.simplefin.org:8443/simplefin/accounts?")
+
+
+def test_fetch_accounts_blocks_http_redirect(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "IRONLEDGER_SIMPLEFIN_ACCESS_URL",
+        "https://testuser:testpass@bridge.simplefin.org/simplefin",
+    )
+    # The real opener should block redirects
+    from ironledger.security.secrets import make_no_redirect_opener
+    opener = make_no_redirect_opener()
+    
+    # Test that opening a redirect raises SSRFViolationError
+    req = MagicMock()
+    handler = [h for h in opener.handlers if hasattr(h, "redirect_request")][0]
+    with pytest.raises(SSRFViolationError, match="HTTP redirect to .* blocked by SSRF guard"):
+        handler.redirect_request(req, None, 302, "Found", {}, "https://evil.com/leak")

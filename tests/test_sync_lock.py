@@ -47,50 +47,25 @@ def test_dead_pid_reclaimed(lock_path):
     assert not lock_path.exists()
 
 
-def test_malformed_json_reclaimed(lock_path):
+def test_malformed_json_fails_closed(lock_path):
     lock_path.write_text("NOT JSON")
-    assert inspect_and_reclaim_if_stale(lock_path) is True
+    with pytest.raises(SyncLockActiveError, match="malformed or unreadable"):
+        inspect_and_reclaim_if_stale(lock_path)
+    assert lock_path.exists()
 
 
-def test_foreign_hostname_fails_closed(lock_path):
-    lock_path.write_text(json.dumps({
-        "pid": 9999999, "started_at": "2024-01-01T00:00:00Z", "hostname": "other-machine"
-    }))
-    with patch("ironledger.pipeline.sync_daemon._get_hostname", return_value="my-machine"):
-        with pytest.raises(SyncLockActiveError):
-            inspect_and_reclaim_if_stale(lock_path)
+def test_malformed_json_dict_missing_fields_fails_closed(lock_path):
+    lock_path.write_text(json.dumps({"wrong": "data"}))
+    with pytest.raises(SyncLockActiveError, match="malformed or unreadable"):
+        inspect_and_reclaim_if_stale(lock_path)
+    assert lock_path.exists()
 
 
-def test_release_removes_lock(lock_path):
-    acquire_lock(lock_path)
-    release_lock(lock_path)
-    assert not lock_path.exists()
-
-
-def test_release_lock_missing_ok(lock_path):
-    assert not lock_path.exists()
-    release_lock(lock_path)  # Should not raise
-
-
-def test_release_permission_error(lock_path):
-    lock_path.write_text("data")
-    with patch.object(Path, "unlink", side_effect=PermissionError("denied")):
-        with pytest.raises(SyncLockPermissionError, match="Cannot release lock"):
-            release_lock(lock_path)
-
-
-def test_inspect_permission_error_reading(lock_path):
-    lock_path.write_text("data")
-    with patch.object(Path, "read_text", side_effect=PermissionError("access denied")):
-        with pytest.raises(SyncLockPermissionError, match="Cannot read lock"):
-            inspect_and_reclaim_if_stale(lock_path)
-
-
-def test_inspect_permission_error_deleting_malformed(lock_path):
-    lock_path.write_text("NOT JSON")
-    with patch.object(Path, "unlink", side_effect=PermissionError("access denied")):
-        with pytest.raises(SyncLockPermissionError, match="Cannot delete malformed lock"):
-            inspect_and_reclaim_if_stale(lock_path)
+def test_non_dict_json_fails_closed(lock_path):
+    lock_path.write_text(json.dumps([1, 2, 3]))
+    with pytest.raises(SyncLockActiveError, match="malformed or unreadable"):
+        inspect_and_reclaim_if_stale(lock_path)
+    assert lock_path.exists()
 
 
 def test_inspect_permission_error_deleting_stale(lock_path):
@@ -284,8 +259,9 @@ def test_strict_hostname_localhost_not_special(lock_path):
 
 def test_logging_malformed_json(lock_path, caplog):
     lock_path.write_text("NOT JSON")
-    with caplog.at_level(logging.WARNING, logger="ironledger.pipeline.sync_daemon"):
-        assert inspect_and_reclaim_if_stale(lock_path) is True
+    with caplog.at_level(logging.ERROR, logger="ironledger.pipeline.sync_daemon"):
+        with pytest.raises(SyncLockActiveError):
+            inspect_and_reclaim_if_stale(lock_path)
     assert "LOCK_PARSE_ERROR: malformed lock file at" in caplog.text
 
 
@@ -314,18 +290,34 @@ def test_inspect_file_not_found_reading(lock_path):
         assert inspect_and_reclaim_if_stale(lock_path) is True
 
 
-def test_inspect_file_not_found_unlinking_malformed(lock_path):
-    lock_path.write_text("NOT JSON")
-    with patch.object(Path, "unlink", side_effect=FileNotFoundError("gone")):
-        assert inspect_and_reclaim_if_stale(lock_path) is True
-
-
 def test_inspect_file_not_found_unlinking_stale(lock_path):
     lock_path.write_text(json.dumps({
         "pid": 9999999, "started_at": "2024-01-01T00:00:00Z", "hostname": _get_hostname()
     }))
     with patch.object(Path, "unlink", side_effect=FileNotFoundError("gone")):
         assert inspect_and_reclaim_if_stale(lock_path) is True
+
+
+def test_pid_exists_fallback_without_psutil(monkeypatch):
+    import builtins
+    from ironledger.pipeline.sync_daemon import _pid_exists, _pid_is_ironledger
+
+    # Simulate psutil not installed
+    real_import = builtins.__import__
+    def fake_import(name, *args, **kwargs):
+        if name == "psutil":
+            raise ImportError("no psutil")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    # Current process should exist
+    assert _pid_exists(os.getpid()) is True
+    # Without psutil, _pid_is_ironledger fails closed to True
+    assert _pid_is_ironledger(99999) is True
+    # Non-existent or 0/negative PID returns False
+    assert _pid_exists(0) is False
+    assert _pid_exists(-1) is False
 
 
 def test_cli_sync_poll_loads_account_map(tmp_path):

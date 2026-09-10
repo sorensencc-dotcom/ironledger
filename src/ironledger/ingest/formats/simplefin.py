@@ -17,6 +17,7 @@ import urllib.request
 from ironledger.audit import append_audit_event
 from ironledger.security.secrets import (
     get_access_url,
+    make_no_redirect_opener,
     mask_access_url,
     validate_ssrf_safe,
 )
@@ -104,8 +105,9 @@ def fetch_accounts(
     url = f"{base}?start-date={start_ts}&end-date={end_ts}"
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
+    opener = make_no_redirect_opener(ssl_context=_make_tls_context())
     try:
-        with urllib.request.urlopen(req, context=_make_tls_context(), timeout=30.0) as resp:
+        with opener.open(req, timeout=30.0) as resp:
             raw_bytes = resp.read()
     except Exception:
         append_audit_event(

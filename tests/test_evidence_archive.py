@@ -105,7 +105,10 @@ def test_fetch_accounts_success(conn, tmp_path, monkeypatch):
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = False
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    mock_opener = MagicMock()
+    mock_opener.open.return_value = mock_resp
+
+    with patch("ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener):
         result = fetch_accounts(
             conn,
             start_date=datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
@@ -118,12 +121,11 @@ def test_fetch_accounts_success(conn, tmp_path, monkeypatch):
     assert ev_file.exists()
     assert ev_file.read_bytes() == raw_payload
 
-    # Verify urlopen called with correct timeout and context
-    mock_urlopen.assert_called_once()
-    req = mock_urlopen.call_args[0][0]
-    kwargs = mock_urlopen.call_args[1]
+    # Verify opener.open called with correct timeout and request
+    mock_opener.open.assert_called_once()
+    req = mock_opener.open.call_args[0][0]
+    kwargs = mock_opener.open.call_args[1]
     assert kwargs.get("timeout") == 30.0
-    assert "context" in kwargs
 
     # Verify request URL and Authorization header
     expected_start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
@@ -154,7 +156,10 @@ def test_fetch_accounts_naive_datetimes(conn, tmp_path, monkeypatch):
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = False
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    mock_opener = MagicMock()
+    mock_opener.open.return_value = mock_resp
+
+    with patch("ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener):
         result = fetch_accounts(
             conn,
             start_date=datetime(2026, 2, 1, 0, 0, 0),
@@ -163,7 +168,7 @@ def test_fetch_accounts_naive_datetimes(conn, tmp_path, monkeypatch):
         )
 
     assert result == {"accounts": []}
-    req = mock_urlopen.call_args[0][0]
+    req = mock_opener.open.call_args[0][0]
     start_ts = int(datetime(2026, 2, 1, 0, 0, 0, tzinfo=timezone.utc).timestamp())
     end_ts = int(datetime(2026, 2, 28, 23, 59, 59, tzinfo=timezone.utc).timestamp())
     assert f"start-date={start_ts}&end-date={end_ts}" in req.full_url
@@ -174,8 +179,10 @@ def test_fetch_accounts_network_error(conn, tmp_path, monkeypatch):
         "IRONLEDGER_SIMPLEFIN_ACCESS_URL",
         "https://testuser:testpass@bridge.simplefin.org/simplefin",
     )
+    mock_opener = MagicMock()
+    mock_opener.open.side_effect = urllib.error.URLError("Connection refused")
     with patch(
-        "urllib.request.urlopen", side_effect=urllib.error.URLError("Connection refused")
+        "ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener
     ):
         with pytest.raises(urllib.error.URLError):
             fetch_accounts(
@@ -206,7 +213,10 @@ def test_fetch_accounts_never_leaks_secret_in_audit(conn, tmp_path, monkeypatch)
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.__exit__.return_value = False
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    mock_opener = MagicMock()
+    mock_opener.open.return_value = mock_resp
+
+    with patch("ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener):
         fetch_accounts(
             conn,
             start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),

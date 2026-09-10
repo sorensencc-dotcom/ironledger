@@ -34,12 +34,37 @@ def _get_hostname() -> str:
 
 
 def _pid_exists(pid: int) -> bool:
+    if pid <= 0:
+        return False
     try:
         import psutil
         return psutil.pid_exists(pid)
     except ImportError:
         if sys.platform == "win32":
-            return False  # conservative fallback
+            try:
+                import ctypes
+                PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+                SYNCHRONIZE = 0x00100000
+                handle = ctypes.windll.kernel32.OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, False, pid
+                )
+                if not handle:
+                    err = ctypes.GetLastError()
+                    # Error 5 is ERROR_ACCESS_DENIED -> process exists but cannot open
+                    if err == 5:
+                        return True
+                    return False
+                try:
+                    STILL_ACTIVE = 259
+                    exit_code = ctypes.c_ulong()
+                    if ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                        return exit_code.value == STILL_ACTIVE
+                    return True  # Fail closed: assume active
+                finally:
+                    ctypes.windll.kernel32.CloseHandle(handle)
+            except Exception:
+                # Fail closed: on any query failure on Windows, assume process is active
+                return True
         try:
             os.kill(pid, 0)
             return True
@@ -57,8 +82,11 @@ def _pid_is_ironledger(pid: int) -> bool:
         p = psutil.Process(pid)
         cmd = " ".join(p.cmdline()).lower()
         return "ironledger" in p.name().lower() or "ironledger" in cmd
+    except ImportError:
+        # Fail closed: without psutil, assume alive PID could be IronLedger
+        return True
     except Exception:
-        return False
+        return True
 
 
 def _write_lock(lock_path: Path) -> None:
@@ -98,12 +126,13 @@ def inspect_and_reclaim_if_stale(lock_path: Path) -> bool:
     """Inspect existing lock; reclaim if stale. Returns True if reclaimed.
 
     Outcome table (evaluated in order):
-    1. JSON malformed/unreadable -> log LOCK_PARSE_ERROR + reclaim.
-    2. hostname != current host -> SyncLockActiveError (foreign lock never reclaimed).
-    3. PID exists + ironledger process -> SyncLockActiveError.
-    4. PID exists, unrelated (PID reuse) -> reclaim.
-    5. PID dead -> reclaim.
-    6. Permission error reading/deleting -> SyncLockPermissionError + fail closed.
+    1. Permission error reading -> SyncLockPermissionError + fail closed.
+    2. JSON malformed/unreadable -> log LOCK_PARSE_ERROR + SyncLockActiveError (fail closed).
+    3. hostname != current host -> SyncLockActiveError (foreign lock never reclaimed).
+    4. PID exists + ironledger process -> SyncLockActiveError.
+    5. PID exists, unrelated (PID reuse) -> reclaim.
+    6. PID dead -> reclaim.
+    7. Permission error deleting -> SyncLockPermissionError + fail closed.
     """
     try:
         raw = lock_path.read_text(encoding="utf-8")
@@ -119,30 +148,28 @@ def inspect_and_reclaim_if_stale(lock_path: Path) -> bool:
             raise ValueError("Lock data must be a JSON object")
         pid = int(data["pid"])
         hostname = str(data.get("hostname", ""))
-    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-        # Outcome 1: malformed JSON -> reclaim
-        logger.warning("LOCK_PARSE_ERROR: malformed lock file at %s", lock_path)
-        try:
-            lock_path.unlink(missing_ok=True)
-        except FileNotFoundError:
-            return True
-        except PermissionError as exc:
-            logger.error("LOCK_PERMISSION_ERROR: permission error on %s: %s", lock_path, exc)
-            raise SyncLockPermissionError(f"Cannot delete malformed lock: {exc}") from exc
-        return True
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        logger.error(
+            "LOCK_PARSE_ERROR: malformed lock file at %s (%s) - failing closed",
+            lock_path,
+            exc,
+        )
+        raise SyncLockActiveError(
+            f"Lock file at {lock_path} is malformed or unreadable; manual operator recovery required"
+        ) from exc
 
-    # Outcome 2: foreign hostname -> fail closed
+    # Outcome 3: foreign hostname -> fail closed
     curr_host = _get_hostname()
     if hostname and hostname != curr_host:
         raise SyncLockActiveError(
             f"Lock held by foreign host {hostname!r}; remove manually."
         )
 
-    # Outcomes 3 + 4
+    # Outcomes 4 + 5
     if _pid_exists(pid) and _pid_is_ironledger(pid):
         raise SyncLockActiveError(f"Active IronLedger sync (PID {pid}) is running.")
 
-    # Outcome 5: dead PID (or PID reuse with unrelated process) -> reclaim
+    # Outcome 6: dead PID (or PID reuse with unrelated process) -> reclaim
     try:
         lock_path.unlink(missing_ok=True)
     except FileNotFoundError:

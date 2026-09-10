@@ -26,6 +26,7 @@ __all__ = [
     "get_access_url",
     "store_access_url",
     "claim_setup_token",
+    "make_no_redirect_opener",
 ]
 
 _KEYRING_SERVICE = "ironledger"
@@ -50,7 +51,7 @@ def mask_access_url(url: str) -> str:
     return _CREDENTIALS_RE.sub(r"\1***:***@", url)
 
 
-def _make_no_redirect_opener(
+def make_no_redirect_opener(
     ssl_context: ssl.SSLContext | None = None,
 ) -> urllib.request.OpenerDirector:
     class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -65,6 +66,9 @@ def _make_no_redirect_opener(
     if ssl_context is not None:
         handlers.append(urllib.request.HTTPSHandler(context=ssl_context))
     return urllib.request.build_opener(*handlers)
+
+
+_make_no_redirect_opener = make_no_redirect_opener
 
 
 def validate_ssrf_safe(url: str) -> None:

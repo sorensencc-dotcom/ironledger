@@ -6,6 +6,7 @@ from unittest.mock import patch
 from ironledger.web.app import create_app
 from ironledger.governance.migrations import migrate_governed
 from ironledger.security.secrets import CredentialsNotFoundError
+from ironledger.web.routers.sync import generate_csrf_token
 
 
 @pytest.fixture
@@ -23,17 +24,23 @@ def test_status_requires_auth(client):
     assert client.get("/api/sync/status").status_code == 401
 
 
-def test_status_allows_request_when_no_op_token_configured(tmp_path):
+def test_status_fails_closed_when_no_op_token_configured(tmp_path):
     db = tmp_path / "test_no_auth.db"
     conn = sqlite3.connect(db)
     migrate_governed(conn, db)
     conn.close()
     app = create_app(db_path=db)
-    # op_token not set on app.state
+    # op_token not set on app.state -> MUST FAIL CLOSED (401)
     c = TestClient(app)
-    with patch("ironledger.security.secrets.get_access_url", side_effect=Exception):
-        r = c.get("/api/sync/status")
-    assert r.status_code == 200
+    r = c.get("/api/sync/status")
+    assert r.status_code == 401
+    r2 = c.get("/api/sync/status", headers={"X-IronLedger-Op-Token": "some-token"})
+    assert r2.status_code == 401
+
+
+def test_status_fails_closed_on_invalid_token(client):
+    r = client.get("/api/sync/status", headers={"X-IronLedger-Op-Token": "wrong-token"})
+    assert r.status_code == 401
 
 
 def test_status_returns_state(client):
@@ -89,7 +96,20 @@ def test_status_states_and_pending_count(tmp_path):
 
 
 def test_poll_requires_auth(client):
-    r = client.post("/api/sync/poll", headers={"X-CSRF-Token": "x"})
+    csrf = generate_csrf_token("test-token")
+    r = client.post("/api/sync/poll", headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 401
+
+
+def test_poll_fails_closed_when_no_op_token_configured(tmp_path):
+    db = tmp_path / "test_no_auth.db"
+    conn = sqlite3.connect(db)
+    migrate_governed(conn, db)
+    conn.close()
+    app = create_app(db_path=db)
+    c = TestClient(app)
+    csrf = generate_csrf_token("test-token")
+    r = c.post("/api/sync/poll", headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": csrf})
     assert r.status_code == 401
 
 
@@ -98,21 +118,42 @@ def test_poll_requires_csrf(client):
     assert r.status_code in (400, 422)
 
 
+def test_poll_rejects_arbitrary_invalid_csrf(client):
+    r = client.post("/api/sync/poll", headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": "arbitrary-invalid-token"})
+    assert r.status_code == 403
+
+
+def test_poll_rejects_cross_session_csrf(client):
+    # Token generated for a different session/op_token
+    other_csrf = generate_csrf_token("different-operator-token")
+    r = client.post("/api/sync/poll", headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": other_csrf})
+    assert r.status_code == 403
+
+
+def test_poll_rejects_expired_csrf(client):
+    # Token generated in past beyond TTL
+    expired_csrf = generate_csrf_token("test-token", now_epoch=1000000)
+    r = client.post("/api/sync/poll", headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": expired_csrf})
+    assert r.status_code == 403
+
+
 def test_poll_409_when_locked(client):
     from ironledger.pipeline.sync_daemon import SyncLockActiveError
+    csrf = generate_csrf_token("test-token")
     with patch("ironledger.pipeline.sync_daemon.acquire_lock", side_effect=SyncLockActiveError("locked")):
         r = client.post("/api/sync/poll",
-                        headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": "x"})
+                        headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": csrf})
     assert r.status_code == 409
 
 
 def test_poll_returns_counts(client):
+    csrf = generate_csrf_token("test-token")
     with patch("ironledger.ingest.formats.simplefin.fetch_accounts", return_value={"accounts": []}), \
          patch("ironledger.ingest.formats.simplefin_engine.ingest_simplefin_payload", return_value=(3, 1)), \
          patch("ironledger.pipeline.sync_daemon.acquire_lock"), \
          patch("ironledger.pipeline.sync_daemon.release_lock"):
         r = client.post("/api/sync/poll",
-                        headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": "x"})
+                        headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": csrf})
     assert r.status_code == 200
     assert r.json() == {"inserted": 3, "skipped": 1}
 
@@ -138,12 +179,13 @@ def test_poll_loads_account_map(tmp_path):
         captured_map = account_map
         return 1, 0
 
+    csrf = generate_csrf_token("test-token")
     with patch("ironledger.ingest.formats.simplefin.fetch_accounts", return_value={"accounts": []}), \
          patch("ironledger.ingest.formats.simplefin_engine.ingest_simplefin_payload", side_effect=fake_ingest), \
          patch("ironledger.pipeline.sync_daemon.acquire_lock"), \
          patch("ironledger.pipeline.sync_daemon.release_lock"):
         r = c.post("/api/sync/poll",
-                   headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": "x"})
+                   headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": csrf})
     assert r.status_code == 200
     assert r.json() == {"inserted": 1, "skipped": 0}
     assert captured_map == {"remote_1": "Assets:Bank:Checking"}
