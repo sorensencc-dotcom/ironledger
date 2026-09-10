@@ -40,6 +40,7 @@ from ironledger.mcp.stdio import run_stdio
 
 _EXIT_OK = 0
 _EXIT_ERROR = 1
+_EXIT_USAGE = 2
 _EXIT_AUTH = 3
 _EXIT_INGEST = 4
 _EXIT_STATE = 5
@@ -314,6 +315,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "web":
         return _cmd_web(args)
     if args.command == "sync":
+        if not getattr(args, "sync_command", None):
+            for action in parser._actions:
+                if getattr(action, "choices", None) and "sync" in action.choices:
+                    action.choices["sync"].print_help()
+                    break
+            return _EXIT_USAGE
         return _cmd_sync(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
@@ -336,6 +343,8 @@ def _cmd_web(args) -> int:
 
 
 def _cmd_sync(args) -> int:
+    if not getattr(args, "sync_command", None):
+        return _EXIT_USAGE
     import getpass
     from ironledger.security.secrets import (
         claim_setup_token, get_access_url, mask_access_url, CredentialsNotFoundError,
@@ -371,7 +380,10 @@ def _cmd_sync(args) -> int:
                     import json as _json
                     print(_json.dumps(payload, indent=2))
                 else:
-                    ins, skip = ingest_simplefin_payload(conn, payload, evidence_path=ev_dir, account_map={})
+                    account_map = dict(
+                        conn.execute("SELECT remote_account_id, canonical_account FROM simplefin_account_map").fetchall()
+                    )
+                    ins, skip = ingest_simplefin_payload(conn, payload, evidence_path=ev_dir, account_map=account_map)
                     print(f"Sync: {ins} inserted, {skip} skipped")
             finally:
                 release_lock(lock_path)

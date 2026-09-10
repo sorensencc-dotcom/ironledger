@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import logging
 import os
 from pathlib import Path
 import socket
 import sys
+
+logger = logging.getLogger("ironledger.pipeline.sync_daemon")
 
 __all__ = [
     "SyncLockActiveError",
@@ -84,7 +87,10 @@ def acquire_lock(lock_path: Path) -> None:
 def release_lock(lock_path: Path) -> None:
     try:
         lock_path.unlink(missing_ok=True)
+    except FileNotFoundError:
+        pass
     except PermissionError as exc:
+        logger.error("LOCK_PERMISSION_ERROR: permission error on %s: %s", lock_path, exc)
         raise SyncLockPermissionError(f"Cannot release lock at {lock_path}: {exc}") from exc
 
 
@@ -101,7 +107,10 @@ def inspect_and_reclaim_if_stale(lock_path: Path) -> bool:
     """
     try:
         raw = lock_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return True
     except PermissionError as exc:
+        logger.error("LOCK_PERMISSION_ERROR: permission error on %s: %s", lock_path, exc)
         raise SyncLockPermissionError(f"Cannot read lock: {exc}") from exc
 
     try:
@@ -112,15 +121,19 @@ def inspect_and_reclaim_if_stale(lock_path: Path) -> bool:
         hostname = str(data.get("hostname", ""))
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         # Outcome 1: malformed JSON -> reclaim
+        logger.warning("LOCK_PARSE_ERROR: malformed lock file at %s", lock_path)
         try:
             lock_path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            return True
         except PermissionError as exc:
+            logger.error("LOCK_PERMISSION_ERROR: permission error on %s: %s", lock_path, exc)
             raise SyncLockPermissionError(f"Cannot delete malformed lock: {exc}") from exc
         return True
 
     # Outcome 2: foreign hostname -> fail closed
     curr_host = _get_hostname()
-    if hostname and hostname != curr_host and hostname not in ("localhost", "127.0.0.1"):
+    if hostname and hostname != curr_host:
         raise SyncLockActiveError(
             f"Lock held by foreign host {hostname!r}; remove manually."
         )
@@ -132,6 +145,10 @@ def inspect_and_reclaim_if_stale(lock_path: Path) -> bool:
     # Outcome 5: dead PID (or PID reuse with unrelated process) -> reclaim
     try:
         lock_path.unlink(missing_ok=True)
+    except FileNotFoundError:
+        return True
     except PermissionError as exc:
+        logger.error("LOCK_PERMISSION_ERROR: permission error on %s: %s", lock_path, exc)
         raise SyncLockPermissionError(f"Cannot delete stale lock: {exc}") from exc
+    logger.info("STALE_LOCK_RECLAIMED: lock at %s reclaimed (pid=%s)", lock_path, pid)
     return True
