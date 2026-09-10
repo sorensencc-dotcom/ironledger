@@ -115,6 +115,7 @@ def fetch_accounts(
             target=mask_access_url(url),
             result="error",
         )
+        conn.commit()
         raise
     ev_path = archive_evidence(raw_bytes, evidence_dir=evidence_dir)
     sha256 = hashlib.sha256(raw_bytes).hexdigest()
@@ -127,4 +128,5 @@ def fetch_accounts(
         input_hash=sha256,
         output_hash=sha256,
     )
+    conn.commit()
     return json.loads(raw_bytes)

@@ -20,3 +20,10 @@ BEFORE UPDATE ON simplefin_account_map
 BEGIN
     SELECT RAISE(ABORT, 'simplefin_account_map is append-only: UPDATE is forbidden');
 END;
+
+CREATE TRIGGER simplefin_account_map_no_delete
+BEFORE DELETE ON simplefin_account_map
+BEGIN
+    SELECT RAISE(ABORT, 'simplefin_account_map is append-only: DELETE is forbidden');
+END;
+

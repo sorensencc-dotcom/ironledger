@@ -122,6 +122,8 @@ def test_e2e_no_secrets_in_audit(env, monkeypatch):
     from ironledger.security.secrets import get_access_url
 
     get_access_url(conn)
-    for row in conn.execute("SELECT * FROM audit_events").fetchall():
+    rows = conn.execute("SELECT * FROM audit_events").fetchall()
+    assert len(rows) > 0
+    for row in rows:
         for cell in row:
             assert secret not in str(cell)

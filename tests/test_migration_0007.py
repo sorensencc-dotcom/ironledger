@@ -59,3 +59,19 @@ def test_simplefin_account_map_table(db):
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert "simplefin_account_map" in tables
     conn.close()
+
+
+def test_simplefin_account_map_no_delete(db):
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "INSERT INTO simplefin_account_map (remote_account_id, canonical_account, added_at_utc) "
+        "VALUES ('act-1', 'Assets:Bank:Checking', '2026-09-10T00:00:00Z')"
+    )
+    conn.commit()
+    with pytest.raises(
+        (sqlite3.IntegrityError, sqlite3.OperationalError),
+        match="simplefin_account_map is append-only: DELETE is forbidden",
+    ):
+        conn.execute("DELETE FROM simplefin_account_map WHERE remote_account_id = 'act-1'")
+    conn.close()
+
