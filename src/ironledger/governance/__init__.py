@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+from ironledger.governance.drift import (
+    RuleDriftMetrics,
+    RuleHealthTier,
+    audit_all_rules_drift,
+    calculate_hct,
+    evaluate_rule_drift,
+)
 from ironledger.governance.mutations import (
     GENESIS_MUTATION_PREV_HASH,
     MutationEvent,
@@ -20,10 +27,15 @@ __all__ = [
     "MutationEvent",
     "MutationVerificationError",
     "MutationVerificationResult",
+    "RuleDriftMetrics",
+    "RuleHealthTier",
     "append_mutation_event",
+    "audit_all_rules_drift",
+    "calculate_hct",
     "canonical_mutation_bytes",
     "compute_canonical_ledger_manifest_hash",
     "compute_mutation_hash",
+    "evaluate_rule_drift",
     "load_mutation_events",
     "verify_mutation_chain",
 ]
