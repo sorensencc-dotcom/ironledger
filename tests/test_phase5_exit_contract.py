@@ -510,7 +510,7 @@ def test_contract_26_header_order_precedence(mcp_env):
         server.server_close()
 
 
-# 27. handle_message with call_tool raising RuntimeError("secret") returns JSON-RPC -32603, message is internal error, secret does not appear.
+# 27. handle_message with call_tool or search raising RuntimeError("secret") returns JSON-RPC -32603, message is internal error, secret does not appear.
 def test_contract_27_internal_error_masks_secret(mcp_env, monkeypatch):
     ledger_dir, projection_dir, db = mcp_env
     def bad_call(*a, **kw):
@@ -525,6 +525,21 @@ def test_contract_27_internal_error_masks_secret(mcp_env, monkeypatch):
     assert data["error"]["code"] == -32603
     assert data["error"]["message"] == "internal error"
     assert "super_secret_token_12345" not in resp
+
+    # Also test exception inside search() function itself bubbling to -32603
+    def bad_search(*a, **kw):
+        raise RuntimeError("db_query_secret_leak_67890")
+    monkeypatch.setattr("ironledger.mcp.tools.search", bad_search)
+    monkeypatch.undo()  # restore protocol.call_tool
+    monkeypatch.setattr("ironledger.mcp.tools.search", bad_search)
+
+    resp_search = handle_message(req, ledger_dir=ledger_dir, projection_dir=projection_dir, db=db)
+    assert resp_search is not None
+    data_search = json.loads(resp_search)
+    assert data_search["id"] == 1
+    assert data_search["error"]["code"] == -32603
+    assert data_search["error"]["message"] == "internal error"
+    assert "db_query_secret_leak_67890" not in resp_search
 
 
 # 28. HTTP POST /mcp with body 0xff,0xfe returns HTTP 200 with code -32700. stdio non-UTF-8 yields one -32700 stdout line.
