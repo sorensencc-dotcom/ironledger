@@ -77,14 +77,14 @@ def test_inspect_permission_error_deleting_stale(lock_path):
             inspect_and_reclaim_if_stale(lock_path)
 
 
-def test_pid_reuse_unrelated_process_reclaimed(lock_path):
+def test_live_pid_unrelated_process_fails_closed(lock_path):
     lock_path.write_text(json.dumps({
         "pid": 12345, "started_at": "2024-01-01T00:00:00Z", "hostname": _get_hostname()
     }))
-    with patch("ironledger.pipeline.sync_daemon._pid_exists", return_value=True), \
-         patch("ironledger.pipeline.sync_daemon._pid_is_ironledger", return_value=False):
-        assert inspect_and_reclaim_if_stale(lock_path) is True
-        assert not lock_path.exists()
+    with patch("ironledger.pipeline.sync_daemon._pid_exists", return_value=True):
+        with pytest.raises(SyncLockActiveError, match="Active process .* holds lock"):
+            inspect_and_reclaim_if_stale(lock_path)
+    assert lock_path.exists()
 
 
 def test_acquire_already_held_live_process_raises(lock_path):

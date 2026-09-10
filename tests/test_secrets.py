@@ -227,12 +227,22 @@ def test_store_access_url_rejects_ssrf():
 def test_claim_setup_token_invalid_base64(conn):
     with pytest.raises(SSRFViolationError, match="base64"):
         claim_setup_token("not_valid_base64!@#$%", conn)
+    rows = conn.execute(
+        "SELECT action, result FROM audit_events WHERE action='CREDENTIAL_ACCESS_ATTEMPT'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][1] == "error"
 
 
 def test_claim_setup_token_rejects_ssrf_claim_url(conn):
     evil_token = base64.b64encode(b"http://evil.com/claim").decode("utf-8")
     with pytest.raises(SSRFViolationError):
         claim_setup_token(evil_token, conn)
+    rows = conn.execute(
+        "SELECT action, result FROM audit_events WHERE action='CREDENTIAL_ACCESS_ATTEMPT'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0][1] == "error"
 
 
 def test_claim_setup_token_success(monkeypatch, conn):

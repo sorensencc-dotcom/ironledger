@@ -165,11 +165,11 @@ def inspect_and_reclaim_if_stale(lock_path: Path) -> bool:
             f"Lock held by foreign host {hostname!r}; remove manually."
         )
 
-    # Outcomes 4 + 5
-    if _pid_exists(pid) and _pid_is_ironledger(pid):
-        raise SyncLockActiveError(f"Active IronLedger sync (PID {pid}) is running.")
+    # Outcome 4: PID exists (live process) -> fail closed
+    if _pid_exists(pid):
+        raise SyncLockActiveError(f"Active process (PID {pid}) holds lock at {lock_path}.")
 
-    # Outcome 6: dead PID (or PID reuse with unrelated process) -> reclaim
+    # Outcome 5: dead PID -> reclaim
     try:
         lock_path.unlink(missing_ok=True)
     except FileNotFoundError:

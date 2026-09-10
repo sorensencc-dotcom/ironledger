@@ -91,10 +91,6 @@ def require_csrf(request: Request) -> None:
     if not op_token or not isinstance(op_token, str) or not op_token.strip():
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    static_csrf = getattr(request.app.state, "csrf_token", None)
-    if static_csrf and isinstance(static_csrf, str) and hmac.compare_digest(csrf_token, static_csrf):
-        return
-
     if not verify_csrf_token(csrf_token, op_token.strip()):
         raise HTTPException(status_code=403, detail="Invalid or expired CSRF token")
 

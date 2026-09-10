@@ -80,7 +80,7 @@ def fetch_accounts(
 ) -> dict:
     """Fetch /simplefin/accounts, archive wire bytes, return parsed JSON."""
     access_url = get_access_url(conn)
-    validate_ssrf_safe(access_url)
+    pinned_ip = validate_ssrf_safe(access_url)
     parsed = urllib.parse.urlparse(access_url)
     username = parsed.username or ""
     password = parsed.password or ""
@@ -105,7 +105,7 @@ def fetch_accounts(
     url = f"{base}?start-date={start_ts}&end-date={end_ts}"
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
-    opener = make_no_redirect_opener(ssl_context=_make_tls_context())
+    opener = make_no_redirect_opener(ssl_context=_make_tls_context(), pinned_ip=pinned_ip)
     try:
         with opener.open(req, timeout=30.0) as resp:
             raw_bytes = resp.read()
