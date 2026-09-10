@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,9 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ironledger.pipeline import sync_daemon
-from ironledger.pipeline.sync_daemon import SyncLockActiveError, acquire_lock, release_lock
 from ironledger.security import secrets
-from ironledger.security.secrets import CredentialsNotFoundError, get_access_url
 
 __all__ = ["router", "SyncStatusResponse", "SyncPollResponse"]
 
@@ -28,7 +27,8 @@ def require_operator(request: Request) -> None:
     op_token = getattr(request.app.state, "op_token", None)
     if op_token is None:
         return
-    if request.headers.get("X-IronLedger-Op-Token") != op_token:
+    token = request.headers.get("X-IronLedger-Op-Token")
+    if not token or not hmac.compare_digest(token, str(op_token)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
