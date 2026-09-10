@@ -25,7 +25,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 
 ## 2. Architecture & Data Flow
 
-`
+```
 +------------------------------------------------------------------------+
 |                        EXTERNAL NETWORK (OUTBOUND)                     |
 |  SimpleFIN Bridge REST API (Read-Only Transacted Feeds)                |
@@ -53,7 +53,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 | * Lockfile acquisition        |   | * Sync Latency & Token Expiry     |
 | * Non-zero exit code on drift |   | * Safe-Mode Mutation Isolation    |
 +-------------------------------+   +-----------------------------------+
-`
+```
 
 ---
 
@@ -75,7 +75,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 ### Task 7.2: SimpleFIN Bridge Client Engine & Raw Evidence Archiving
 - **Target Module:** src/ironledger/ingest/simplefin.py
 - **Transport:** Standard library HTTP Basic Authentication client parsed from stored Access URL. Zero third-party network libraries.
-- **Date Range Query:** GET <access_url>/accounts?start-date=<unix_timestamp>&end-date=<unix_timestamp>.
+- **Date Range Query:** GET <access_url>/accounts?start-date=<unix_timestamp>&end-date=<unix_timestamp> with timestamps calculated strictly as UTC integers (`int(datetime.now(timezone.utc).timestamp())`).
 - **Evidence Archival:**
   - Raw HTTP response payload (JSON bytes) is computed with SHA-256 immediately upon receipt.
   - Stored under evidence/source_documents/<file_sha256>.raw with permissions 0o444.
@@ -88,7 +88,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 - **Zero-Float Currency Coercion:** Uses StatementNormalizer.parse_amount_to_cents(amount_str) with deterministic string splitting.
 - **Identity Fingerprinting (v1 Algorithm):**
   - Primary Identity: simplefin:id:<tx_id> when id is present.
-  - Composite Fallback: composite:v1:<sha256(account_id|posted_date|amount_cents|description|memo)>.
+  - Composite Fallback: composite:v1:<sha256(canonical_json([account_id, posted_date, amount_cents, description, memo]))> to guarantee zero delimiter collision.
 - **Atomic Staging:**
   - BEGIN IMMEDIATE transaction block.
   - Inserts into statement_imports (source simplefin, raw evidence hash).
@@ -97,7 +97,7 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 
 ### Task 7.4: Headless Synchronization Daemon & CLI Command Tree
 - **Target Modules:** src/ironledger/cli/sync.py, src/ironledger/pipeline/sync_daemon.py
-- **Lockfile Protocol:** .sync.lock acquired using atomic exclusive file creation. If lock exists, fail closed with non-zero exit code (SyncLockActiveError).
+- **Lockfile Protocol:** .sync.lock containing JSON payload {"pid": <pid>, "started_at": "<iso8601_utc>"} acquired using atomic exclusive file creation. If lock exists, inspect PID liveness and stale age (>30m); if active, fail closed with non-zero exit code (SyncLockActiveError).
 - **CLI Commands:**
   - ironledger sync auth claim <setup_token>
   - ironledger sync auth status
@@ -128,5 +128,5 @@ Phase 7 integrates network-delivered bank statement synchronization (starting wi
 | tests/test_secrets.py | secrets.py | Access tokens stored securely; memory cleared post-execution; env-fallback validated. |
 | tests/test_simplefin_parser.py | simplefin_engine.py | Zero-float parsing across positive/negative amounts; missing fields handled; ISO-8601 normalization. |
 | tests/test_sync_idempotency.py | simplefin.py | Re-fetching same date range causes zero duplicate insertions in staged_transactions. |
-| tests/test_sync_lock.py | sync_daemon.py | Concurrent invocations fail-closed when .sync.lock is present. |
+| tests/test_sync_lock.py | sync_daemon.py | Concurrent invocations fail-closed when .sync.lock is present; stale lock (>30m / dead PID) reclaimed safely. |
 | tests/test_phase7_e2e.py | Complete E2E | Mocked SimpleFIN server -> payload archive -> staging -> review -> compilation pipeline. |
