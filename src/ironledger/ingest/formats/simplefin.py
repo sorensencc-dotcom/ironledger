@@ -15,7 +15,11 @@ import urllib.parse
 import urllib.request
 
 from ironledger.audit import append_audit_event
-from ironledger.security.secrets import get_access_url, mask_access_url
+from ironledger.security.secrets import (
+    get_access_url,
+    mask_access_url,
+    validate_ssrf_safe,
+)
 
 __all__ = ["EvidenceIntegrityError", "archive_evidence", "fetch_accounts"]
 
@@ -75,12 +79,28 @@ def fetch_accounts(
 ) -> dict:
     """Fetch /simplefin/accounts, archive wire bytes, return parsed JSON."""
     access_url = get_access_url(conn)
+    validate_ssrf_safe(access_url)
     parsed = urllib.parse.urlparse(access_url)
     username = parsed.username or ""
     password = parsed.password or ""
-    base = f"https://{parsed.hostname}/simplefin/accounts"
-    start_ts = int(start_date.replace(tzinfo=timezone.utc).timestamp())
-    end_ts = int(end_date.replace(tzinfo=timezone.utc).timestamp())
+    host = (
+        f"{parsed.hostname}:{parsed.port}"
+        if parsed.port and parsed.port != 443
+        else parsed.hostname
+    )
+    base = f"https://{host}/simplefin/accounts"
+    start_dt = (
+        start_date.replace(tzinfo=timezone.utc)
+        if start_date.tzinfo is None
+        else start_date.astimezone(timezone.utc)
+    )
+    end_dt = (
+        end_date.replace(tzinfo=timezone.utc)
+        if end_date.tzinfo is None
+        else end_date.astimezone(timezone.utc)
+    )
+    start_ts = int(start_dt.timestamp())
+    end_ts = int(end_dt.timestamp())
     url = f"{base}?start-date={start_ts}&end-date={end_ts}"
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
     req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
