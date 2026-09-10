@@ -1,7 +1,4 @@
-"""Append-only mutation ledger definitions, event envelopes, and verification.
-
-Backward compatibility shim: delegates to `ironledger.governance.mutations`.
-"""
+"""IronLedger Governance Subsystem."""
 
 from __future__ import annotations
 
@@ -19,14 +16,14 @@ from ironledger.governance.mutations import (
 )
 
 __all__ = [
-    "MutationVerificationError",
-    "MutationEvent",
-    "MutationVerificationResult",
     "GENESIS_MUTATION_PREV_HASH",
-    "canonical_mutation_bytes",
-    "compute_mutation_hash",
+    "MutationEvent",
+    "MutationVerificationError",
+    "MutationVerificationResult",
     "append_mutation_event",
+    "canonical_mutation_bytes",
+    "compute_canonical_ledger_manifest_hash",
+    "compute_mutation_hash",
     "load_mutation_events",
     "verify_mutation_chain",
-    "compute_canonical_ledger_manifest_hash",
 ]
