@@ -182,12 +182,11 @@ def verify_step_up_token(
             f"token scope mismatch: expected {expected_scope!r}, got {payload['scope']!r}"
         )
 
-    # Target digest validation
-    if expected_target_digest != "*" and payload["target_digest"] != "*":
-        if payload["target_digest"] != expected_target_digest:
-            raise SafeModeAuthorizationError(
-                f"token target_digest mismatch: expected {expected_target_digest!r}, got {payload['target_digest']!r}"
-            )
+    # Target digest validation - strict 1:1 match required (no wildcard bypass)
+    if payload["target_digest"] != expected_target_digest:
+        raise SafeModeAuthorizationError(
+            f"token target_digest mismatch: expected {expected_target_digest!r}, got {payload['target_digest']!r}"
+        )
 
     return payload
 
@@ -210,7 +209,7 @@ def safe_mode_enabled(config_dir: str | Path) -> bool:
 
 
 def get_safe_mode_secret(config_dir: str | Path) -> str:
-    """Extract safe_mode_secret or fallback to deterministic machine/default secret."""
+    """Extract safe_mode_secret from configuration or environment. Fails closed if missing."""
     if config_dir is not None:
         path = Path(config_dir) / "safe-mode.json"
         if path.is_file():
@@ -247,9 +246,9 @@ def get_safe_mode_secret(config_dir: str | Path) -> str:
     if env_secret and env_secret.strip():
         return env_secret.strip()
 
-    base = str(Path(config_dir).resolve()) if config_dir else "default"
-    dir_hash = hashlib.sha256(base.encode("utf-8")).hexdigest()[:32]
-    return f"ironledger-default-secret-{dir_hash}"
+    raise SafeModeAuthorizationError(
+        "no safe mode secret configured in safe-mode.json, config.json, machine-id, or IRONLEDGER_SAFE_MODE_SECRET"
+    )
 
 
 def _matches_phrase(candidate: str, scope: str, target: str) -> bool:
@@ -294,76 +293,54 @@ def require_governed_authorization(
             "mechanism": "safe_mode_disabled",
         }
 
-    token_err: Exception | None = None
+    # Safe mode is active: Cryptographic step-up token is strictly required.
+    # Plaintext confirmation phrases do not bypass the safe mode cryptographic gate.
+    if not token or not isinstance(token, str) or not token.strip():
+        reason = "safe mode is active: cryptographic step-up token required (no token provided)"
+        append_audit_event(
+            conn,
+            actor=actor,
+            action=f"{scope} (denied: {reason})",
+            target=target_digest,
+            result="denied",
+        )
+        conn.commit()
+        raise SafeModeAuthorizationError(f"{scope} not authorized: {reason}")
 
-    # 1. Try step-up token validation if token provided
-    if token and isinstance(token, str) and token.strip():
-        try:
-            secret = get_safe_mode_secret(config_dir)
-            payload = verify_step_up_token(
-                token.strip(),
-                secret,
-                expected_scope=scope,
-                expected_target_digest=target_digest,
-            )
-            effective_actor = payload.get("actor") or actor
-            append_audit_event(
-                conn,
-                actor=effective_actor,
-                action=f"authorize {scope} (step-up)",
-                target=target_digest,
-                result="ok",
-            )
-            conn.commit()
-            return {
-                "authorized": True,
-                "result": "authorized",
-                "scope": scope,
-                "actor": effective_actor,
-                "target_digest": target_digest,
-                "mechanism": "token",
-                "payload": payload,
-            }
-        except SafeModeAuthorizationError as exc:
-            token_err = exc
-
-    # 2. Check phrase matching for backward compatibility (including legacy token passed as phrase)
-    candidate_phrase = phrase
-    if not candidate_phrase and token and "." not in token:
-        candidate_phrase = token
-
-    if candidate_phrase and isinstance(candidate_phrase, str) and candidate_phrase.strip():
-        if _matches_phrase(candidate_phrase, scope, target_digest):
-            append_audit_event(
-                conn,
-                actor=actor,
-                action=f"authorize {scope} (phrase)",
-                target=target_digest,
-                result="ok",
-            )
-            conn.commit()
-            return {
-                "authorized": True,
-                "result": "authorized",
-                "scope": scope,
-                "actor": actor,
-                "target_digest": target_digest,
-                "mechanism": "phrase",
-            }
-        else:
-            reason = "confirmation phrase did not match"
-    elif token_err:
-        reason = f"token invalid ({token_err})"
-    else:
-        reason = "safe mode is active and no authorization token or confirmation supplied"
-
-    # Denial path: Record denied audit event and raise SafeModeAuthorizationError
-    append_audit_event(
-        conn,
-        actor=actor,
-        action=f"{scope} (denied: {reason})",
-        target=target_digest,
-        result="denied",
-    )
-    conn.commit()
-    raise SafeModeAuthorizationError(f"{scope} not authorized: {reason}")
+    secret = get_safe_mode_secret(config_dir)
+    try:
+        payload = verify_step_up_token(
+            token.strip(),
+            secret,
+            expected_scope=scope,
+            expected_target_digest=target_digest,
+        )
+        effective_actor = payload.get("actor") or actor
+        append_audit_event(
+            conn,
+            actor=effective_actor,
+            action=f"authorize {scope} (step-up)",
+            target=target_digest,
+            result="ok",
+        )
+        conn.commit()
+        return {
+            "authorized": True,
+            "result": "authorized",
+            "scope": scope,
+            "actor": effective_actor,
+            "target_digest": target_digest,
+            "mechanism": "token",
+            "payload": payload,
+        }
+    except SafeModeAuthorizationError as exc:
+        reason = f"token invalid ({exc})"
+        append_audit_event(
+            conn,
+            actor=actor,
+            action=f"{scope} (denied: {reason})",
+            target=target_digest,
+            result="denied",
+        )
+        conn.commit()
+        raise SafeModeAuthorizationError(f"{scope} not authorized: {reason}") from exc

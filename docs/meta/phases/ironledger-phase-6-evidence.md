@@ -62,7 +62,7 @@ All test metrics were executed live against local `HEAD` on 2026-09-09.
 | **6.3** | Projection Freshness & SLA Monitoring | `src/ironledger/governance/freshness.py` | `tests/test_governance_freshness.py` | `3bfa822` | Complete |
 | **6.4** | Forward-Only Migration Engine Hardening | `src/ironledger/governance/migrations.py`, `src/ironledger/db/migrations.py` | `tests/test_governance_migrations.py` | `262706a` | Complete |
 | **6.5** | Safe-Mode Mutation Gate & Stateless Step-Up Tokens | `src/ironledger/governance/safemode.py`, `src/ironledger/cli/auth.py`, `src/ironledger/web/routers/compile.py` | `tests/test_governance_safemode.py` | `87f8540` | Complete |
-| **6.6** | End-to-End Governance Acceptance Suite & Ratification Evidence | `tests/test_governance_e2e.py`, `docs/meta/phases/ironledger-phase-6-evidence.md` | `tests/test_governance_e2e.py`, full suite (`pytest -q`) | Pending commit | Complete |
+| **6.6** | End-to-End Governance Acceptance Suite & Ratification Evidence | `tests/test_governance_e2e.py`, `docs/meta/phases/ironledger-phase-6-evidence.md` | `tests/test_governance_e2e.py`, full suite (`pytest -q`) | `22e5884` | Complete |
 
 ---
 
@@ -73,3 +73,7 @@ All test metrics were executed live against local `HEAD` on 2026-09-09.
 3. **Audit Event Traceability**: Denied and authorized step-up events write directly to `audit_events` with associated actor, target digest, and monotonic sequence numbers.
 4. **Resilient Degradation**: Missing or corrupt safe-mode configuration files fail closed, requiring cryptographic credentials for mutating routes.
 5. **No Runtime Dependencies on Beancount**: Verified clean decoupled architecture with zero Beancount Python imports.
+6. **Hardened Safe Mode Security**:
+   - Predictable fallback secrets removed; `get_safe_mode_secret` fails closed (`SafeModeAuthorizationError`) if no secret is configured.
+   - Strict 1:1 target digest matching enforced; wildcard target bypass (`*`) eliminated.
+   - Plaintext confirmation phrases blocked from bypassing safe mode; cryptographic HMAC step-up tokens strictly required for mutating operations.

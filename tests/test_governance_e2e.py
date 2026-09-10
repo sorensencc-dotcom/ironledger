@@ -178,7 +178,7 @@ def test_e2e_safe_mode_authorization_and_rejections(tmp_path: Path):
     assert get_safe_mode_secret(config_dir) == secret
 
     # 1. Unauthenticated attempt is denied and recorded in audit_events
-    with pytest.raises(SafeModeAuthorizationError, match="safe mode is active and no authorization token"):
+    with pytest.raises(SafeModeAuthorizationError, match="cryptographic step-up token required"):
         require_governed_authorization(
             conn,
             token=None,

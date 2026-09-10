@@ -239,11 +239,10 @@ def test_get_safe_mode_secret_from_config(config_dir: Path):
     assert secret == "configured-secret-key-999"
 
 
-def test_get_safe_mode_secret_fallback_to_default(config_dir: Path):
+def test_get_safe_mode_secret_fails_closed_when_no_secret_configured(config_dir: Path):
     (config_dir / "safe-mode.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
-    secret = get_safe_mode_secret(config_dir)
-    assert isinstance(secret, str)
-    assert len(secret) > 0
+    with pytest.raises(SafeModeAuthorizationError, match="no safe mode secret configured"):
+        get_safe_mode_secret(config_dir)
 
 
 # --- Governed Authorization Gate ---
@@ -299,20 +298,27 @@ def test_require_governed_authorization_active_with_valid_token(db: sqlite3.Conn
     assert row[3] in ("ok", "authorized")
 
 
-def test_require_governed_authorization_active_with_valid_phrase(db: sqlite3.Connection, config_dir: Path):
-    (config_dir / "safe-mode.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
-    res = require_governed_authorization(
-        db,
-        token=None,
-        phrase="authorize compile",
-        scope="compile",
-        target_digest="compile",
-        config_dir=config_dir,
-        actor="operator",
+def test_require_governed_authorization_active_denies_phrase_when_token_required(db: sqlite3.Connection, config_dir: Path):
+    secret = "governance-secret-123"
+    (config_dir / "safe-mode.json").write_text(
+        json.dumps({"enabled": True, "safe_mode_secret": secret}), encoding="utf-8"
     )
-    assert res["authorized"] is True
-    assert res["result"] == "authorized"
-    assert res["mechanism"] == "phrase"
+    with pytest.raises(SafeModeAuthorizationError, match="cryptographic step-up token required"):
+        require_governed_authorization(
+            db,
+            token=None,
+            phrase="authorize compile",
+            scope="compile",
+            target_digest="compile",
+            config_dir=config_dir,
+            actor="operator",
+        )
+
+    # Denial audit record is written
+    row = db.execute("SELECT actor, action, result FROM audit_events ORDER BY seq DESC LIMIT 1").fetchone()
+    assert row[0] == "operator"
+    assert "denied" in row[1]
+    assert row[2] == "denied"
 
 
 def test_require_governed_authorization_active_denied_no_credentials(db: sqlite3.Connection, config_dir: Path):
