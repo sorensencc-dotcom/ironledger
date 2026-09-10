@@ -307,8 +307,8 @@ def require_governed_authorization(
         conn.commit()
         raise SafeModeAuthorizationError(f"{scope} not authorized: {reason}")
 
-    secret = get_safe_mode_secret(config_dir)
     try:
+        secret = get_safe_mode_secret(config_dir)
         payload = verify_step_up_token(
             token.strip(),
             secret,
@@ -334,7 +334,7 @@ def require_governed_authorization(
             "payload": payload,
         }
     except SafeModeAuthorizationError as exc:
-        reason = f"token invalid ({exc})"
+        reason = f"token invalid ({exc})" if "token" in str(exc) else f"configuration invalid ({exc})"
         append_audit_event(
             conn,
             actor=actor,

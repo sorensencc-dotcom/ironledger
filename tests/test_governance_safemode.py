@@ -360,3 +360,29 @@ def test_require_governed_authorization_active_denied_invalid_token(db: sqlite3.
         "SELECT actor, action, target, result FROM audit_events ORDER BY seq DESC LIMIT 1"
     ).fetchone()
     assert row[3] == "denied"
+
+
+def test_require_governed_authorization_active_denied_and_audited_when_no_secret_configured(
+    db: sqlite3.Connection, config_dir: Path
+):
+    (config_dir / "safe-mode.json").write_text(json.dumps({"enabled": True}), encoding="utf-8")
+    with pytest.raises(SafeModeAuthorizationError, match="no safe mode secret configured"):
+        require_governed_authorization(
+            db,
+            token="dummy.token",
+            phrase=None,
+            scope="compile",
+            target_digest="ledger",
+            config_dir=config_dir,
+            actor="operator_1",
+        )
+
+    row = db.execute(
+        "SELECT actor, action, target, result FROM audit_events ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    assert row[0] == "operator_1"
+    assert "configuration invalid" in row[1]
+    assert "no safe mode secret configured" in row[1]
+    assert row[2] == "ledger"
+    assert row[3] == "denied"
+
