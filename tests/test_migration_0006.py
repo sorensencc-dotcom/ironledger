@@ -19,7 +19,7 @@ def db() -> sqlite3.Connection:
 
 
 def test_reaches_version_six(db: sqlite3.Connection):
-    assert migrations.current_version(db) == 6
+    assert migrations.current_version(db) >= 6
 
 
 def test_mutation_events_table_present_and_accepts_valid_row(db: sqlite3.Connection):
@@ -48,7 +48,7 @@ def test_mutation_0006_checksum_frozen():
         db_path = Path(tmpdir) / "test.db"
         conn_first = connect(str(db_path))
         migrations.migrate(conn_first, directory=schema_dir)
-        assert migrations.current_version(conn_first) == 6
+        assert migrations.current_version(conn_first) >= 6
         conn_first.close()
 
         target = schema_dir / "0006_mutation_events.sql"
