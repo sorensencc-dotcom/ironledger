@@ -189,3 +189,41 @@ def test_poll_loads_account_map(tmp_path):
     assert r.status_code == 200
     assert r.json() == {"inserted": 1, "skipped": 0}
     assert captured_map == {"remote_1": "Assets:Bank:Checking"}
+
+
+def test_status_reports_degraded_on_invalid_env_url(tmp_path, monkeypatch):
+    db = tmp_path / "test4.db"
+    conn = sqlite3.connect(db)
+    migrate_governed(conn, db)
+    conn.close()
+
+    app = create_app(db_path=db)
+    app.state.op_token = "test-token"
+    c = TestClient(app)
+
+    # Insecure HTTP URL in env -> get_access_url raises SSRFViolationError -> status reports DEGRADED
+    monkeypatch.setenv("IRONLEDGER_SIMPLEFIN_ACCESS_URL", "http://bridge.simplefin.org/simplefin")
+    r = c.get("/api/sync/status", headers={"X-IronLedger-Op-Token": "test-token"})
+    assert r.status_code == 200
+    assert r.json()["state"] == "DEGRADED"
+
+
+def test_poll_passes_lock_token_to_release(client):
+    csrf = generate_csrf_token("test-token")
+    released_tokens = []
+
+    def fake_acquire(lock_path):
+        return "token-abc-123"
+
+    def fake_release(lock_path, *, token=None):
+        released_tokens.append(token)
+
+    with patch("ironledger.ingest.formats.simplefin.fetch_accounts", return_value={"accounts": []}), \
+         patch("ironledger.ingest.formats.simplefin_engine.ingest_simplefin_payload", return_value=(0, 0)), \
+         patch("ironledger.pipeline.sync_daemon.acquire_lock", side_effect=fake_acquire), \
+         patch("ironledger.pipeline.sync_daemon.release_lock", side_effect=fake_release):
+        r = client.post("/api/sync/poll",
+                        headers={"X-IronLedger-Op-Token": "test-token", "X-CSRF-Token": csrf})
+    assert r.status_code == 200
+    assert released_tokens == ["token-abc-123"]
+

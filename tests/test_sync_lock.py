@@ -22,11 +22,11 @@ def lock_path(tmp_path):
 
 
 def test_acquire_creates_lock(lock_path):
-    acquire_lock(lock_path)
+    token = acquire_lock(lock_path)
     assert lock_path.exists()
     data = json.loads(lock_path.read_text())
     assert data["pid"] == os.getpid()
-    release_lock(lock_path)
+    release_lock(lock_path, token=token)
 
 
 def test_live_pid_fails_closed(lock_path):
@@ -101,11 +101,11 @@ def test_acquire_reclaims_stale_lock_and_succeeds(lock_path):
     lock_path.write_text(json.dumps({
         "pid": 9999999, "started_at": "2024-01-01T00:00:00Z", "hostname": _get_hostname()
     }))
-    acquire_lock(lock_path)
+    token = acquire_lock(lock_path)
     assert lock_path.exists()
     data = json.loads(lock_path.read_text())
     assert data["pid"] == os.getpid()
-    release_lock(lock_path)
+    release_lock(lock_path, token=token)
 
 
 def test_cli_sync_auth_status_no_creds(tmp_path, capsys, monkeypatch):
@@ -351,4 +351,57 @@ def test_cli_sync_no_subcommand_prints_help(capsys):
     captured = capsys.readouterr()
     assert "usage: ironledger sync" in captured.out
     assert "{auth,poll,accounts}" in captured.out
+
+
+def test_release_lock_mismatched_pid_raises(lock_path):
+    lock_path.write_text(json.dumps({
+        "pid": os.getpid() + 1000, "started_at": "2024-01-01T00:00:00Z", "hostname": _get_hostname(), "token": "tok123"
+    }))
+    with pytest.raises(SyncLockActiveError, match="held by PID"):
+        release_lock(lock_path, token="tok123")
+    assert lock_path.exists()
+
+
+def test_release_lock_mismatched_token_raises(lock_path):
+    lock_path.write_text(json.dumps({
+        "pid": os.getpid(), "started_at": "2024-01-01T00:00:00Z", "hostname": _get_hostname(), "token": "correct-token"
+    }))
+    with pytest.raises(SyncLockActiveError, match="token mismatch"):
+        release_lock(lock_path, token="wrong-token")
+    assert lock_path.exists()
+
+
+def test_release_lock_foreign_hostname_raises(lock_path):
+    lock_path.write_text(json.dumps({
+        "pid": os.getpid(), "started_at": "2024-01-01T00:00:00Z", "hostname": "other-host", "token": "tok123"
+    }))
+    with patch("ironledger.pipeline.sync_daemon._get_hostname", return_value="my-host"):
+        with pytest.raises(SyncLockActiveError, match="held by foreign host"):
+            release_lock(lock_path, token="tok123")
+    assert lock_path.exists()
+
+
+def test_release_lock_malformed_fails_closed(lock_path):
+    lock_path.write_text("NOT JSON")
+    with pytest.raises(SyncLockActiveError, match="lock file is malformed"):
+        release_lock(lock_path, token="tok123")
+    assert lock_path.exists()
+
+
+def test_release_lock_permission_error(lock_path):
+    lock_path.write_text(json.dumps({
+        "pid": os.getpid(), "started_at": "2024-01-01T00:00:00Z", "hostname": _get_hostname(), "token": "tok123"
+    }))
+    with patch.object(Path, "unlink", side_effect=PermissionError("permission denied")):
+        with pytest.raises(SyncLockPermissionError, match="Cannot release lock"):
+            release_lock(lock_path, token="tok123")
+
+
+def test_acquire_and_release_roundtrip_with_token(lock_path):
+    token = acquire_lock(lock_path)
+    assert lock_path.exists()
+    assert isinstance(token, str) and len(token) > 0
+    release_lock(lock_path, token=token)
+    assert not lock_path.exists()
+
 

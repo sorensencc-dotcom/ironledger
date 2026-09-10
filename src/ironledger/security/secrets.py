@@ -174,10 +174,26 @@ def get_access_url(conn: sqlite3.Connection) -> str:
     """Resolve SimpleFIN access URL from env -> keyring. Emits CREDENTIAL_ACCESS_ATTEMPT."""
     env_val = os.environ.get(_ENV_VAR)
     if env_val:
+        try:
+            validate_ssrf_safe(env_val)
+        except Exception:
+            try:
+                _emit_credential_audit(conn, source="env", outcome="failure")
+            except Exception:
+                pass
+            raise
         _emit_credential_audit(conn, source="env", outcome="success")
         return env_val
     keyring_val = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USERNAME)
     if keyring_val:
+        try:
+            validate_ssrf_safe(keyring_val)
+        except Exception:
+            try:
+                _emit_credential_audit(conn, source="keyring", outcome="failure")
+            except Exception:
+                pass
+            raise
         _emit_credential_audit(conn, source="keyring", outcome="success")
         return keyring_val
     _emit_credential_audit(conn, source="missing", outcome="failure")
@@ -209,6 +225,9 @@ def claim_setup_token(token_b64: str, conn: sqlite3.Connection) -> str:
         store_access_url(access_url)
         _emit_credential_audit(conn, source="claim", outcome="success")
         return mask_access_url(access_url)
-    except Exception:
-        _emit_credential_audit(conn, source="claim", outcome="failure")
-        raise
+    except Exception as orig_exc:
+        try:
+            _emit_credential_audit(conn, source="claim", outcome="failure")
+        except Exception:
+            pass
+        raise orig_exc

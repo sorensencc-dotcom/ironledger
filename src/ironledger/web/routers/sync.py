@@ -136,7 +136,7 @@ def sync_poll(
 
     lock_path = Path(request.app.state.db_path).parent / ".sync.lock"
     try:
-        sync_daemon.acquire_lock(lock_path)
+        lock_token = sync_daemon.acquire_lock(lock_path)
     except sync_daemon.SyncLockActiveError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     try:
@@ -158,4 +158,4 @@ def sync_poll(
         )
         return SyncPollResponse(inserted=ins, skipped=skip)
     finally:
-        sync_daemon.release_lock(lock_path)
+        sync_daemon.release_lock(lock_path, token=lock_token)

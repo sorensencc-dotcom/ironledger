@@ -354,3 +354,38 @@ def test_redirect_handler_masks_credentials_in_message():
     assert "leaked_user" not in err_msg
     assert "leaked_pass" not in err_msg
 
+
+def test_get_access_url_rejects_ssrf_env_var(monkeypatch, conn):
+    monkeypatch.setenv(
+        "IRONLEDGER_SIMPLEFIN_ACCESS_URL", "http://bridge.simplefin.org/simplefin"
+    )
+    with pytest.raises(SSRFViolationError, match="https"):
+        get_access_url(conn)
+
+    row = conn.execute(
+        "SELECT action, result FROM audit_events WHERE action='CREDENTIAL_ACCESS_ATTEMPT'"
+    ).fetchone()
+    assert row is not None
+    assert row[1] == "error"
+
+
+def test_get_access_url_rejects_ssrf_keyring(monkeypatch, conn):
+    monkeypatch.delenv("IRONLEDGER_SIMPLEFIN_ACCESS_URL", raising=False)
+    with patch("keyring.get_password", return_value="https://evil.com/simplefin"):
+        with pytest.raises(SSRFViolationError, match="allowlist"):
+            get_access_url(conn)
+
+    row = conn.execute(
+        "SELECT action, result FROM audit_events WHERE action='CREDENTIAL_ACCESS_ATTEMPT'"
+    ).fetchone()
+    assert row is not None
+    assert row[1] == "error"
+
+
+def test_claim_setup_token_audit_failure_does_not_mask_original_exception(conn):
+    # Base64 decode error or SSRF error should not be masked if audit emit fails
+    with patch("ironledger.security.secrets._emit_credential_audit", side_effect=RuntimeError("Audit write failed")):
+        with pytest.raises(SSRFViolationError, match="Setup token is not valid base64"):
+            claim_setup_token("invalid-base64", conn)
+
+

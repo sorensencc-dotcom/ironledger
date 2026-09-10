@@ -370,7 +370,7 @@ def _cmd_sync(args) -> int:
             from ironledger.ingest.formats.simplefin import fetch_accounts
             from ironledger.ingest.formats.simplefin_engine import ingest_simplefin_payload
             lock_path = Path(db_path).parent / ".sync.lock"
-            acquire_lock(lock_path)
+            lock_token = acquire_lock(lock_path)
             try:
                 end_dt = datetime.now(timezone.utc)
                 start_dt = end_dt - timedelta(days=args.lookback)
@@ -386,7 +386,7 @@ def _cmd_sync(args) -> int:
                     ins, skip = ingest_simplefin_payload(conn, payload, evidence_path=ev_dir, account_map=account_map)
                     print(f"Sync: {ins} inserted, {skip} skipped")
             finally:
-                release_lock(lock_path)
+                release_lock(lock_path, token=lock_token)
         elif args.sync_command == "accounts" and args.sync_accounts_command == "list":
             for r in conn.execute("SELECT remote_account_id, canonical_account FROM simplefin_account_map").fetchall():
                 print(f"  {r[0]} -> {r[1]}")

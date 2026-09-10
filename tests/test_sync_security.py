@@ -120,7 +120,8 @@ def test_fetch_accounts_retains_custom_port(conn, tmp_path, monkeypatch):
     mock_opener = MagicMock()
     mock_opener.open.return_value = mock_resp
 
-    with patch("ironledger.ingest.formats.simplefin.validate_ssrf_safe"), \
+    with patch("ironledger.security.secrets.validate_ssrf_safe"), \
+         patch("ironledger.ingest.formats.simplefin.validate_ssrf_safe"), \
          patch("ironledger.ingest.formats.simplefin.make_no_redirect_opener", return_value=mock_opener):
         fetch_accounts(
             conn,

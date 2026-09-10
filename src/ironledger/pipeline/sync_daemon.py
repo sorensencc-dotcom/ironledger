@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hmac
 import json
 import logging
 import os
 from pathlib import Path
+import secrets as _py_secrets
 import socket
 import sys
 
@@ -89,30 +91,77 @@ def _pid_is_ironledger(pid: int) -> bool:
         return True
 
 
-def _write_lock(lock_path: Path) -> None:
+def _write_lock(lock_path: Path, token: str | None = None) -> str:
+    lock_token = token or _py_secrets.token_hex(16)
     data = json.dumps({
         "pid": os.getpid(),
         "started_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "hostname": _get_hostname(),
+        "token": lock_token,
     })
     fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     try:
         os.write(fd, data.encode("utf-8"))
     finally:
         os.close(fd)
+    return lock_token
 
 
-def acquire_lock(lock_path: Path) -> None:
-    """Atomically create lock. Raises SyncLockActiveError if already held."""
+def acquire_lock(lock_path: Path) -> str:
+    """Atomically create lock. Returns lock token. Raises SyncLockActiveError if already held."""
     if lock_path.exists():
         inspect_and_reclaim_if_stale(lock_path)
     try:
-        _write_lock(lock_path)
+        return _write_lock(lock_path)
     except FileExistsError as exc:
         raise SyncLockActiveError(f"Lock already held at {lock_path}") from exc
 
 
-def release_lock(lock_path: Path) -> None:
+def release_lock(
+    lock_path: Path,
+    *,
+    token: str | None = None,
+    expected_pid: int | None = None,
+    expected_hostname: str | None = None,
+) -> None:
+    """Release lock only if caller is the validated lock owner. Fail closed otherwise."""
+    try:
+        raw = lock_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return
+    except PermissionError as exc:
+        logger.error("LOCK_PERMISSION_ERROR: permission error on %s: %s", lock_path, exc)
+        raise SyncLockPermissionError(f"Cannot release lock at {lock_path}: {exc}") from exc
+
+    try:
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("Lock data must be a JSON object")
+        lock_pid = int(data["pid"])
+        lock_hostname = str(data.get("hostname", ""))
+        lock_token = str(data.get("token", ""))
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
+        raise SyncLockActiveError(
+            f"Cannot release lock at {lock_path}: lock file is malformed ({exc})"
+        ) from exc
+
+    target_host = expected_hostname or _get_hostname()
+    if lock_hostname and lock_hostname != target_host:
+        raise SyncLockActiveError(
+            f"Cannot release lock at {lock_path}: held by foreign host {lock_hostname!r}"
+        )
+
+    target_pid = expected_pid if expected_pid is not None else os.getpid()
+    if lock_pid != target_pid:
+        raise SyncLockActiveError(
+            f"Cannot release lock at {lock_path}: held by PID {lock_pid} (caller PID is {target_pid})"
+        )
+
+    if (token is not None or lock_token) and not hmac.compare_digest(lock_token, token or ""):
+        raise SyncLockActiveError(
+            f"Cannot release lock at {lock_path}: token mismatch"
+        )
+
     try:
         lock_path.unlink(missing_ok=True)
     except FileNotFoundError:
