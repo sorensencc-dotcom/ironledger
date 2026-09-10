@@ -216,6 +216,21 @@ def _build_parser() -> argparse.ArgumentParser:
     web.add_argument("--projection-db", default=None, help="path to projection SQLite database")
     web.add_argument("--open-browser", action="store_true", help="open browser on startup")
     web.add_argument("--reload", action="store_true", help="enable auto-reload on code changes")
+
+    sync_parser = sub.add_parser("sync", help="SimpleFIN bank synchronization")
+    sync_parser.add_argument("--db", default=argparse.SUPPRESS, help="path to the SQLite ledger index")
+    sync_sub = sync_parser.add_subparsers(dest="sync_command")
+    sync_auth = sync_sub.add_parser("auth", help="Credential management")
+    sync_auth_sub = sync_auth.add_subparsers(dest="sync_auth_command")
+    sync_auth_claim = sync_auth_sub.add_parser("claim", help="Claim a SimpleFIN setup token")
+    sync_auth_claim.add_argument("--stdin", action="store_true", help="Read token from stdin")
+    sync_auth_sub.add_parser("status", help="Show masked connection info")
+    sync_poll = sync_sub.add_parser("poll", help="Run a sync poll")
+    sync_poll.add_argument("--lookback", type=int, default=30, help="Days to fetch (default: 30)")
+    sync_poll.add_argument("--dry-run", action="store_true", help="Parse without staging")
+    sync_accounts = sync_sub.add_parser("accounts", help="Account mapping")
+    sync_accounts_sub = sync_accounts.add_subparsers(dest="sync_accounts_command")
+    sync_accounts_sub.add_parser("list", help="List account mappings")
     return parser
 
 
@@ -298,6 +313,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_mcp(args)
     if args.command == "web":
         return _cmd_web(args)
+    if args.command == "sync":
+        return _cmd_sync(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
 
@@ -316,6 +333,54 @@ def _cmd_web(args) -> int:
         reload=args.reload,
     )
     return _EXIT_OK
+
+
+def _cmd_sync(args) -> int:
+    import getpass
+    from ironledger.security.secrets import (
+        claim_setup_token, get_access_url, mask_access_url, CredentialsNotFoundError,
+    )
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    conn = connect(db_path)
+    try:
+        migrations.migrate_governed(conn, db_path)
+        if args.sync_command == "auth":
+            if args.sync_auth_command == "claim":
+                token = sys.stdin.readline().strip() if args.stdin else getpass.getpass("SimpleFIN setup token: ")
+                masked = claim_setup_token(token, conn)
+                print(f"Access URL stored: {masked}")
+            elif args.sync_auth_command == "status":
+                try:
+                    print(f"Connected: {mask_access_url(get_access_url(conn))}")
+                except CredentialsNotFoundError:
+                    print("No credentials stored. Run: ironledger sync auth claim")
+        elif args.sync_command == "poll":
+            from datetime import datetime, timezone, timedelta
+            from pathlib import Path
+            from ironledger.pipeline.sync_daemon import acquire_lock, release_lock
+            from ironledger.ingest.formats.simplefin import fetch_accounts
+            from ironledger.ingest.formats.simplefin_engine import ingest_simplefin_payload
+            lock_path = Path(db_path).parent / ".sync.lock"
+            acquire_lock(lock_path)
+            try:
+                end_dt = datetime.now(timezone.utc)
+                start_dt = end_dt - timedelta(days=args.lookback)
+                ev_dir = Path(db_path).parent / "evidence" / "source_documents"
+                payload = fetch_accounts(conn, start_date=start_dt, end_date=end_dt, evidence_dir=ev_dir)
+                if args.dry_run:
+                    import json as _json
+                    print(_json.dumps(payload, indent=2))
+                else:
+                    ins, skip = ingest_simplefin_payload(conn, payload, evidence_path=ev_dir, account_map={})
+                    print(f"Sync: {ins} inserted, {skip} skipped")
+            finally:
+                release_lock(lock_path)
+        elif args.sync_command == "accounts" and args.sync_accounts_command == "list":
+            for r in conn.execute("SELECT remote_account_id, canonical_account FROM simplefin_account_map").fetchall():
+                print(f"  {r[0]} -> {r[1]}")
+        return _EXIT_OK
+    finally:
+        conn.close()
 
 
 def _cmd_compile(args) -> int:

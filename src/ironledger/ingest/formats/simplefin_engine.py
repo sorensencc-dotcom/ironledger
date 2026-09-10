@@ -86,7 +86,7 @@ def ingest_simplefin_payload(
                 tx_id = tx.get("id") or None
                 posted = _iso_from_unix(int(tx["posted"]))
                 cents = parse_amount(str(tx["amount"]))
-                desc = tx.get("description", "")
+                desc = tx.get("description") or ""
                 memo = tx.get("memo", "") or ""
                 ext_id = simplefin_external_id(
                     acct_id,

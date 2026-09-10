@@ -173,6 +173,8 @@ def migrate_governed(
     - Bookkeeping row is committed atomically with migration statements.
     - Returns the resulting schema version.
     """
+    if directory is not None and (str(directory).endswith(".db") or (Path(directory).exists() and not Path(directory).is_dir())):
+        directory = None
     migrations = discover_migrations(directory)
     _ensure_bootstrap(conn)
 
