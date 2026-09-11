@@ -14,7 +14,7 @@ Execute Phase 8: Multi-Asset Valuation, Ledger Lineage & Audit Replay (C:\dev\Ir
 4. **Task 8.4:** Deterministic Audit Replay & Outbox Point-in-Time Engine (0011_mutation_payloads.sql, src/ironledger/replay/, src/ironledger/manifests.py, tests/test_replay.py) — **COMPLETED** (9 tests passing, Merkle chain validation, HMAC trust anchors, point-in-time time travel, crash recovery)
 5. **Task 8.5:** Scoped Capability Tokens & RBAC Policy Enforcement (0010_multi_ledger_rbac.sql Part 2, src/ironledger/rbac/, src/ironledger/auth/, tests/test_rbac.py, tests/test_capabilities.py) — **COMPLETED** (14 tests passing, 71-char `il_cap_` tokens, HMAC signed tokens, role matrices, tenant scoping, revocation, expiration)
 6. **Task 8.6:** Multi-Tenant Ledger Isolation & Cryptographic Boundary Verification (src/ironledger/ledger/isolation.py, tests/test_tenant_isolation.py) — **COMPLETED** (19 tests passing, deterministic HMAC-SHA256 key/salt derivation, filesystem jail, boundary assertions)
-7. **Task 8.7:** Acceptance Regression Suite & Phase 8 Exit Evidence (tests/test_phase8_exit_contract.py, docs/meta/phases/ironledger-phase-8-evidence.md) — **COMPLETED** (863 tests passing, zero regressions, AST zero-beancount and zero-float verified)
+7. **Task 8.7:** Acceptance Regression Suite & Phase 8 Exit Evidence (tests/test_phase8_exit_contract.py, docs/meta/phases/ironledger-phase-8-evidence.md) — **COMPLETED** (865 tests passing, zero regressions, AST zero-beancount and zero-float verified)
 
 ## Key Architecture & Invariants Locked
 - Exact rational integer arithmetic with zero floating-point drift and pure integer Banker's half-even rounding across all scales.
