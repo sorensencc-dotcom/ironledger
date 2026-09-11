@@ -54,8 +54,8 @@ CREATE TABLE IF NOT EXISTS capability_tokens (
     is_global INTEGER NOT NULL DEFAULT 0 CHECK(is_global IN (0, 1)),
     role TEXT NOT NULL CHECK(role IN ('READER', 'OPERATOR', 'COMPILER', 'ADMIN')),
     capabilities_json TEXT NOT NULL CHECK(json_valid(capabilities_json) = 1 AND json_type(capabilities_json) = 'array'),
-    expires_at TEXT CHECK(expires_at IS NULL OR (expires_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND expires_at NOT GLOB '*[^0-9T:.-Z]*')),
-    revoked_at TEXT CHECK(revoked_at IS NULL OR (revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND revoked_at NOT GLOB '*[^0-9T:.-Z]*')),
+    expires_at TEXT CHECK(expires_at IS NULL OR (expires_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND expires_at NOT GLOB '*[^0-9T:.Z-]*')),
+    revoked_at TEXT CHECK(revoked_at IS NULL OR (revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND revoked_at NOT GLOB '*[^0-9T:.Z-]*')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     CHECK((is_global = 1 AND role = 'ADMIN' AND ledger_id IS NULL) OR (is_global = 0 AND role IN ('READER', 'OPERATOR', 'COMPILER', 'ADMIN') AND ledger_id IS NOT NULL))
 ) STRICT;
