@@ -35,6 +35,7 @@ class LineageDAG:
         c = self._get_connection(conn)
         meta_json = json.dumps(node.metadata or {})
 
+        in_tx = c.in_transaction
         c.execute(
             """
             INSERT INTO lineage_nodes (ledger_id, node_id, node_type, entity_ref, metadata_json)
@@ -46,7 +47,8 @@ class LineageDAG:
             """,
             (node.ledger_id, node.node_id, node.node_type, node.entity_ref, meta_json),
         )
-        c.commit()
+        if not in_tx:
+            c.commit()
 
         cur = c.execute(
             "SELECT created_at FROM lineage_nodes WHERE ledger_id = ? AND node_id = ?",
@@ -132,15 +134,15 @@ class LineageDAG:
             # If target can reach source, adding source -> target creates a cycle.
             cur = c.execute(
                 """
-                WITH RECURSIVE reachability(node) AS (
-                    SELECT target_node_id
+                WITH RECURSIVE reachability(node, depth) AS (
+                    SELECT target_node_id, 0
                     FROM lineage_edges
                     WHERE ledger_id = ? AND source_node_id = ?
                     UNION
-                    SELECT e.target_node_id
+                    SELECT e.target_node_id, r.depth + 1
                     FROM lineage_edges e
                     JOIN reachability r ON e.source_node_id = r.node
-                    WHERE e.ledger_id = ?
+                    WHERE e.ledger_id = ? AND r.depth < 1000
                 )
                 SELECT 1 FROM reachability WHERE node = ? LIMIT 1
                 """,

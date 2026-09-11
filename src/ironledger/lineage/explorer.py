@@ -84,34 +84,40 @@ class LineageExplorer:
             for r in node_rows
         ]
         node_id_set = {n.node_id for n in nodes}
-
-        # 2. Fetch all connecting edges among the discovered nodes
-        placeholders = ",".join("?" for _ in node_id_set)
-        edges = []
-        if node_id_set:
-            edge_params = [ledger_id] + list(node_id_set) + list(node_id_set)
-            cur = c.execute(
-                f"""
-                SELECT ledger_id, source_node_id, target_node_id, relationship, created_at
-                FROM lineage_edges
-                WHERE ledger_id = ?
-                  AND source_node_id IN ({placeholders})
-                  AND target_node_id IN ({placeholders})
-                """,
-                edge_params,
-            )
-            edges = [
-                LineageEdge(
-                    ledger_id=r[0],
-                    source_node_id=r[1],
-                    target_node_id=r[2],
-                    relationship=r[3],
-                    created_at=r[4],
-                )
-                for r in cur.fetchall()
-            ]
-
+        edges = self._fetch_subgraph_edges(c, ledger_id, node_id_set)
         return LineageGraph(nodes=nodes, edges=edges)
+
+    def _fetch_subgraph_edges(
+        self,
+        c: sqlite3.Connection,
+        ledger_id: str,
+        node_id_set: set[str],
+    ) -> list[LineageEdge]:
+        """Fetch all connecting edges among the discovered nodes."""
+        if not node_id_set:
+            return []
+        placeholders = ",".join("?" for _ in node_id_set)
+        edge_params = [ledger_id] + list(node_id_set) + list(node_id_set)
+        cur = c.execute(
+            f"""
+            SELECT ledger_id, source_node_id, target_node_id, relationship, created_at
+            FROM lineage_edges
+            WHERE ledger_id = ?
+              AND source_node_id IN ({placeholders})
+              AND target_node_id IN ({placeholders})
+            """,
+            edge_params,
+        )
+        return [
+            LineageEdge(
+                ledger_id=r[0],
+                source_node_id=r[1],
+                target_node_id=r[2],
+                relationship=r[3],
+                created_at=r[4],
+            )
+            for r in cur.fetchall()
+        ]
 
     def trace_downstream(
         self,
@@ -168,32 +174,7 @@ class LineageExplorer:
             for r in node_rows
         ]
         node_id_set = {n.node_id for n in nodes}
-
-        placeholders = ",".join("?" for _ in node_id_set)
-        edges = []
-        if node_id_set:
-            edge_params = [ledger_id] + list(node_id_set) + list(node_id_set)
-            cur = c.execute(
-                f"""
-                SELECT ledger_id, source_node_id, target_node_id, relationship, created_at
-                FROM lineage_edges
-                WHERE ledger_id = ?
-                  AND source_node_id IN ({placeholders})
-                  AND target_node_id IN ({placeholders})
-                """,
-                edge_params,
-            )
-            edges = [
-                LineageEdge(
-                    ledger_id=r[0],
-                    source_node_id=r[1],
-                    target_node_id=r[2],
-                    relationship=r[3],
-                    created_at=r[4],
-                )
-                for r in cur.fetchall()
-            ]
-
+        edges = self._fetch_subgraph_edges(c, ledger_id, node_id_set)
         return LineageGraph(nodes=nodes, edges=edges)
 
     def get_root_ancestors(
