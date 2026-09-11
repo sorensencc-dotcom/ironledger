@@ -18,7 +18,7 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 ### Upstream Invariants Inherited & Enforced
 
 1. **Exact Rational Integer Arithmetic:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift.
-2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration.
+2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration and unbounded insertion-time cycle detection.
 3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database to reconstruct exact historical state snapshots at any sequence number without mutating live files.
 4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries and composite foreign keys enforce strict isolation across staging buffers, price histories, compile journals, mutation ledgers, lineage nodes/edges, and compilation mutex lockfiles (`.ironledger/.compile.<ledger_id>.lock`).
 5. **Zero Runtime `import beancount`:** All Beancount commodity and price directives are generated via deterministic string template emission, guarded by AST static analysis and import prohibition tests.
@@ -42,7 +42,7 @@ Phase 8: Lineage, Valuation & Replay Engine
 
 ## 3. Database Schema Architecture
 
-Phase 8 schema migrations use `STRICT` table definitions and SQLite-compatible alteration patterns:
+Phase 8 schema migrations use `STRICT` table definitions and SQLite-compatible alteration patterns tracked by the governed forward-only migration runner (`ironledger.governance.migrations`):
 
 ### Migration `0008_price_history.sql` (Task 8.1)
 ```sql
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS ledgers (
 
 INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default', 'Default Ledger', 'USD');
 
--- Non-destructive SQLite column extensions for tenant isolation
+-- Non-destructive SQLite column additions for multi-ledger scoping
 ALTER TABLE source_documents ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE source_records ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE staged_transactions ADD COLUMN ledger_id TEXT DEFAULT 'default';
@@ -138,7 +138,8 @@ CREATE INDEX IF NOT EXISTS idx_token_hash_lookup ON capability_tokens(token_hash
 CREATE TABLE IF NOT EXISTS mutation_payloads (
     seq INTEGER PRIMARY KEY,
     mutation_id TEXT NOT NULL UNIQUE,
-    ledger_id TEXT NOT NULL DEFAULT 'default',
+    ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id),
+    payload_schema_version INTEGER NOT NULL DEFAULT 1 CHECK(payload_schema_version >= 1),
     event_type TEXT NOT NULL CHECK(event_type IN ('STAGE_TRANSACTION', 'REVIEW_DECISION', 'COMPILE_LEDGER', 'PRICE_DIRECTIVE', 'RULE_UPDATE')),
     payload_json TEXT NOT NULL CHECK(json_valid(payload_json) = 1),
     projection_hash_before TEXT NOT NULL,
@@ -183,9 +184,13 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
 ### Task 8.2: Ledger Lineage Explorer & Bi-Directional Provenance DAG
 * **Location:** `src/ironledger/lineage/explorer.py`, `src/ironledger/lineage/dag.py`
 * **Lineage Layers:** `EVIDENCE_BLOB` $\xrightarrow{\text{EXTRACTED\_FROM}}$ `SOURCE_RECORD` $\xrightarrow{\text{STAGED\_FROM}}$ `STAGED_TX` $\xrightarrow{\text{COMPILED\_FROM}}$ `POSTING`.
+* **API Signature:**
+  ```python
+  def add_edge(ledger_id: str, source_node_id: str, target_node_id: str, relationship: str) -> None
+  ```
 * **Acyclicity & Cycle Prevention:**
-  - Insertion-time check: `LineageDAG.add_edge(ledger_id, source_id, target_id)` runs a recursive reachability check. If `target_id` can reach `source_id` within the ledger, insertion is aborted with `LineageCycleError`.
-  - Query recursion bound: Recursive CTEs enforce `depth <= 50` hard limit.
+  - Insertion-time check: `LineageDAG.add_edge` runs an unbounded recursive reachability query (`WITH RECURSIVE reachability ...`). If `target_node_id` can reach `source_node_id` within the `ledger_id`, insertion is aborted with `LineageCycleError`.
+  - Query recursion bound: Read traversal queries enforce `depth <= 50` limit.
 * **Atomic Edge Recording:** Staging and compile writers execute lineage node and edge inserts inside the *same atomic database transaction* (`BEGIN IMMEDIATE`) as the accounting mutations.
 
 ### Task 8.3: Multi-Ledger Topology & Isolated Staging Queues
@@ -197,28 +202,59 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
 ### Task 8.4: Deterministic Audit Replay & Point-in-Time Time Travel
 * **Location:** `src/ironledger/replay/engine.py`, `src/ironledger/replay/snapshot.py`
 * **Fingerprint Duality Defined:**
-  1. `sha256_after` (Beancount manifest hash): Canonical hash of `.beancount` year files on disk (`src/ironledger/manifests.py:compute_ledger_manifest_hash`).
-  2. `projection_hash` (SQLite table state hash): Canonical UTF-8 JSON hash over sorted rows of staged transactions, postings, and price history in SQLite.
-* **Payload Event Schemas:**
-  - `STAGE_TRANSACTION`: `{ "staged_transaction_id": str, "source_record_id": str, "postings": list[dict] }`
-  - `REVIEW_DECISION`: `{ "staged_transaction_id": str, "decision": str, "assigned_account": str | None }`
-  - `COMPILE_LEDGER`: `{ "compile_run_id": str, "beancount_version": str, "input_hash": str, "intended_output_hash": str }`
-  - `PRICE_DIRECTIVE`: `{ "directive_date": str, "base_currency": str, "quote_currency": str, "rate_numerator": int, "rate_denominator": int }`
-  - `RULE_UPDATE`: `{ "rule_id": str, "action": str, "rule_definition": dict }`
+  1. `sha256_after` (Beancount manifest hash): Recorded on `mutation_events`. Canonical hash of `.beancount` files on disk (`src/ironledger/manifests.py:compute_ledger_manifest_hash`).
+  2. `projection_hash` (SQLite table state hash): Recorded on `mutation_payloads`. Deterministic SHA-256 computed by `compute_projection_hash(conn, ledger_id)`.
+* **Canonical `projection_hash` Algorithm:**
+  ```python
+  def compute_projection_hash(conn: sqlite3.Connection, ledger_id: str) -> str:
+      """Compute canonical SHA-256 hash over tenant projection state."""
+      tables = ["staged_transactions", "staged_postings", "price_history", "compile_runs"]
+      payload = []
+      for table in tables:
+          cur = conn.execute(f"PRAGMA table_info({table})")
+          cols = [c[1] for c in cur.fetchall()]
+          col_str = ", ".join(cols)
+          cur = conn.execute(
+              f"SELECT {col_str} FROM {table} WHERE ledger_id = ? ORDER BY rowid ASC",
+              (ledger_id,),
+          )
+          rows = cur.fetchall()
+          payload.append([table, cols, rows])
+      encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str).encode("utf-8")
+      return hashlib.sha256(encoded).hexdigest()
+  ```
+* **Payload Event Schemas (`payload_schema_version = 1`):**
+  - `STAGE_TRANSACTION`: `{ "schema_version": 1, "ledger_id": str, "staged_transaction_id": str, "source_record_id": str, "source_document_id": str, "entry_date": str, "payee": str, "narration": str, "status": str, "postings": list[dict] }`
+  - `REVIEW_DECISION`: `{ "schema_version": 1, "ledger_id": str, "staged_transaction_id": str, "prior_status": str, "new_status": str, "assigned_account": str | None, "rule_id": str | None }`
+  - `COMPILE_LEDGER`: `{ "schema_version": 1, "ledger_id": str, "compile_run_id": str, "beancount_version": str, "compiler_version": str, "input_hash": str, "intended_output_hash": str, "actual_output_hash": str, "compiled_tx_ids": list[str] }`
+  - `PRICE_DIRECTIVE`: `{ "schema_version": 1, "ledger_id": str, "directive_date": str, "base_currency": str, "quote_currency": str, "rate_numerator": int, "rate_denominator": int, "precision_scale": int, "source": str }`
+  - `RULE_UPDATE`: `{ "schema_version": 1, "ledger_id": str, "rule_id": str, "action": str, "pattern": str, "target_account": str, "is_active": int }`
 * **Deterministic Replay Execution:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select $\max(\text{seq})$ where `ts_utc <= target_timestamp`.
   2. Verify hash chain from sequence 1 to `target_sequence`.
   3. Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
   4. Stream `mutation_payloads` and execute schema-versioned deterministic event handlers.
   5. Validate final projection fingerprint against `projection_hash_after` and return the point-in-time balance snapshot.
-* **Atomic Append:** `append_mutation_event` writes both `mutation_events` and `mutation_payloads` in a single SQLite transaction.
+* **Atomic Append:** `append_mutation_event(conn, ..., payload_dict, event_type)` writes both `mutation_events` and `mutation_payloads` in a single SQLite transaction.
 
 ### Task 8.5: Scoped Capability Tokens & RBAC Policy Enforcement
 * **Location:** `src/ironledger/auth/capabilities.py`, `src/ironledger/auth/policy.py`
-* **Token Security:** Bearer tokens generated via `secrets.token_hex(32)` (`il_cap_<hex64>`). Verification uses `hmac.compare_digest(stored_hash, sha256(token))`.
-* **Centralized Policy Enforcement:** `PolicyEnforcer.authorize(token, required_scope, target_ledger_id)` invoked across CLI commands, MCP tools, and web endpoints.
-* **Scope Matrix:**
-  - `ledger:read`, `staging:write`, `review:decide`, `compile:execute`, `audit:replay`, `admin:*`.
+* **Role Ceiling Matrix:**
+  | Role | Maximum Allowed Capability Scopes |
+  |---|---|
+  | `READER` | `["ledger:read", "audit:replay"]` |
+  | `OPERATOR` | `["ledger:read", "staging:write", "review:decide", "audit:replay"]` |
+  | `COMPILER` | `["ledger:read", "compile:execute", "audit:replay"]` |
+  | `ADMIN` | `["*"]` (or all individual scopes) |
+* **Token Security & Validation:**
+  - Bearer tokens generated via `secrets.token_hex(32)` (`il_cap_<hex64>`).
+  - `PolicyEnforcer.authorize(token, required_scope, target_ledger_id)`:
+    1. Look up token by SHA-256 hash.
+    2. Check `revoked_at` is NULL.
+    3. Check `expires_at` is NULL or in future (UTC ISO-8601).
+    4. Check ledger scope: `token.is_global == 1` OR `token.ledger_id == target_ledger_id`.
+    5. Check role ceiling and specific capability scope.
+* **Centralized Policy Enforcement:** Invoked across CLI commands, MCP tools, and web endpoints.
 
 ### Task 8.6: Acceptance Regression Suite & Phase 8 Exit Evidence
 * **Location:** `tests/test_valuation.py`, `tests/test_lineage.py`, `tests/test_multi_ledger.py`, `tests/test_replay.py`, `tests/test_capabilities.py`, `tests/test_phase8_exit_contract.py`
@@ -235,7 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
    - Verify Beancount price directive string template output with zero runtime Beancount imports and configurable scale precision.
 2. **Lineage Suite (`tests/test_lineage.py`):**
    - Verify bi-directional recursive CTE DAG traversals within tenant boundaries (posting $\to$ evidence hash, and evidence hash $\to$ postings).
-   - Verify cycle prevention rejection and transactional atomicity on edge registration.
+   - Verify unbounded cycle prevention rejection and transactional atomicity on edge registration.
 3. **Multi-Ledger Suite (`tests/test_multi_ledger.py`):**
    - Verify complete isolation of staging queues, lineage nodes, and concurrent compilation locks across multiple `ledger_id`s.
    - Verify multi-entity consolidated balance aggregation.
@@ -243,6 +279,6 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
    - Verify full hash-chain validation and payload replay into in-memory projection database validating `projection_hash_after`.
    - Verify zero side-effects on live database files.
 5. **RBAC Suite (`tests/test_capabilities.py`):**
-   - Verify token creation, constant-time hash verification, global vs tenant-scoped validation, and fine-grained capability scope gating.
+   - Verify token creation, constant-time hash verification, role ceiling enforcement, expiration/revocation gating, and global vs tenant-scoped validation.
 6. **Phase 8 Exit Contract (`tests/test_phase8_exit_contract.py`):**
    - Run end-to-end integration scenario combining multi-asset pricing, lineage tracing, multi-tenant isolation, replay, and RBAC enforcement.
