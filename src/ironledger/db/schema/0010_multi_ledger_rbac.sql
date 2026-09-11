@@ -1,17 +1,10 @@
 -- Migration 0010: Multi-Ledger Topology, Isolated Staging Queues & RBAC
 
-CREATE TABLE IF NOT EXISTS ledgers (
-    ledger_id TEXT PRIMARY KEY CHECK(length(ledger_id) >= 1 AND length(ledger_id) <= 64 AND ledger_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
-    name TEXT NOT NULL CHECK(length(name) >= 1 AND length(name) <= 128),
-    root_account TEXT NOT NULL DEFAULT 'Assets' CHECK(length(root_account) >= 1),
-    base_currency TEXT NOT NULL DEFAULT 'USD' CHECK(length(base_currency) >= 1 AND length(base_currency) <= 12 AND base_currency NOT GLOB '*[^A-Z0-9_.-]*'),
-    storage_root TEXT NOT NULL DEFAULT '' CHECK(length(storage_root) <= 256),
-    is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
-) STRICT;
+-- Alter existing ledgers table created in 0008 to add root_account and storage_root
+ALTER TABLE ledgers ADD COLUMN root_account TEXT NOT NULL DEFAULT 'Assets';
+ALTER TABLE ledgers ADD COLUMN storage_root TEXT NOT NULL DEFAULT '';
 
-INSERT OR IGNORE INTO ledgers (ledger_id, name, root_account, base_currency, storage_root)
-VALUES ('default', 'Default Ledger', 'Assets', 'USD', 'default');
+UPDATE ledgers SET storage_root = 'default' WHERE ledger_id = 'default' AND storage_root = '';
 
 CREATE TABLE IF NOT EXISTS ledger_accounts (
     ledger_id TEXT NOT NULL REFERENCES ledgers(ledger_id) ON DELETE CASCADE,
@@ -20,7 +13,7 @@ CREATE TABLE IF NOT EXISTS ledger_accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     PRIMARY KEY (ledger_id, id),
-    FOREIGN KEY (ledger_id, parent_id) REFERENCES ledger_accounts (ledger_id, id) ON DELETE RESTRICT ON UPDATE CASCADE
+    FOREIGN KEY (ledger_id, parent_id) REFERENCES ledger_accounts (ledger_id, id) ON DELETE CASCADE ON UPDATE CASCADE
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_ledger_accounts_parent ON ledger_accounts (ledger_id, parent_id);

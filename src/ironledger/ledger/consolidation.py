@@ -106,27 +106,16 @@ class ConsolidationEngine:
                         target_scale=2,
                     )
                 else:
-                    try:
-                        converted_minor = val_engine.convert(
-                            source_minor=amount_minor,
-                            source_scale=scale,
-                            base_currency=currency,
-                            quote_currency=base_currency,
-                            as_of_date=valid_date,
-                            target_scale=2,
-                            ledger_id=ledger.ledger_id,
-                        )
-                    except MissingPriceDirectiveError:
-                        # Fall back to global/default price directive cache
-                        converted_minor = val_engine.convert(
-                            source_minor=amount_minor,
-                            source_scale=scale,
-                            base_currency=currency,
-                            quote_currency=base_currency,
-                            as_of_date=valid_date,
-                            target_scale=2,
-                            ledger_id="default",
-                        )
+                    # Strict tenant pricing: no silent fallback to default ledger
+                    converted_minor = val_engine.convert(
+                        source_minor=amount_minor,
+                        source_scale=scale,
+                        base_currency=currency,
+                        quote_currency=base_currency,
+                        as_of_date=valid_date,
+                        target_scale=2,
+                        ledger_id=ledger.ledger_id,
+                    )
 
                 eb = EntityBalance(
                     ledger_id=ledger.ledger_id,

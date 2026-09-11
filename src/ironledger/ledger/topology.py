@@ -19,20 +19,38 @@ from ironledger.ledger.models import (
 def validate_and_resolve_ledger_root(base_path: Path | str, storage_root: Path | str) -> Path:
     """Resolve and validate that storage_root is safely contained within base_path.
 
-    Rejects directory traversal attempts and external symlinks.
+    Rejects directory traversal attempts and any symlinks in the path hierarchy.
     """
     base = Path(base_path).resolve()
     storage_path = Path(storage_root)
 
-    if storage_path.is_absolute():
-        resolved = storage_path.resolve()
-    else:
-        resolved = (base / storage_path).resolve()
+    # 1. Reject any symlinks in the path hierarchy
+    raw_target = storage_path if storage_path.is_absolute() else (base / storage_path)
+    
+    # Check if raw_target or any of its parents is a symlink
+    curr = raw_target
+    while True:
+        if curr.is_symlink() or os.path.islink(curr):
+            raise ValueError(f"Symlinks are strictly prohibited in ledger paths: {curr}")
+        if curr == base or curr.parent == curr:
+            break
+        curr = curr.parent
 
+    # 2. Confinement check
+    resolved = raw_target.resolve()
     try:
         resolved.relative_to(base)
     except ValueError:
         raise ValueError(f"Storage root '{storage_root}' resolves outside base directory '{base}'")
+
+    # Double check resolved path does not contain symlinks
+    curr = resolved
+    while True:
+        if curr.is_symlink() or os.path.islink(curr):
+            raise ValueError(f"Symlinks are strictly prohibited in ledger paths: {curr}")
+        if curr == base or curr.parent == curr:
+            break
+        curr = curr.parent
 
     return resolved
 
@@ -44,6 +62,25 @@ class LedgerRegistry:
         self.conn = conn
         self.base_path = Path(base_path).resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
+
+    def _check_storage_root_unique(self, ledger_id: str, resolved_path: Path) -> None:
+        """Ensure no other ledger shares the same canonical storage path (case-insensitive on Windows)."""
+        cur = self.conn.execute("SELECT ledger_id, storage_root FROM ledgers WHERE ledger_id != ?", (ledger_id,))
+        for other_id, other_storage in cur.fetchall():
+            if not other_storage:
+                continue
+            try:
+                other_resolved = (self.base_path / other_storage).resolve()
+                if os.name == "nt":
+                    if str(other_resolved).lower() == str(resolved_path).lower():
+                        raise ValueError(f"Storage root '{resolved_path}' is already in use by ledger '{other_id}'")
+                else:
+                    if other_resolved == resolved_path:
+                        raise ValueError(f"Storage root '{resolved_path}' is already in use by ledger '{other_id}'")
+            except Exception as e:
+                if isinstance(e, ValueError) and "already in use" in str(e):
+                    raise
+                continue
 
     def create_ledger(
         self,
@@ -68,8 +105,13 @@ class LedgerRegistry:
         if not isinstance(base_currency, str) or not CURRENCY_PATTERN.match(base_currency):
             raise ValueError(f"Invalid base_currency: {base_currency!r}")
 
+        # Reject ID collisions
+        if self.get_ledger(ledger_id) is not None:
+            raise ValueError(f"Ledger with ID '{ledger_id}' already exists")
+
         effective_storage = storage_root if storage_root else ledger_id
         resolved_path = validate_and_resolve_ledger_root(self.base_path, effective_storage)
+        self._check_storage_root_unique(ledger_id, resolved_path)
         resolved_path.mkdir(parents=True, exist_ok=True)
 
         in_tx = self.conn.in_transaction
@@ -80,12 +122,6 @@ class LedgerRegistry:
                 """
                 INSERT INTO ledgers (ledger_id, name, root_account, base_currency, storage_root, is_active)
                 VALUES (?, ?, ?, ?, ?, 1)
-                ON CONFLICT(ledger_id) DO UPDATE SET
-                    name = excluded.name,
-                    root_account = excluded.root_account,
-                    base_currency = excluded.base_currency,
-                    storage_root = excluded.storage_root,
-                    is_active = excluded.is_active
                 """,
                 (ledger_id, name, root_account, base_currency, effective_storage),
             )
@@ -157,6 +193,7 @@ class LedgerRegistry:
     def register_storage_root(self, ledger_id: str, storage_root: Path | str) -> Path:
         """Validate, register, and update the storage root for a ledger."""
         resolved = validate_and_resolve_ledger_root(self.base_path, storage_root)
+        self._check_storage_root_unique(ledger_id, resolved)
         resolved.mkdir(parents=True, exist_ok=True)
 
         in_tx = self.conn.in_transaction

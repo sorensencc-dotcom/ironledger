@@ -18,7 +18,7 @@ from ironledger.ledger.topology import LedgerRegistry
 from ironledger.ledger.staging import StagingManager
 from ironledger.ledger.consolidation import ConsolidationEngine
 from ironledger.valuation.engine import ValuationEngine
-from ironledger.valuation.models import PriceDirective
+from ironledger.valuation.models import MissingPriceDirectiveError, PriceDirective
 
 
 @pytest.fixture
@@ -137,6 +137,18 @@ def test_path_traversal_relative_dotdot_rejected(registry):
         )
 
 
+def test_storage_root_aliasing_rejected(registry):
+    registry.create_ledger(name="First Tenant", storage_root="shared_dir", ledger_id="tenant_1")
+    with pytest.raises(ValueError, match="already in use"):
+        registry.create_ledger(name="Second Tenant", storage_root="shared_dir", ledger_id="tenant_2")
+
+
+def test_ledger_id_collision_rejected(registry):
+    registry.create_ledger(name="Acme Corp", ledger_id="acme")
+    with pytest.raises(ValueError, match="already exists"):
+        registry.create_ledger(name="Acme Corp Duplicate", ledger_id="acme")
+
+
 def test_ledger_lookup_and_listing(registry):
     l1 = registry.create_ledger(name="L1", ledger_id="corp_1")
     l2 = registry.create_ledger(name="L2", ledger_id="corp_2")
@@ -194,17 +206,37 @@ def test_consolidated_balance_reporting(consolidation, registry, conn):
     assert sheet.total_minor == 15500
 
 
-def test_foreign_key_cascade_deletion(registry, staging, consolidation, conn):
+def test_missing_tenant_price_directive_fails(consolidation, registry):
+    b = registry.create_ledger(
+        name="Tenant B",
+        base_currency="EUR",
+        storage_root="tenant_b_strict",
+        ledger_id="tenant_b_strict",
+    )
+    consolidation.seed_balance(b.ledger_id, "Assets:Cash", 5_000, "EUR", 2)
+
+    with pytest.raises(MissingPriceDirectiveError):
+        consolidation.consolidated_balance_sheet(base_currency="USD", as_of_date="2026-09-05")
+
+
+def test_foreign_key_cascade_deletion_with_accounts(registry, staging, consolidation, conn):
     tenant = registry.create_ledger(name="Ephemeral Tenant", ledger_id="ephemeral_1")
     staging.enqueue(tenant.ledger_id, {"op": "test"})
     consolidation.seed_balance(tenant.ledger_id, "Assets:Bank", 5000, "USD", 2)
 
+    # Create account hierarchy
+    conn.execute("INSERT INTO ledger_accounts (ledger_id, id, parent_id, name, type) VALUES (?, 1, NULL, 'Assets', 'asset')", (tenant.ledger_id,))
+    conn.execute("INSERT INTO ledger_accounts (ledger_id, id, parent_id, name, type) VALUES (?, 2, 1, 'Assets:Bank', 'asset')", (tenant.ledger_id,))
+    conn.commit()
+
     assert len(staging.peek(tenant.ledger_id)) == 1
 
-    # Delete the ledger; foreign keys ON should cascade delete operations and balances
+    # Delete the ledger; foreign keys ON should cascade delete operations, balances, and account trees
     conn.execute("DELETE FROM ledgers WHERE ledger_id = ?", (tenant.ledger_id,))
     conn.commit()
 
     assert staging.peek(tenant.ledger_id) == []
     cur = conn.execute("SELECT COUNT(*) FROM ledger_balances WHERE ledger_id = ?", (tenant.ledger_id,))
     assert cur.fetchone()[0] == 0
+    cur_acc = conn.execute("SELECT COUNT(*) FROM ledger_accounts WHERE ledger_id = ?", (tenant.ledger_id,))
+    assert cur_acc.fetchone()[0] == 0

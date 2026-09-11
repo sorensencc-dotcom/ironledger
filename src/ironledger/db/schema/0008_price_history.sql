@@ -3,15 +3,12 @@
 CREATE TABLE IF NOT EXISTS ledgers (
     ledger_id TEXT PRIMARY KEY CHECK(length(ledger_id) >= 1 AND length(ledger_id) <= 64 AND ledger_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
     name TEXT NOT NULL CHECK(length(name) >= 1 AND length(name) <= 128),
-    root_account TEXT NOT NULL DEFAULT 'Assets' CHECK(length(root_account) >= 1),
     base_currency TEXT NOT NULL DEFAULT 'USD' CHECK(length(base_currency) >= 1 AND length(base_currency) <= 12 AND base_currency NOT GLOB '*[^A-Z0-9_.-]*'),
-    storage_root TEXT NOT NULL DEFAULT '' CHECK(length(storage_root) <= 256),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 ) STRICT;
 
-INSERT OR IGNORE INTO ledgers (ledger_id, name, root_account, base_currency, storage_root)
-VALUES ('default', 'Default Ledger', 'Assets', 'USD', 'default');
+INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default', 'Default Ledger', 'USD');
 
 CREATE TABLE IF NOT EXISTS price_history (
     id INTEGER NOT NULL,
