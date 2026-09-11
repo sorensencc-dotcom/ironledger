@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Version:** 1.0.0 (Hardened Canonical Specification - Pass 14 Remediation)  
+**Version:** 1.0.0 (Hardened Canonical Specification - Pass 15 Remediation)  
 **Specification Role:** Canonical Implementation Specification & Governed Mirror  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
@@ -22,7 +22,7 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 
 1. **Exact Rational Integer Arithmetic & Zero Float Drift:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift. Strict integer type guards (`type(v) is int and not isinstance(v, bool)`) enforce pure integer inputs across all valuation, formatting, and conversion functions. Exact Banker's half-even integer rounding applies uniformly across all precisions, including `precision_scale == 0`. No float division `/` is permitted anywhere in valuation or rendering code paths, strictly enforced by AST guards.
 2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration, strict self-edge rejection (`source != target`), and unbounded insertion-time cycle detection.
-3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence and Merkle chain from genesis anchors, then replays schema-versioned canonical self-contained event mutation payloads into an ephemeral in-memory projection database and ephemeral filesystem manifest to reconstruct exact historical state snapshots at any sequence number without mutating live files.
+3. **Deterministic Point-in-Time Replay & Cryptographic Audit Authenticity:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence, Merkle chain continuity, authority digital signatures/HMACs, and external out-of-band trust anchor commitments (`.ironledger/anchors/<ledger_id>.anchor.json`). Replay executes schema-versioned canonical self-contained event mutation payloads into an ephemeral in-memory projection database and ephemeral filesystem manifest to reconstruct exact historical state snapshots at any sequence number without mutating live files.
 4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` validation (`^[A-Za-z0-9_-]+$`), symlink refusal and canonical path boundary enforcement (`Path.relative_to`), composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), tenant-isolated directory subtrees (`beancount_root/ledgers/<ledger_id>/current/`), tenant-scoped compile lockfiles (`.ironledger/.compile.<ledger_id>.lock`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema and filesystem boundaries with mandatory `PRAGMA foreign_keys = ON;`.
 5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by symbol-tracking static AST scanners forbidding `import beancount`, `from beancount import ...`, `__import__("beancount")`, `importlib.import_module("beancount")`, and dynamic `getattr` module loaders (reading package version metadata via `importlib.metadata.version("beancount")` is permitted).
 6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement and issuance-time role ceiling validation across CLI, web, and programmatic interfaces.
@@ -90,7 +90,10 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
              raise ForeignKeyViolationError(f"Foreign key violations after migration {v}: {fk_violations}")
              
          # 5. Record applied migration in same transaction
-         checksum = hashlib.sha256(migration_sql.encode("utf-8")).hexdigest()
+         normalized_sql_bytes = migration_sql.replace("
+", "
+").encode("utf-8")
+        checksum = hashlib.sha256(normalized_sql_bytes).hexdigest()
          applied_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
          conn.execute(
              "INSERT INTO schema_migrations (version, name, checksum, applied_at_utc) VALUES (?, ?, ?, ?)",
@@ -393,6 +396,7 @@ CREATE TABLE mutation_events (
     sha256_after        TEXT NOT NULL CHECK (length(sha256_after) = 64),
     prev_mutation_hash  TEXT NOT NULL CHECK (length(prev_mutation_hash) = 64),
     mutation_hash       TEXT NOT NULL CHECK (length(mutation_hash) = 64),
+    authority_signature TEXT NOT NULL DEFAULT '' CHECK (length(authority_signature) = 0 OR length(authority_signature) >= 64),
     CHECK (seq >= 1),
     UNIQUE (mutation_id),
     UNIQUE (mutation_hash),
@@ -402,12 +406,12 @@ CREATE TABLE mutation_events (
 INSERT INTO mutation_events (
     seq, mutation_id, ledger_id, ts_utc, operator_session, action,
     staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-    prev_mutation_hash, mutation_hash
+    prev_mutation_hash, mutation_hash, authority_signature
 )
 SELECT
     seq, mutation_id, 'default', ts_utc, operator_session, action,
     staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-    prev_mutation_hash, mutation_hash
+    prev_mutation_hash, mutation_hash, ''
 FROM mutation_events_backup_0010;
 DROP TABLE mutation_events_backup_0010;
 
@@ -644,21 +648,41 @@ END;
 * **Location:** `src/ironledger/ledger/topology.py`, `src/ironledger/ledger/staging.py`
 * **Tenant Isolation, Symlink Refusal & Path Validation:**
   ```python
-  LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$" )
+  LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
   def validate_and_resolve_ledger_root(beancount_root: Path, ledger_id: str) -> Path:
       if not isinstance(ledger_id, str) or not LEDGER_ID_PATTERN.match(ledger_id):
           raise ValueError(f"Invalid ledger_id '{ledger_id}': must match ^[A-Za-z0-9_-]{{1,64}}$")
-      root_resolved = beancount_root.resolve()
-      tenant_dir = (root_resolved / "ledgers" / ledger_id).resolve()
+      
+      root_path = Path(beancount_root)
+      # 1. Reject symlink on root itself
+      if root_path.is_symlink():
+          raise SecurityError(f"Symlink detected at root: {root_path}")
+      
+      root_resolved = root_path.resolve()
+      
+      # 2. Build unresolved target path from resolved root
+      target_unresolved = root_resolved / "ledgers" / ledger_id
+      
+      # 3. Inspect every path segment along the unresolved hierarchy before dereferencing
+      curr = target_unresolved
+      while curr != root_resolved and curr != curr.parent:
+          if curr.is_symlink():
+              raise SecurityError(f"Symlink detected in unresolved path segment: {curr}")
+          curr = curr.parent
+          
+      # 4. Resolve target and enforce strict root containment
+      target_resolved = target_unresolved.resolve()
       try:
-          tenant_dir.relative_to(root_resolved)
+          target_resolved.relative_to(root_resolved)
       except ValueError:
-          raise ValueError(f"Path traversal detected: {ledger_id}")
-      # Symlink refusal policy
-      if tenant_dir.is_symlink() or any(p.is_symlink() for p in tenant_dir.parents):
-          raise ValueError(f"Symlink detected in tenant directory path: {tenant_dir}")
-      return tenant_dir
+          raise SecurityError(f"Directory traversal detected: {target_resolved} is outside {root_resolved}")
+          
+      # 5. Final check on resolved target
+      if target_resolved.is_symlink():
+          raise SecurityError(f"Symlink detected at resolved target: {target_resolved}")
+          
+      return target_resolved
   ```
 * **Compile Mutex Locking:** Scoped lockfile path: `.ironledger/.compile.<ledger_id>.lock`. Lock is acquired **before** reading pre-mutation filesystem state and held until post-mutation directory promotion completes.
 * **Consolidation Engine:** Read-only multi-entity balance normalization into a designated reporting currency using Task 8.1 valuation routines.
@@ -1020,12 +1044,18 @@ END;
                       json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
                   ).hexdigest()
                   
+                  # Generate cryptographic authority signature
+                  sign_digest = hashlib.sha256(
+                      f"{seq}:{mutation_id}:{ledger_id}:{ts_utc}:{mutation_hash}:{prev_mutation_hash}:{sha256_after}:{projection_hash_after}".encode("utf-8")
+                  ).hexdigest()
+                  authority_signature = sign_authority_payload(sign_digest, authority_key)
+
                   conn.execute(
                       "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
-                      "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash, authority_signature) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                       (seq, mutation_id, ledger_id, ts_utc, operator_session, action, 0, rules_applied, rules_created,
-                       sha256_before, sha256_after, prev_mutation_hash, mutation_hash)
+                       sha256_before, sha256_after, prev_mutation_hash, mutation_hash, authority_signature)
                   )
                   conn.execute(
                       "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
@@ -1043,9 +1073,11 @@ END;
                       shutil.rmtree(staging_dir, ignore_errors=True)
                   raise
               
-              # Durable promotion protocol
+              # Durable promotion protocol with crash-safe journal state transitions
               if staging_dir and staging_dir.exists():
                   backup_dir = tenant_dir / f"current_bak_{uuid4().hex}"
+                  if backup_dir.exists():
+                      shutil.rmtree(backup_dir, ignore_errors=True)
                   try:
                       journal_data = {
                           "state": "COMMITTED_PRE_SWAP",
@@ -1060,9 +1092,15 @@ END;
                       temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
                       os.replace(temp_j, journal_file)
                       
+                      # Safely swap: move current -> backup, then staging -> current
                       if current_dir.exists():
                           os.replace(current_dir, backup_dir)
                       os.replace(staging_dir, current_dir)
+                      
+                      # Advance journal state to SWAPPED before cleaning up backup
+                      journal_data["state"] = "SWAPPED"
+                      temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
+                      os.replace(temp_j, journal_file)
                       
                       if backup_dir.exists():
                           shutil.rmtree(backup_dir, ignore_errors=True)
@@ -1086,13 +1124,16 @@ END;
      - Let `current_dir = tenant_dir / "current"`.
      - Let `journal_file = tenant_dir / ".promotion_journal.json"`.
      - If `journal_file.exists()`:
-       - Read journal metadata.
-       - Let `staged_cand = tenant_dir / journal["staging_dir"]`.
-       - Let `bak_cand = tenant_dir / journal["backup_dir"]`.
-       - If `staged_cand.exists()` and `compute_directory_manifest_hash(staged_cand) == journal["sha256_after"]`:
-           `if current_dir.exists(): os.replace(current_dir, bak_cand)`
-           `os.replace(staged_cand, current_dir)`
-       - If `journal_file.exists()`: journal_file.unlink()
+       - Read journal metadata: `state = journal.get("state")`, `staged_cand = tenant_dir / journal["staging_dir"]`, `bak_cand = tenant_dir / journal["backup_dir"]`.
+       - If `state == "COMMITTED_PRE_SWAP"`:
+         - If `staged_cand.exists()` and `compute_directory_manifest_hash(staged_cand) == journal["sha256_after"]`:
+           - If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)` (purge any colliding stale backup from prior crash).
+           - If `current_dir.exists()`: `os.replace(current_dir, bak_cand)`.
+           - `os.replace(staged_cand, current_dir)`.
+           - If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
+       - If `state == "SWAPPED"`:
+         - Swap already succeeded before crash. If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
+       - If `journal_file.exists()`: `journal_file.unlink()`
      - Query all `mutation_events` rows for `ledger_id` ordered by `seq ASC`.
      - If no events exist:
        - If `current_dir.exists()`: assert `compute_directory_manifest_hash(current_dir) == GENESIS_MANIFEST_HASH`.
@@ -1107,10 +1148,36 @@ END;
          - Assert `compute_directory_manifest_hash(current_dir) == M_{	ext{latest}}.	ext{sha256\_after}`.
          - Prune temporary directories.
 
+* **Authority Cryptographic Signature & External Trust Anchor Protocol:**
+  - **Signing Authority Envelope:**
+    - Each mutation event is cryptographically signed using an Authority Signing Key (`HMAC-SHA256` secret or `Ed25519` private key) configured via environment/keystore (`IRONLEDGER_SIGNING_KEY`).
+    - Canonical signature digest:
+      $$\text{digest} = \text{SHA256}\left(f"\{\text{seq}\}:\{\text{mutation\_id}\}:\{\text{ledger\_id}\}:\{\text{ts\_utc}\}:\{\text{mutation\_hash}\}:\{\text{prev\_mutation\_hash}\}:\{\text{sha256\_after}\}:\{\text{projection\_hash\_after}\}"\right)$$
+    - `authority_signature = Sign(AuthorityKey, digest)` (hex-encoded string). Stored in `mutation_events.authority_signature`.
+  - **External Out-of-Band Trust Anchor File (`.ironledger/anchors/<ledger_id>.anchor.json`):**
+    - Stored outside the SQLite database at `beancount_root / ".ironledger" / "anchors" / f"{ledger_id}.anchor.json"`.
+    - Updated atomically on every committed mutation:
+      ```json
+      {
+        "anchor_version": 1,
+        "ledger_id": "corp_main",
+        "seq": 42,
+        "mutation_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+        "mutation_hash": "a1b2c3...",
+        "prev_mutation_hash": "f0e1d2...",
+        "manifest_hash": "e3b0c4...",
+        "projection_hash": "1e3b03...",
+        "authority_signature": "d4e5f6...",
+        "anchored_at_utc": "2026-09-10T12:00:00.000000Z"
+      }
+      ```
+    - Protects the ledger against offline SQLite database tampering/rewrite: if an attacker modifies past events and recalculates internal SHA-256 hashes, they cannot forge the authority signature without the private key, and the forged head will diverge from the external trust anchor file.
+
 * **Deterministic Replay Engine Algorithm & Interleaved Multi-Tenant Semantics:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
   2. Query live database max sequence $S_{	ext{max}} = 	ext{SELECT MAX(seq) FROM mutation\_events}$. If `target_sequence >` $S_{	ext{max}}$, raise `ReplayBoundaryError`.
-  3. **Phase 1: Global Contiguous Sequence & Merkle Chain Integrity Verification (Global $1 \dots 	ext{target\_seq}$):**
+  3. **Phase 1: Global Contiguous Sequence, Merkle Chain & Cryptographic Signature Verification (Global $1 \dots \text{target\_seq}$):**
+     - Validate external anchor commitment: Read `.ironledger/anchors/<ledger_id>.anchor.json` (if present) and verify `head.mutation_hash == anchor.mutation_hash` and `head.authority_signature == anchor.authority_signature`.**
      - Query joined rows from `mutation_events` and `mutation_payloads` ordered by `seq ASC`.
      - Assert global contiguous `seq` sequence $1, 2, \dots, N$ across all tenants with zero gaps.
      - Assert timestamps `ts_utc` are strictly non-decreasing monotonic.
