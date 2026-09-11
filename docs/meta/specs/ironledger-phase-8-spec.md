@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Version:** 1.0.0 (Hardened Canonical Specification - Pass 12 Remediation)  
+**Version:** 1.0.0 (Hardened Canonical Specification - Pass 13 Remediation)  
 **Specification Role:** Canonical Implementation Specification & Governed Mirror  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
@@ -23,7 +23,7 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 1. **Exact Rational Integer Arithmetic & Zero Float Drift:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift. Strict integer type guards (`type(v) is int and not isinstance(v, bool)`) enforce pure integer inputs across all valuation, formatting, and conversion functions. No float division `/` is permitted anywhere in valuation or rendering code paths, strictly enforced by AST guards.
 2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration, strict self-edge rejection (`source != target`), and unbounded insertion-time cycle detection.
 3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence and Merkle chain from genesis anchors, then replays schema-versioned canonical self-contained event mutation payloads into an ephemeral in-memory projection database and ephemeral filesystem manifest to reconstruct exact historical state snapshots at any sequence number without mutating live files.
-4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` validation (`^[A-Za-z0-9_-]+$`), canonical path boundary enforcement, composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), tenant-isolated directory subtrees (`beancount_root/ledgers/<ledger_id>/current/`), tenant-scoped lockfiles (`.ironledger/.compile.<ledger_id>.lock`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema and filesystem boundaries with mandatory `PRAGMA foreign_keys = ON;`.
+4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` validation (`^[A-Za-z0-9_-]+$`), canonical path boundary enforcement (`Path.relative_to`), composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), tenant-isolated directory subtrees (`beancount_root/ledgers/<ledger_id>/current/`), tenant-scoped lockfiles (`.ironledger/.compile.<ledger_id>.lock`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema and filesystem boundaries with mandatory `PRAGMA foreign_keys = ON;`.
 5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by symbol-tracking static AST scanners forbidding `import beancount`, `from beancount import ...`, `__import__("beancount")`, `importlib.import_module("beancount")`, and dynamic `getattr` module loaders (reading package version metadata via `importlib.metadata.version("beancount")` is permitted).
 6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement and issuance-time role ceiling validation across CLI, web, and programmatic interfaces.
 
@@ -45,7 +45,7 @@ Phase 8: Lineage, Valuation & Replay Engine
 
 ## 3. Database Schema Architecture & Migration Contract
 
-Phase 8 schema migrations use `STRICT` table definitions and forward-only SQLite migration scripts tracked in `schema_migrations` with SHA-256 checksum verification.
+Phase 8 schema migrations use `STRICT` table definitions and forward-only SQLite migration scripts tracked in `schema_migrations` with SHA-256 checksum verification. Migration scripts reside authoritatively in `src/ironledger/db/schema/` (`0001_core_schema.sql` through `0011_mutation_payloads.sql`) and are executed by the governed runner in `src/ironledger/db/migrations.py` (backed by `src/ironledger/governance/migrations.py`).
 
 ### Migration Schema DDL
 ```sql
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 ### Migration Runner Execution Lifecycle (`ironledger.db.migrations`)
 1. **Discovery & Contiguity Validation:**
-   - Discovers migration files `NNNN_<name>.sql` in `src/ironledger/db/migrations/`.
+   - Discovers migration files `NNNN_<name>.sql` in `src/ironledger/db/schema/`.
    - Parses integer version numbers and sorts ascending.
    - Asserts versions form a strictly contiguous sequence starting at 1 ($1, 2, \dots, N$). If any version is missing or duplicate, raises `MigrationGapError`.
 2. **Preflight Checksum Verification:**
@@ -68,8 +68,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
      - Computes SHA-256 checksum of the migration file on disk.
      - Asserts `recorded.checksum_sha256 == computed_sha256` and `recorded.name == file.name`.
      - If mismatch, raises `MigrationChecksumMismatchError(version, name, recorded, computed)`.
-3. **Transactional Migration Execution:**
-   - For each unapplied migration $v \in \{K+1 \dots N\}$:
+3. **Transaction-Preserving Statement Execution:**
+   - Instead of calling `executescript()` (which implicitly commits open transactions in Python `sqlite3`), the runner splits the script into individual SQL statements and executes them inside an explicit transactional boundary:
      ```python
      # 1. Connection-level preflight: disable foreign keys outside transaction for table rebuild safety
      conn.execute("PRAGMA foreign_keys = OFF")
@@ -77,8 +77,11 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
          # 2. Acquire exclusive writer lock
          conn.execute("BEGIN IMMEDIATE")
          
-         # 3. Execute migration DDL/DML
-         conn.executescript(migration_sql)
+         # 3. Execute migration statements individually
+         statements = split_sql_statements(migration_sql)
+         for stmt in statements:
+             if stmt.strip():
+                 conn.execute(stmt)
          
          # 4. Verify foreign key integrity across entire database
          cur = conn.execute("PRAGMA foreign_key_check")
@@ -129,9 +132,9 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 CREATE TABLE IF NOT EXISTS price_history (
     id INTEGER NOT NULL,
     ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE CASCADE,
-    directive_date TEXT NOT NULL CHECK(length(directive_date) = 10 AND directive_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
-    base_currency TEXT NOT NULL CHECK(length(base_currency) >= 1 AND length(base_currency) <= 12 AND base_currency GLOB '[A-Z0-9_.-]*'),
-    quote_currency TEXT NOT NULL CHECK(length(quote_currency) >= 1 AND length(quote_currency) <= 12 AND quote_currency GLOB '[A-Z0-9_.-]*'),
+    directive_date TEXT NOT NULL CHECK(length(directive_date) = 10 AND directive_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND directive_date NOT GLOB '*[^0-9-]*'),
+    base_currency TEXT NOT NULL CHECK(length(base_currency) >= 1 AND length(base_currency) <= 12 AND base_currency NOT GLOB '*[^A-Z0-9_.-]*'),
+    quote_currency TEXT NOT NULL CHECK(length(quote_currency) >= 1 AND length(quote_currency) <= 12 AND quote_currency NOT GLOB '*[^A-Z0-9_.-]*'),
     rate_numerator INTEGER NOT NULL CHECK(rate_numerator > 0),
     rate_denominator INTEGER NOT NULL CHECK(rate_denominator > 0),
     precision_scale INTEGER NOT NULL DEFAULT 4 CHECK(precision_scale >= 0 AND precision_scale <= 18),
@@ -149,7 +152,7 @@ ON price_history(ledger_id, base_currency, quote_currency, directive_date DESC, 
 ```sql
 CREATE TABLE IF NOT EXISTS lineage_nodes (
     ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE CASCADE,
-    node_id TEXT NOT NULL CHECK(length(node_id) >= 1 AND length(node_id) <= 64),
+    node_id TEXT NOT NULL CHECK(length(node_id) >= 1 AND length(node_id) <= 64 AND node_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
     node_type TEXT NOT NULL CHECK(node_type IN ('EVIDENCE_BLOB', 'SOURCE_RECORD', 'STAGED_TX', 'POSTING')),
     entity_ref TEXT NOT NULL CHECK(length(entity_ref) >= 1 AND length(entity_ref) <= 128),
     metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json) = 1),
@@ -179,16 +182,16 @@ CREATE INDEX IF NOT EXISTS idx_lineage_edges_backward ON lineage_edges(ledger_id
 ```sql
 -- 1. Create root tenant ledgers table
 CREATE TABLE IF NOT EXISTS ledgers (
-    ledger_id TEXT PRIMARY KEY CHECK(length(ledger_id) >= 1 AND length(ledger_id) <= 64 AND ledger_id GLOB '[a-zA-Z0-9_-]*'),
+    ledger_id TEXT PRIMARY KEY CHECK(length(ledger_id) >= 1 AND length(ledger_id) <= 64 AND ledger_id NOT GLOB '*[^a-zA-Z0-9_-]*'),
     name TEXT NOT NULL CHECK(length(name) >= 1 AND length(name) <= 128),
-    base_currency TEXT NOT NULL DEFAULT 'USD' CHECK(length(base_currency) >= 1 AND length(base_currency) <= 12 AND base_currency GLOB '[A-Z0-9_.-]*'),
+    base_currency TEXT NOT NULL DEFAULT 'USD' CHECK(length(base_currency) >= 1 AND length(base_currency) <= 12 AND base_currency NOT GLOB '*[^A-Z0-9_.-]*'),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
 ) STRICT;
 
 INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default', 'Default Ledger', 'USD');
 
--- 2. Transactional Table Rebuild with Composite Foreign Keys for Tenant Isolation
+-- 2. Rebuild Tables in Strict Dependency Order with Composite Foreign Keys
 
 -- 2a. Rebuild source_documents with (ledger_id, source_document_id) composite identity
 CREATE TABLE source_documents_backup_0010 AS SELECT * FROM source_documents;
@@ -252,7 +255,7 @@ CREATE TABLE staged_transactions (
     ledger_id             TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT,
     source_record_id      TEXT NOT NULL,
     status                TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'categorized', 'approved', 'rejected')),
-    proposed_date         TEXT NOT NULL CHECK (length(proposed_date) = 10 AND proposed_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    proposed_date         TEXT NOT NULL CHECK (length(proposed_date) = 10 AND proposed_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND proposed_date NOT GLOB '*[^0-9-]*'),
     payee                 TEXT NOT NULL DEFAULT '',
     narration             TEXT NOT NULL DEFAULT '',
     identity_algo_version INTEGER NOT NULL CHECK (identity_algo_version >= 1),
@@ -296,7 +299,7 @@ CREATE TABLE staged_postings (
         OR account GLOB 'Income:*' OR account GLOB 'Expenses:*'
     ),
     minor_units           INTEGER NOT NULL,
-    currency              TEXT NOT NULL CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
+    currency              TEXT NOT NULL CHECK (length(currency) >= 1 AND length(currency) <= 12 AND currency NOT GLOB '*[^A-Z0-9_.-]*'),
     minor_unit_scale      INTEGER NOT NULL CHECK (minor_unit_scale >= 0 AND minor_unit_scale <= 18),
     created_at_utc        TEXT NOT NULL CHECK (created_at_utc GLOB '????-??-??T??:??:??*Z'),
     CHECK (role = 'contra' OR account IS NOT NULL),
@@ -438,10 +441,10 @@ CREATE TABLE IF NOT EXISTS capability_tokens (
     is_global INTEGER NOT NULL DEFAULT 0 CHECK(is_global IN (0, 1)),
     role TEXT NOT NULL CHECK(role IN ('READER', 'OPERATOR', 'COMPILER', 'ADMIN')),
     capabilities_json TEXT NOT NULL CHECK(json_valid(capabilities_json) = 1 AND json_type(capabilities_json) = 'array'),
-    expires_at TEXT CHECK(expires_at IS NULL OR expires_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'),
-    revoked_at TEXT CHECK(revoked_at IS NULL OR revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'),
+    expires_at TEXT CHECK(expires_at IS NULL OR (expires_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND expires_at NOT GLOB '*[^0-9T:.-Z]*')),
+    revoked_at TEXT CHECK(revoked_at IS NULL OR (revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*' AND revoked_at NOT GLOB '*[^0-9T:.-Z]*')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
-    CHECK((is_global = 1 AND role = 'ADMIN' AND ledger_id IS NULL) OR (is_global = 0 AND ledger_id IS NOT NULL))
+    CHECK((is_global = 1 AND role = 'ADMIN' AND ledger_id IS NULL) OR (is_global = 0 AND role IN ('READER', 'OPERATOR', 'COMPILER', 'ADMIN') AND ledger_id IS NOT NULL))
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_token_hash_lookup ON capability_tokens(token_hash);
@@ -624,14 +627,16 @@ END;
 * **Location:** `src/ironledger/ledger/topology.py`, `src/ironledger/ledger/staging.py`
 * **Tenant Isolation & Path Validation:**
   ```python
-  LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+  LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$" )
 
   def validate_and_resolve_ledger_root(beancount_root: Path, ledger_id: str) -> Path:
       if not isinstance(ledger_id, str) or not LEDGER_ID_PATTERN.match(ledger_id):
           raise ValueError(f"Invalid ledger_id '{ledger_id}': must match ^[A-Za-z0-9_-]{{1,64}}$")
       root_resolved = beancount_root.resolve()
       tenant_dir = (root_resolved / "ledgers" / ledger_id).resolve()
-      if not str(tenant_dir).startswith(str(root_resolved)):
+      try:
+          tenant_dir.relative_to(root_resolved)
+      except ValueError:
           raise ValueError(f"Path traversal detected: {ledger_id}")
       return tenant_dir
   ```
@@ -725,10 +730,32 @@ END;
       return hashlib.sha256(encoded).hexdigest()
   ```
 
-* **Self-Contained Payload Event Schemas (`payload_schema_version = 1`):**
+* **Fully Self-Contained Payload Event Schemas (`payload_schema_version = 1`):**
   - All payloads conform to JSON Schema draft-07 and enforce `additionalProperties: false`.
-  - `STAGE_TRANSACTION`: Contains `staged_transaction_id`, `source_record_id`, `proposed_date`, `payee`, `narration`, `status`, and `postings` array.
-  - `REVIEW_DECISION`: Contains `staged_transaction_id`, `prior_status`, `new_status`, `assigned_account`, `rule_id`, `reject_reason`.
+  - `STAGE_TRANSACTION`:
+    - `ledger_id`: string (required)
+    - `staged_transaction_id`: string (required)
+    - `source_record_id`: string (required)
+    - `proposed_date`: string format `YYYY-MM-DD` (required)
+    - `payee`: string (required)
+    - `narration`: string (required)
+    - `status`: enum `["pending", "categorized", "approved", "rejected"]` (required)
+    - `identity_algo_version`: integer `>= 1` (required)
+    - `identity_method`: enum `["fitid", "sha256_fallback"]` (required)
+    - `identity_fingerprint`: string length 64 hex (required)
+    - `created_at_utc`: ISO8601 UTC timestamp string (required)
+    - `source_record`: object containing `{ "source_document_id": str, "record_index": int, "canonical_payload": str, "content_sha256": str, "mime_type": str, "encoding": str, "provenance": str, "raw_payload_ref": str }` (required for pure self-contained parent reconstruction during standalone replay)
+    - `postings`: array of posting objects (minItems 2, required):
+      - `staged_posting_id`: string (required)
+      - `source_record_id`: string (required)
+      - `role`: enum `["imported", "contra"]` (required)
+      - `posting_index`: integer `>= 0` (required)
+      - `account`: string or null (required)
+      - `minor_units`: integer (required)
+      - `currency`: string (required)
+      - `minor_unit_scale`: integer `0..18` (required)
+      - `created_at_utc`: string (required)
+  - `REVIEW_DECISION`: Contains `staged_transaction_id`, `prior_status`, `new_status`, `assigned_account`, `rule_id`, `reject_reason`, `decided_at_utc`.
   - `COMPILE_LEDGER` (Self-Contained):
     - `ledger_id`: string (required)
     - `compile_run_id`: string (required)
@@ -737,13 +764,14 @@ END;
     - `input_hash`: string length 64 hex (required)
     - `intended_output_hash`: string length 64 hex (required)
     - `actual_output_hash`: string length 64 hex (required)
+    - `status`: enum `["SUCCESS", "FAILED"]` (required)
     - `compiled_tx_ids`: array of string (required)
     - `compiled_directives`: array of self-contained directive objects (required for pure standalone deterministic replay):
       - `proposed_date`: string format `YYYY-MM-DD`
       - `payee`: string
       - `narration`: string
       - `postings`: array of objects `{ "account": str, "minor_units": int, "currency": str, "minor_unit_scale": int }`
-  - `PRICE_DIRECTIVE`: Contains `directive_date`, `base_currency`, `quote_currency`, `rate_numerator`, `rate_denominator`, `precision_scale`, `source`.
+  - `PRICE_DIRECTIVE`: Contains `id`, `directive_date`, `base_currency`, `quote_currency`, `rate_numerator`, `rate_denominator`, `precision_scale`, `source`.
   - `RULE_UPDATE`: Contains `rule_id`, `action`, `match_type`, `pattern`, `importing_account`, `target_account`, `priority`, `active`.
 
 * **Deterministic Plaintext Manifest Rendering Contracts (Pure Integer Formatting):**
@@ -906,66 +934,38 @@ END;
 
 * **Startup Manifest Reconciliation Protocol (`reconcile_manifest_on_startup`):**
   - Invoked during database startup:
-  1. Clean up any leftover `staging_*` or `current_bak_*` directories in `beancount_root / "ledgers" / *`.
-  2. For each active ledger in `ledgers`:
+  1. For each active ledger in `ledgers`:
      - Let `tenant_dir = validate_and_resolve_ledger_root(beancount_root, ledger_id)`.
      - Let `current_dir = tenant_dir / "current"`.
-     - Compute current live manifest hash $H_{\text{live}} = \text{compute\_directory\_manifest\_hash}(current\_dir)$.
      - Query all `mutation_events` rows for `ledger_id` ordered by `seq ASC`.
-     - If no events exist for this ledger: assert $H_{\text{live}} == \text{GENESIS\_MANIFEST\_HASH}$.
+     - If no events exist for this ledger:
+       - If `current_dir.exists()`: assert `compute_directory_manifest_hash(current_dir) == GENESIS_MANIFEST_HASH`.
      - If events exist:
-       - Let $M_{\text{latest}}$ be the last event in sequence for this ledger.
-       - If $H_{\text{live}} == M_{\text{latest}}.\text{sha256\_after}$, filesystem is synchronized.
-       - If $H_{\text{live}} != M_{\text{latest}}.\text{sha256\_after}$:
-         - Search historical sequence for event $M_k$ where $M_k.\text{sha256\_before} == H_{\text{live}}$.
-         - If found, sequentially re-emit plain text manifests from the payloads of $M_k \dots M_{\text{latest}}$ into `staging_recovery/` and swap to `current_dir`.
-         - If $H_{\text{live}}$ does not match any historical point in the chain, raise `ManifestDesyncError` (unauthorized out-of-band edit or corruption).
+       - Let $M_{	ext{latest}}$ be the last event in sequence for this ledger.
+       - Let $H_{	ext{live}} = 	ext{compute\_directory\_manifest\_hash}(current\_dir)$.
+       - If $H_{	ext{live}} == M_{	ext{latest}}.	ext{sha256\_after}$:
+         - Clean up any leftover `staging_*` or `current_bak_*` directories.
+       - If $H_{	ext{live}} != M_{	ext{latest}}.	ext{sha256\_after}$:
+         - If any `staging_*` directory in `tenant_dir` matches $M_{	ext{latest}}.	ext{sha256\_after}$:
+           - Atomically swap that staging directory to `current/`.
+         - Else:
+           - Sequentially re-emit plaintext manifests from the payloads of all tenant events $M_1 \dots M_{	ext{latest}}$ into a fresh `staging_recovery/` directory, verifying each step.
+           - Swap `staging_recovery/` to `current/`.
+           - Assert `compute_directory_manifest_hash(current_dir) == M_{	ext{latest}}.	ext{sha256\_after}`.
+           - Prune temporary directories.
 
-* **Deterministic Replay Engine Algorithm & Canonical Hash Reconstruction:**
+* **Deterministic Replay Engine Algorithm & Interleaved Multi-Tenant Semantics:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
-  2. Query live database max sequence $S_{\text{max}} = \text{SELECT MAX(seq) FROM mutation\_events}$. If `target_sequence >` $S_{\text{max}}$, raise `ReplayBoundaryError`.
-  3. **Phase 1: Global Sequence & Merkle Chain Integrity Verification (Global $1 \dots \text{target\_seq}$):**
-     - Query joined rows:
-       ```sql
-       SELECT me.seq, me.mutation_id, me.ledger_id, me.ts_utc, me.operator_session, me.action,
-              me.staged_count, me.rules_applied, me.rules_created, me.sha256_before, me.sha256_after,
-              me.prev_mutation_hash, me.mutation_hash,
-              mp.payload_schema_version, mp.event_type, mp.payload_json, mp.payload_sha256,
-              mp.projection_hash_before, mp.projection_hash_after
-       FROM mutation_events me
-       JOIN mutation_payloads mp ON me.seq = mp.seq AND me.mutation_id = mp.mutation_id AND me.ledger_id = mp.ledger_id
-       WHERE me.seq <= :target_seq
-       ORDER BY me.seq ASC
-       ```
-     - Assert `seq` sequence is strictly contiguous $1, 2, \dots, N$ with zero gaps.
+  2. Query live database max sequence $S_{	ext{max}} = 	ext{SELECT MAX(seq) FROM mutation\_events}$. If `target_sequence >` $S_{	ext{max}}$, raise `ReplayBoundaryError`.
+  3. **Phase 1: Global Contiguous Sequence & Merkle Chain Integrity Verification (Global $1 \dots 	ext{target\_seq}$):**
+     - Query joined rows from `mutation_events` and `mutation_payloads` ordered by `seq ASC`.
+     - Assert global contiguous `seq` sequence $1, 2, \dots, N$ across all tenants with zero gaps.
      - Assert timestamps `ts_utc` are strictly non-decreasing monotonic.
      - For each row:
-       - Validate `hashlib.sha256(payload_json.encode('utf-8')).hexdigest() == payload_sha256`.
-       - Parse `payload = json.loads(payload_json)`.
-       - Reconstruct exact `canonical_dict`:
-         ```python
-         canonical_dict = {
-             "action": row["action"],
-             "event_type": row["event_type"],
-             "ledger_id": row["ledger_id"],
-             "mutation_id": row["mutation_id"],
-             "operator_session": row["operator_session"],
-             "payload": payload,
-             "payload_schema_version": row["payload_schema_version"],
-             "prev_mutation_hash": row["prev_mutation_hash"],
-             "projection_hash_after": row["projection_hash_after"],
-             "projection_hash_before": row["projection_hash_before"],
-             "rules_applied": row["rules_applied"],
-             "rules_created": row["rules_created"],
-             "seq": row["seq"],
-             "sha256_after": row["sha256_after"],
-             "sha256_before": row["sha256_before"],
-             "ts_utc": row["ts_utc"],
-         }
-         ```
-       - Recompute canonical `mutation_hash = hashlib.sha256(json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()`.
-       - Assert equality with `row["mutation_hash"]`.
-       - Assert `row["prev_mutation_hash"]` matches prior event's `mutation_hash` (or $0^{64}$ for `seq = 1`).
+       - Validate `payload_sha256 == sha256(payload_json)`.
+       - Reconstruct exact `canonical_dict` from event + payload fields.
+       - Recompute canonical `mutation_hash = sha256(json(canonical_dict))` and assert equality with `event.mutation_hash`.
+       - Assert `event.prev_mutation_hash` matches prior event's `mutation_hash` (or $0^{64}$ for `seq = 1`).
   4. **Phase 2: Tenant-Scoped Dual-Fingerprint Replay (Projection + Filesystem):**
      - Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
      - Create an ephemeral temporary directory for Beancount plaintext manifest playback.
@@ -980,7 +980,7 @@ END;
            - Render Beancount plaintext directives into ephemeral directory using `render_compiled_ledger_manifest` / `render_price_directive_manifest`.
            - Validate resulting ephemeral manifest hash equals `event.sha256_after`.
        - If `event.ledger_id != target_ledger_id`:
-         - Skip projection mutation (tenant isolation).
+         - Interleaved event belongs to another tenant. Skip projection and filesystem mutations (tenant isolation invariant guarantees non-target events produce zero state changes for `target_ledger_id`).
   5. Return verified in-memory projection database and point-in-time trial balance.
 
 ---
@@ -1007,16 +1007,26 @@ END;
   | `POST /api/v1/compile/{id}/execute` | `compile:execute` | `COMPILER` | Path parameter `{id}` |
   | `POST /api/v1/auth/tokens` | `*` (Admin) | `ADMIN` | Global or body `ledger_id` |
   | `POST /api/v1/ledgers` | `*` (Admin) | `ADMIN` | Global admin scope required |
-* **Token Security, Issuance Validation & Tenant Policy:**
-  - Bearer tokens generated via `secrets.token_hex(32)` (`il_cap_<hex64>`).
-  - `create_capability_token(conn, role, ledger_id, requested_scopes)`: validates that `requested_scopes` are a subset of `ROLE_CEILINGS[role]` before inserting row into `capability_tokens`.
-  - `PolicyEnforcer.authorize(token, required_scope, target_ledger_id)`:
-    1. Look up token by SHA-256 hash using constant-time comparison `hmac.compare_digest`.
-    2. Fail closed if `revoked_at` is NOT NULL.
-    3. Fail closed if `expires_at` is NOT NULL and `expires_at <= current_utc_iso`.
-    4. Check ledger scope: `token.is_global == 1` (Admin) OR `token.ledger_id == target_ledger_id`.
-    5. Check role ceiling: verify that granted scopes in `capabilities_json` do not exceed the role's maximum allowed scopes.
-    6. Check `required_scope` in `token.capabilities` or `token.capabilities == ["*"]`.
+* **Bearer Token Lifecycle & Verification Protocol:**
+  - Token Generation:
+    ```python
+    raw_token = f"il_cap_{secrets.token_hex(32)}"
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    ```
+  - Authorization Verification (`PolicyEnforcer.authorize(raw_token, required_scope, target_ledger_id)`):
+    1. Parse token: Check that `raw_token.startswith("il_cap_")` and `len(raw_token) == 71`. If invalid, raise `UnauthorizedError("Malformed bearer token")`.
+    2. Compute SHA-256 hash: `computed_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()`.
+    3. Look up token in `capability_tokens` table by `token_hash = computed_hash`. If row not found, raise `UnauthorizedError("Invalid capability token")`.
+    4. Constant-time comparison: `hmac.compare_digest(row["token_hash"], computed_hash)`.
+    5. Check revocation: If `row["revoked_at"]` is not NULL, raise `UnauthorizedError("Capability token has been revoked")`.
+    6. Check expiration: If `row["expires_at"]` is not NULL and `row["expires_at"] <= current_utc_iso`, raise `UnauthorizedError("Capability token has expired")`.
+    7. Check tenant scope:
+       - If `row["is_global"] == 1`: assert `row["role"] == "ADMIN"` and `row["ledger_id"] IS NULL`. Grants access across all ledgers.
+       - If `row["is_global"] == 0`: assert `row["ledger_id"] == target_ledger_id`. If they differ, raise `UnauthorizedError(f"Token scoped to ledger '{row['ledger_id']}' cannot access '{target_ledger_id}'")`.
+    8. Check role ceilings & capabilities:
+       - Parse `granted_scopes = json.loads(row["capabilities_json"])`.
+       - Assert `set(granted_scopes).issubset(ROLE_CEILINGS[row["role"]])`.
+       - Verify `required_scope in granted_scopes` or `"*"` in granted_scopes. If not, raise `UnauthorizedError(f"Token lacks required scope: {required_scope}")`.
 * **Centralized Policy Enforcement:** Invoked across CLI commands, MCP tools, and web endpoints. Unauthenticated requests or requests with invalid tokens fail closed with HTTP 401 Unauthorized / `UnauthorizedError`.
 
 ---
@@ -1053,7 +1063,8 @@ END;
    - Verify multi-entity consolidated balance aggregation.
 4. **Replay Suite (`tests/test_replay.py`):**
    - Verify genesis state anchor verification (`GENESIS_MANIFEST_HASH` and `GENESIS_PROJECTION_HASH`), global sequence contiguity, Merkle chain verification, and dual-fingerprint payload replay into ephemeral in-memory database and manifest directory validating `projection_hash_before`/`after` and `sha256_before`/`after`.
-   - Verify outbox crash-recovery startup reconciliation from partial promotions.
+   - Verify outbox crash-recovery startup reconciliation from partial promotions and missing directories.
+   - Verify multi-tenant interleaved events replay with strict tenant isolation.
    - Verify zero side-effects on live database files.
 5. **RBAC Suite (`tests/test_capabilities.py`):**
    - Verify token creation with issuance-time ceiling checks, constant-time hash verification, role ceiling enforcement, expiration/revocation gating, and global vs tenant-scoped validation across CLI, MCP, and HTTP endpoints.
