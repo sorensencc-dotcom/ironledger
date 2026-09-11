@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Version:** 1.0.0 (Hardened Canonical Specification - Pass 16 Remediation)  
+**Version:** 1.0.0 (Hardened Canonical Specification - Pass 17 Remediation)  
 **Specification Role:** Canonical Implementation Specification & Governed Mirror  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
@@ -58,17 +58,27 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 ```
 
 ### Migration Runner Execution Lifecycle (`ironledger.governance.migrations`)
-1. **Discovery & Contiguity Validation:**
+1. **Connection Setup & Deterministic SQL Function Registration:**
+   - Every SQLite connection configured by `get_connection()` or migration runner registers deterministic Python cryptographic functions prior to DDL execution:
+     ```python
+     conn.create_function(
+         "sha256_hex",
+         1,
+         lambda val: hashlib.sha256(val.encode("utf-8") if isinstance(val, str) else bytes(val)).hexdigest(),
+         deterministic=True,
+     )
+     ```
+2. **Discovery & Contiguity Validation:**
    - Discovers migration files `NNNN_<name>.sql` in `src/ironledger/db/schema/`.
    - Parses integer version numbers and sorts ascending.
    - Asserts versions form a strictly contiguous sequence starting at 1 ($1, 2, \dots, N$). If any version is missing or duplicate, raises `MigrationError`.
-2. **Preflight Checksum Verification:**
+3. **Preflight Checksum Verification:**
    - Reads `schema_migrations` rows from database.
    - For every already-applied version $v \in \{1 \dots K\}$:
      - Computes SHA-256 checksum of the migration file on disk.
      - Asserts `recorded.checksum == computed_checksum` and `recorded.name == file.name`.
      - If mismatch, raises `ChecksumMismatch(version, name, recorded, computed)`.
-3. **Transaction-Preserving Statement Execution:**
+4. **Transaction-Preserving Statement Execution:**
    - Splits the migration SQL into individual executable statements using a semicolon-aware SQL tokenizer, executing them sequentially within an explicit `BEGIN IMMEDIATE ... COMMIT` block to ensure transactional atomicity across DDL, DML, foreign key checks, and metadata recording:
      ```python
      # 1. Connection-level preflight: disable foreign keys outside transaction for table rebuild safety
@@ -415,7 +425,7 @@ SELECT
     staged_count, rules_applied, rules_created, sha256_before, sha256_after,
     prev_mutation_hash, mutation_hash,
     -- Deterministic migration seal: SHA-256 HMAC-equivalent transition digest over canonical tuple
-    hex(sha256('MIGRATION_SEAL_0010:' || seq || ':' || mutation_id || ':' || mutation_hash || ':' || sha256_after))
+    sha256_hex('MIGRATION_SEAL_0010:' || seq || ':' || mutation_id || ':' || mutation_hash || ':' || sha256_after)
 FROM mutation_events_backup_0010;
 DROP TABLE mutation_events_backup_0010;
 
@@ -1044,12 +1054,48 @@ END;
                       json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
                   ).hexdigest()
                   
-                  # Generate cryptographic authority signature
-                  sign_digest = hashlib.sha256(
-                      f"{seq}:{mutation_id}:{ledger_id}:{ts_utc}:{mutation_hash}:{prev_mutation_hash}:{sha256_after}:{projection_hash_after}".encode("utf-8")
-                  ).hexdigest()
+                  # Generate cryptographic authority signature using canonical digest formula
+                  sign_digest = compute_anchor_signature_digest(
+                      seq, mutation_id, ledger_id, ts_utc, mutation_hash,
+                      prev_mutation_hash, sha256_after, projection_hash_after
+                  )
                   authority_signature = sign_authority_payload(sign_digest, authority_key)
 
+                  # Prepare anchor data
+                  anchor_dir = beancount_root / ".ironledger" / "anchors"
+                  anchor_dir.mkdir(parents=True, exist_ok=True)
+                  anchor_file = anchor_dir / f"{ledger_id}.anchor.json"
+                  anchor_data = {
+                      "anchor_version": 1,
+                      "ledger_id": ledger_id,
+                      "seq": seq,
+                      "mutation_id": mutation_id,
+                      "mutation_hash": mutation_hash,
+                      "prev_mutation_hash": prev_mutation_hash,
+                      "manifest_hash": sha256_after,
+                      "projection_hash": projection_hash_after,
+                      "authority_signature": authority_signature,
+                      "anchored_at_utc": ts_utc
+                  }
+
+                  backup_dir = tenant_dir / f"current_bak_{uuid4().hex}" if (staging_dir and staging_dir.exists()) else None
+
+                  # Step 1: Write PRE_COMMIT promotion journal BEFORE committing database transaction
+                  journal_data = {
+                      "state": "PRE_COMMIT",
+                      "seq": seq,
+                      "ledger_id": ledger_id,
+                      "sha256_before": sha256_before,
+                      "sha256_after": sha256_after,
+                      "staging_dir": staging_dir.name if (staging_dir and staging_dir.exists()) else None,
+                      "backup_dir": backup_dir.name if backup_dir else None,
+                      "anchor_data": anchor_data
+                  }
+                  temp_j = tenant_dir / f".j_{uuid4().hex}.tmp"
+                  temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
+                  os.replace(temp_j, journal_file)
+
+                  # Step 2: Insert into database tables and COMMIT
                   conn.execute(
                       "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
                       "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash, authority_signature) "
@@ -1065,76 +1111,48 @@ END;
                        canonical_payload_bytes.decode("utf-8"), payload_sha256,
                        projection_hash_before, projection_hash_after, ts_utc)
                   )
-                  
                   conn.execute("COMMIT")
               except Exception:
                   conn.execute("ROLLBACK")
+                  if journal_file.exists():
+                      journal_file.unlink()
                   if staging_dir and staging_dir.exists():
                       shutil.rmtree(staging_dir, ignore_errors=True)
                   raise
               
-              # Durable promotion protocol with crash-safe journal state transitions and atomic trust anchor updates
-              anchor_dir = beancount_root / ".ironledger" / "anchors"
-              anchor_dir.mkdir(parents=True, exist_ok=True)
-              anchor_file = anchor_dir / f"{ledger_id}.anchor.json"
-              anchor_data = {
-                  "anchor_version": 1,
-                  "ledger_id": ledger_id,
-                  "seq": seq,
-                  "mutation_id": mutation_id,
-                  "mutation_hash": mutation_hash,
-                  "prev_mutation_hash": prev_mutation_hash,
-                  "manifest_hash": sha256_after,
-                  "projection_hash": projection_hash_after,
-                  "authority_signature": authority_signature,
-                  "anchored_at_utc": ts_utc
-              }
+              # Step 3: Advance journal state to COMMITTED_PRE_SWAP immediately post-commit
+              try:
+                  journal_data["state"] = "COMMITTED_PRE_SWAP"
+                  temp_j = tenant_dir / f".j_{uuid4().hex}.tmp"
+                  temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
+                  os.replace(temp_j, journal_file)
 
-              if staging_dir and staging_dir.exists():
-                  backup_dir = tenant_dir / f"current_bak_{uuid4().hex}"
-                  if backup_dir.exists():
-                      shutil.rmtree(backup_dir, ignore_errors=True)
-                  try:
-                      journal_data = {
-                          "state": "COMMITTED_PRE_SWAP",
-                          "seq": seq,
-                          "ledger_id": ledger_id,
-                          "sha256_before": sha256_before,
-                          "sha256_after": sha256_after,
-                          "staging_dir": staging_dir.name,
-                          "backup_dir": backup_dir.name,
-                          "anchor_data": anchor_data
-                      }
-                      temp_j = tenant_dir / f".j_{uuid4().hex}.tmp"
-                      temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
-                      os.replace(temp_j, journal_file)
-                      
-                      # Safely swap: move current -> backup, then staging -> current
+                  # Step 4: Perform directory swap (for filesystem mutations)
+                  if staging_dir and staging_dir.exists():
+                      if backup_dir.exists():
+                          shutil.rmtree(backup_dir, ignore_errors=True)
                       if current_dir.exists():
                           os.replace(current_dir, backup_dir)
                       os.replace(staging_dir, current_dir)
-                      
-                      # Update external trust anchor atomically
-                      temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"
-                      temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")
-                      os.replace(temp_a, anchor_file)
 
-                      # Advance journal state to SWAPPED only after verified filesystem swap and anchor update
-                      journal_data["state"] = "SWAPPED"
-                      temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
-                      os.replace(temp_j, journal_file)
-                      
-                      if backup_dir.exists():
-                          shutil.rmtree(backup_dir, ignore_errors=True)
-                      if journal_file.exists():
-                          journal_file.unlink()
-                  except Exception as promo_err:
-                      raise ManifestPromotionError(f"Promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
-              else:
-                  # Non-filesystem mutation: update external trust anchor atomically
+                  # Step 5: Update external trust anchor atomically
                   temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"
                   temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")
                   os.replace(temp_a, anchor_file)
+
+                  # Step 6: Advance journal state to SWAPPED only after verified filesystem swap and anchor update
+                  journal_data["state"] = "SWAPPED"
+                  temp_j = tenant_dir / f".j_{uuid4().hex}.tmp"
+                  temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
+                  os.replace(temp_j, journal_file)
+                  
+                  # Step 7: Clean up backup directory and journal
+                  if backup_dir and backup_dir.exists():
+                      shutil.rmtree(backup_dir, ignore_errors=True)
+                  if journal_file.exists():
+                      journal_file.unlink()
+              except Exception as promo_err:
+                  raise ManifestPromotionError(f"Promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
           finally:
               portalocker_unlock(lock_file)
       
@@ -1153,21 +1171,28 @@ END;
      - Let `anchor_dir = beancount_root / ".ironledger" / "anchors"`.
      - Let `anchor_file = anchor_dir / f"{ledger_id}.anchor.json"`.
      - If `journal_file.exists()`:
-       - Read journal metadata: `state = journal.get("state")`, `staged_cand = tenant_dir / journal.get("staging_dir", "")`, `bak_cand = tenant_dir / journal.get("backup_dir", "")`, `anchor_data = journal.get("anchor_data")`.
-       - If `state == "COMMITTED_PRE_SWAP"`:
-         - If `staged_cand.exists()` and `compute_directory_manifest_hash(staged_cand) == journal["sha256_after"]`:
-           - If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)` (purge any colliding stale backup from prior crash).
-           - If `current_dir.exists()`: `os.replace(current_dir, bak_cand)`.
+       - Read journal metadata: `state = journal.get("state")`, `staged_cand = tenant_dir / journal.get("staging_dir", "")` if journal.get("staging_dir") else None, `bak_cand = tenant_dir / journal.get("backup_dir", "")` if journal.get("backup_dir") else None, `anchor_data = journal.get("anchor_data")`.
+       - Check if sequence was committed in DB: `db_has_seq = bool(conn.execute("SELECT 1 FROM mutation_events WHERE seq = ?", (journal["seq"],)).fetchone())`.
+       - If `state == "PRE_COMMIT"`:
+         - If not `db_has_seq`:
+           - Crash occurred before SQLite commit. Discard scratch staging folder `if staged_cand and staged_cand.exists(): shutil.rmtree(staged_cand, ignore_errors=True)`. Unlink journal.
+         - Else:
+           - Crash occurred immediately after SQLite commit before state transition. Treat as `COMMITTED_PRE_SWAP`.
+       - If `state == "COMMITTED_PRE_SWAP"` or (`state == "PRE_COMMIT"` and `db_has_seq`):
+         - If `staged_cand` and `staged_cand.exists()` and `compute_directory_manifest_hash(staged_cand) == journal["sha256_after"]`:
+           - If `bak_cand and bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)` (purge any colliding stale backup from prior crash).
+           - If `current_dir.exists()` and `bak_cand`: `os.replace(current_dir, bak_cand)`.
            - `os.replace(staged_cand, current_dir)`.
-           - If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
+           - If `bak_cand and bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
          - Else if not `current_dir.exists()` or `compute_directory_manifest_hash(current_dir) != journal["sha256_after"]`:
-           - Staging directory missing or invalid and current directory divergent: retain journal and raise `ReconciliationFailedError("Promotion recovery failed: staging directory corrupted or missing")`.
+           - If journal had no staging_dir (non-filesystem mutation): manifest check passes if live manifest matches expected `sha256_after`.
+           - Otherwise, retain journal and raise `ReconciliationFailedError("Promotion recovery failed: staging directory corrupted or missing")`.
          - Ensure anchor file is written from `anchor_data`:
            - `temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"`
            - `temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")`
            - `os.replace(temp_a, anchor_file)`
        - If `state == "SWAPPED"`:
-         - Swap already succeeded before crash. If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
+         - Swap already succeeded before crash. If `bak_cand and bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
          - If `anchor_data` and not `anchor_file.exists()`:
            - `temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"`
            - `temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")`
@@ -1192,11 +1217,26 @@ END;
          - Prune temporary directories.
 
 * **Authority Cryptographic Signature & External Trust Anchor Protocol:**
+  - **Canonical Signature Digest Specification:**
+    ```python
+    def compute_anchor_signature_digest(
+        seq: int,
+        mutation_id: str,
+        ledger_id: str,
+        ts_utc: str,
+        mutation_hash: str,
+        prev_mutation_hash: str,
+        manifest_hash: str,
+        projection_hash: str,
+    ) -> str:
+        """Compute the canonical SHA-256 digest string for signing and verifying audit authority signatures."""
+        raw = f"{seq}:{mutation_id}:{ledger_id}:{ts_utc}:{mutation_hash}:{prev_mutation_hash}:{manifest_hash}:{projection_hash}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    ```
   - **Signing Authority Envelope:**
     - Each mutation event is cryptographically signed using an Authority Signing Key (`HMAC-SHA256` secret or `Ed25519` private key) configured via environment/keystore (`IRONLEDGER_SIGNING_KEY`).
-    - Canonical signature digest:
-      $$\text{digest} = \text{SHA256}\left(f"\{\text{seq}\}:\{\text{mutation\_id}\}:\{\text{ledger\_id}\}:\{\text{ts\_utc}\}:\{\text{mutation\_hash}\}:\{\text{prev\_mutation\_hash}\}:\{\text{sha256\_after}\}:\{\text{projection\_hash\_after}\}"\right)$$
-    - `authority_signature = Sign(AuthorityKey, digest)` (hex-encoded string). Stored in `mutation_events.authority_signature`.
+    - `sign_digest = compute_anchor_signature_digest(seq, mutation_id, ledger_id, ts_utc, mutation_hash, prev_mutation_hash, sha256_after, projection_hash_after)`
+    - `authority_signature = sign_authority_payload(sign_digest, authority_key)` (hex-encoded string). Stored in `mutation_events.authority_signature`.
   - **External Out-of-Band Trust Anchor File (`.ironledger/anchors/<ledger_id>.anchor.json`):**
     - Stored outside the SQLite database at `beancount_root / ".ironledger" / "anchors" / f"{ledger_id}.anchor.json"`.
     - Updated atomically on every committed mutation:
@@ -1232,7 +1272,8 @@ END;
            - `anchor.manifest_hash == M_{\text{latest}}.sha256_after`
            - `anchor.projection_hash == payload_{\text{latest}}.projection_hash_after`
            - `anchor.authority_signature == M_{\text{latest}}.authority_signature`
-           - `verify_authority_signature(anchor.authority_signature, anchor_digest, public_key) == True`
+           - Let `expected_anchor_digest = compute_anchor_signature_digest(anchor.seq, anchor.mutation_id, anchor.ledger_id, anchor.anchored_at_utc, anchor.mutation_hash, anchor.prev_mutation_hash, anchor.manifest_hash, anchor.projection_hash)`.
+           - `verify_authority_signature(anchor.authority_signature, expected_anchor_digest, public_key) == True`
          - If any assertion fails, immediately abort with `AuditTamperDetectedError("External trust anchor diverges from database state: potential offline tampering detected")`.**
      - Query joined rows from `mutation_events` and `mutation_payloads` ordered by `seq ASC`.
      - Assert global contiguous `seq` sequence $1, 2, \dots, N$ across all tenants with zero gaps.
