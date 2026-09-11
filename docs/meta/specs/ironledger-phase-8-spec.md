@@ -22,9 +22,9 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 
 1. **Exact Rational Integer Arithmetic:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift.
 2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration, strict self-edge rejection (`source != target`), and unbounded insertion-time cycle detection.
-3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database to reconstruct exact historical state snapshots at any sequence number without mutating live files.
-4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries, composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), and composite unique constraints enforce strict cross-tenant isolation at the relational schema boundary.
-5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by AST static analysis and runtime module import prohibition tests (runtime `import beancount` is prohibited; reading metadata via `importlib.metadata.version("beancount")` is permitted).
+3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence and Merkle chain, then replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database to reconstruct exact historical state snapshots at any sequence number without mutating live files.
+4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries, composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema boundary with mandatory `PRAGMA foreign_keys = ON;`.
+5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by static AST scanners forbidding `import beancount`, `from beancount import ...`, `__import__("beancount")`, and `importlib.import_module("beancount")` (reading package version metadata via `importlib.metadata.version("beancount")` is permitted).
 6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement across CLI, web, and programmatic interfaces.
 
 ---
@@ -45,7 +45,7 @@ Phase 8: Lineage, Valuation & Replay Engine
 
 ## 3. Database Schema Architecture
 
-Phase 8 schema migrations use `STRICT` table definitions and SQLite-compatible alteration patterns tracked by the governed forward-only migration runner (`ironledger.db.migrations`):
+Phase 8 schema migrations use `STRICT` table definitions and SQLite-compatible alteration patterns tracked by the governed forward-only migration runner (`ironledger.db.migrations`). All connections execute `PRAGMA foreign_keys = ON;` upon initialization.
 
 ### Migration `0008_price_history.sql` (Task 8.1)
 ```sql
@@ -112,9 +112,9 @@ INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default'
 
 -- 2. Transactional Table Rebuild with Composite Foreign Keys for Tenant Isolation
 
--- 2a. Rebuild source_documents with ledger_id
+-- 2a. Rebuild source_documents with (ledger_id, source_document_id) composite identity
 CREATE TABLE source_documents_new (
-    source_document_id   TEXT PRIMARY KEY,
+    source_document_id   TEXT NOT NULL,
     ledger_id            TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT,
     mime_type            TEXT NOT NULL,
     encoding             TEXT NOT NULL,
@@ -123,8 +123,8 @@ CREATE TABLE source_documents_new (
     content_sha256       TEXT NOT NULL CHECK (length(content_sha256) = 64),
     raw_payload_ref      TEXT NOT NULL,
     created_at_utc       TEXT NOT NULL CHECK (created_at_utc GLOB '????-??-??T??:??:??*Z'),
-    UNIQUE (content_sha256),
-    UNIQUE (ledger_id, source_document_id)
+    PRIMARY KEY (ledger_id, source_document_id),
+    UNIQUE (ledger_id, content_sha256)
 ) STRICT;
 
 INSERT INTO source_documents_new (
@@ -138,15 +138,15 @@ FROM source_documents;
 
 -- 2b. Rebuild source_records with composite FK to source_documents
 CREATE TABLE source_records_new (
-    source_record_id   TEXT PRIMARY KEY,
+    source_record_id   TEXT NOT NULL,
     ledger_id          TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT,
     source_document_id TEXT NOT NULL,
     record_index       INTEGER NOT NULL CHECK (record_index >= 0),
     canonical_payload  TEXT NOT NULL,
     content_sha256     TEXT NOT NULL CHECK (length(content_sha256) = 64),
     created_at_utc     TEXT NOT NULL CHECK (created_at_utc GLOB '????-??-??T??:??:??*Z'),
-    UNIQUE (source_document_id, record_index),
-    UNIQUE (ledger_id, source_record_id),
+    PRIMARY KEY (ledger_id, source_record_id),
+    UNIQUE (ledger_id, source_document_id, record_index),
     FOREIGN KEY (ledger_id, source_document_id) REFERENCES source_documents_new (ledger_id, source_document_id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) STRICT;
 
@@ -162,7 +162,7 @@ CREATE TABLE staged_postings_rebuild_backup_0010 AS SELECT * FROM staged_posting
 DELETE FROM staged_postings;
 
 CREATE TABLE staged_transactions_new (
-    staged_transaction_id TEXT PRIMARY KEY,
+    staged_transaction_id TEXT NOT NULL,
     ledger_id             TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT,
     source_record_id      TEXT NOT NULL,
     status                TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'categorized', 'approved', 'rejected')),
@@ -176,8 +176,8 @@ CREATE TABLE staged_transactions_new (
     decided_at_utc        TEXT CHECK (decided_at_utc IS NULL OR decided_at_utc GLOB '????-??-??T??:??:??*Z'),
     reject_reason         TEXT,
     categorized_at_utc    TEXT CHECK (categorized_at_utc IS NULL OR categorized_at_utc GLOB '????-??-??T??:??:??*Z'),
-    UNIQUE (identity_algo_version, identity_fingerprint),
-    UNIQUE (ledger_id, staged_transaction_id),
+    PRIMARY KEY (ledger_id, staged_transaction_id),
+    UNIQUE (ledger_id, identity_algo_version, identity_fingerprint),
     FOREIGN KEY (ledger_id, source_record_id) REFERENCES source_records_new (ledger_id, source_record_id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) STRICT;
 
@@ -194,7 +194,7 @@ FROM staged_transactions;
 
 -- 2d. Rebuild staged_postings with composite FK to staged_transactions and source_records
 CREATE TABLE staged_postings_new (
-    staged_posting_id     TEXT PRIMARY KEY,
+    staged_posting_id     TEXT NOT NULL,
     ledger_id             TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT,
     staged_transaction_id TEXT NOT NULL,
     source_record_id      TEXT NOT NULL,
@@ -210,7 +210,8 @@ CREATE TABLE staged_postings_new (
     minor_unit_scale      INTEGER NOT NULL CHECK (minor_unit_scale >= 0),
     created_at_utc        TEXT NOT NULL CHECK (created_at_utc GLOB '????-??-??T??:??:??*Z'),
     CHECK (role = 'contra' OR account IS NOT NULL),
-    UNIQUE (staged_transaction_id, posting_index),
+    PRIMARY KEY (ledger_id, staged_posting_id),
+    UNIQUE (ledger_id, staged_transaction_id, posting_index),
     FOREIGN KEY (ledger_id, staged_transaction_id) REFERENCES staged_transactions_new (ledger_id, staged_transaction_id) ON DELETE CASCADE ON UPDATE RESTRICT,
     FOREIGN KEY (ledger_id, source_record_id) REFERENCES source_records_new (ledger_id, source_record_id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) STRICT;
@@ -226,7 +227,7 @@ FROM staged_postings_rebuild_backup_0010;
 
 -- 2e. Rebuild categorization_rules
 CREATE TABLE categorization_rules_new (
-    rule_id           TEXT PRIMARY KEY,
+    rule_id           TEXT NOT NULL,
     ledger_id         TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE CASCADE,
     match_type        TEXT NOT NULL CHECK (match_type IN ('exact', 'prefix', 'regex')),
     pattern           TEXT NOT NULL,
@@ -245,6 +246,7 @@ CREATE TABLE categorization_rules_new (
     active            INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
     created_at_utc    TEXT NOT NULL CHECK (created_at_utc GLOB '????-??-??T??:??:??*Z'),
     disabled_at_utc   TEXT CHECK (disabled_at_utc IS NULL OR disabled_at_utc GLOB '????-??-??T??:??:??*Z'),
+    PRIMARY KEY (ledger_id, rule_id),
     UNIQUE (ledger_id, match_type, pattern, importing_account)
 ) STRICT;
 
@@ -271,11 +273,11 @@ ALTER TABLE staged_transactions_new RENAME TO staged_transactions;
 ALTER TABLE staged_postings_new RENAME TO staged_postings;
 ALTER TABLE categorization_rules_new RENAME TO categorization_rules;
 
-CREATE INDEX idx_staged_source_record ON staged_transactions (source_record_id);
+CREATE INDEX idx_source_records_doc ON source_records (ledger_id, source_document_id);
+CREATE INDEX idx_staged_source_record ON staged_transactions (ledger_id, source_record_id);
 CREATE INDEX idx_staged_tx_ledger ON staged_transactions (ledger_id, status);
-CREATE INDEX idx_staged_postings_transaction ON staged_postings (staged_transaction_id);
-CREATE INDEX idx_staged_postings_source ON staged_postings (source_record_id);
-CREATE INDEX idx_staged_postings_ledger ON staged_postings (ledger_id);
+CREATE INDEX idx_staged_postings_transaction ON staged_postings (ledger_id, staged_transaction_id);
+CREATE INDEX idx_staged_postings_source ON staged_postings (ledger_id, source_record_id);
 CREATE INDEX idx_categorization_rules_active_priority ON categorization_rules (ledger_id, active, priority);
 
 -- 2g. Rebuild mutation_events with ledger_id FK and composite key for payload joining
@@ -357,6 +359,7 @@ CREATE TABLE IF NOT EXISTS mutation_payloads (
     payload_schema_version INTEGER NOT NULL DEFAULT 1 CHECK(payload_schema_version >= 1),
     event_type TEXT NOT NULL CHECK(event_type IN ('STAGE_TRANSACTION', 'REVIEW_DECISION', 'COMPILE_LEDGER', 'PRICE_DIRECTIVE', 'RULE_UPDATE')),
     payload_json TEXT NOT NULL CHECK(json_valid(payload_json) = 1),
+    payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),
     projection_hash_before TEXT NOT NULL CHECK(length(projection_hash_before) = 64),
     projection_hash_after TEXT NOT NULL CHECK(length(projection_hash_after) = 64),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
@@ -432,7 +435,6 @@ END;
 * **Fingerprint Duality Defined:**
   1. `sha256_after` (Beancount manifest hash): Recorded on `mutation_events`. Canonical hash of `.beancount` files on disk (`src/ironledger/manifests.py:compute_ledger_manifest_hash`). Authoritatively computed before and after filesystem emissions, never caller-defaulted.
   2. `projection_hash` (SQLite table state hash): Recorded on `mutation_payloads`. Deterministic SHA-256 computed by `compute_projection_hash(conn, ledger_id)`.
-* **Global Sequence vs Tenant-Scoped Streams:** Sequence numbers (`seq`) are globally monotonic and contiguous across the entire database instance to preserve global append-only Merkle chain integrity (`prev_mutation_hash`). Each event explicitly records `ledger_id` (foreign key to `ledgers.ledger_id`), and tenant-specific audit or replay streams are queried using the composite index `(ledger_id, seq)`.
 * **Canonical `projection_hash` Algorithm:**
   ```python
   STATIC_PROJECTION_COLUMNS: dict[str, list[str]] = {
@@ -458,10 +460,10 @@ END;
   }
 
   TABLE_ORDER_CLAUSES: dict[str, str] = {
-      "staged_transactions": "staged_transaction_id ASC",
-      "staged_postings": "staged_transaction_id ASC, posting_index ASC, staged_posting_id ASC",
-      "categorization_rules": "rule_id ASC",
-      "price_history": "base_currency ASC, quote_currency ASC, directive_date ASC, id ASC",
+      "staged_transactions": "ledger_id ASC, staged_transaction_id ASC",
+      "staged_postings": "ledger_id ASC, staged_transaction_id ASC, posting_index ASC, staged_posting_id ASC",
+      "categorization_rules": "ledger_id ASC, rule_id ASC",
+      "price_history": "ledger_id ASC, base_currency ASC, quote_currency ASC, directive_date ASC, id ASC",
       "compile_runs": "compile_run_id ASC",
   }
 
@@ -545,7 +547,7 @@ END;
     - `priority`: integer (required)
     - `active`: integer `0` or `1` (required)
 
-* **Transactional Mutation Dispatch & Authoritative 2-Phase Append Contract:**
+* **Transactional Mutation Dispatch & Authoritative Outbox Commit Protocol:**
   ```python
   def apply_mutation_and_append(
       conn: sqlite3.Connection,
@@ -568,8 +570,8 @@ END;
               f"Payload ledger_id '{payload.get('ledger_id')}' does not match target ledger_id '{ledger_id}'"
           )
       
-      # 2. Stage filesystem mutations (if applicable) to isolated temp directory
-      temp_dir = None
+      # 2. Stage filesystem mutations to isolated staging directory
+      temp_dir: Path | None = None
       sha256_before = compute_ledger_manifest_hash(beancount_root, ledger_id)
       if manifest_staging_fn:
           temp_dir = beancount_root / f".staging_{uuid4().hex}"
@@ -608,6 +610,9 @@ END;
           ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
           
           # 8. Canonical JSON hash computation
+          canonical_payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+          payload_sha256 = hashlib.sha256(canonical_payload_bytes).hexdigest()
+          
           canonical_dict = {
               "action": action,
               "event_type": event_type,
@@ -640,26 +645,30 @@ END;
           )
           conn.execute(
               "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
-              "payload_json, projection_hash_before, projection_hash_after, created_at) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "payload_json, payload_sha256, projection_hash_before, projection_hash_after, created_at) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               (seq, mutation_id, ledger_id, payload_schema_version, event_type,
-               json.dumps(payload, sort_keys=True, separators=(",", ":")),
+               canonical_payload_bytes.decode("utf-8"), payload_sha256,
                projection_hash_before, projection_hash_after, ts_utc)
           )
           
-          # 10. Commit SQLite transaction (Phase 1)
+          # 10. Commit SQLite transaction (authoritative intent recorded)
           conn.execute("COMMIT")
           
-          # 11. Promote staged files atomically to target manifest (Phase 2)
-          if temp_dir:
-              promote_staged_manifest(temp_dir, beancount_root, ledger_id)
-              shutil.rmtree(temp_dir, ignore_errors=True)
-              
       except Exception:
           conn.execute("ROLLBACK")
-          if temp_dir:
+          if temp_dir and temp_dir.exists():
               shutil.rmtree(temp_dir, ignore_errors=True)
           raise
+      
+      # 11. Promote staged files to live directory with atomic rename & fsync
+      if temp_dir and temp_dir.exists():
+          try:
+              promote_staged_manifest(temp_dir, beancount_root, ledger_id)
+              shutil.rmtree(temp_dir, ignore_errors=True)
+          except Exception as promo_err:
+              # Database is authoritative; reconciliation routine will complete promotion on restart
+              raise ManifestPromotionError(f"Filesystem promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
       
       return (
           MutationEvent(seq=seq, mutation_id=mutation_id, ledger_id=ledger_id, ts_utc=ts_utc,
@@ -668,25 +677,34 @@ END;
       )
   ```
 
+* **Startup Manifest Reconciliation Protocol (`reconcile_manifest_on_startup`):**
+  - Invoked during startup / connection initialization:
+  - Fetch latest mutation event $M_{\text{latest}}$ for each active ledger.
+  - Compute current live manifest hash $H_{\text{live}}$.
+  - If $H_{\text{live}} == M_{\text{latest}}.\text{sha256\_after}$, manifest is valid.
+  - If $H_{\text{live}} == M_{\text{latest}}.\text{sha256\_before}$, crash occurred before promotion: check for staged directory `.staging_*` or re-emit from $M_{\text{latest}}$ payload to advance filesystem state to $M_{\text{latest}}.\text{sha256\_after}$.
+  - If $H_{\text{live}}$ matches neither, raise `ManifestDesyncError` (fail closed on external tamper).
+
 * **Deterministic Replay Engine Algorithm:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
-  2. Verify hash chain from sequence 1 to `target_sequence` using `verify_mutation_chain_integrity(conn)`.
-  3. Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
-  4. Stream joined mutation event and payload rows ordered by `seq ASC`:
-     ```sql
-     SELECT e.seq, e.mutation_id, e.ledger_id, e.action, e.ts_utc, e.mutation_hash,
-            p.event_type, p.payload_json, p.projection_hash_before, p.projection_hash_after
-     FROM mutation_events e
-     INNER JOIN mutation_payloads p ON e.seq = p.seq AND e.mutation_id = p.mutation_id AND e.ledger_id = p.ledger_id
-     WHERE e.seq <= :target_seq AND e.ledger_id = :ledger_id
-     ORDER BY e.seq ASC;
-     ```
-  5. For each row `(seq, mutation_id, ledger_id, action, ts_utc, mutation_hash, event_type, payload_json, projection_hash_before, projection_hash_after)`:
-     - Parse `payload = json.loads(payload_json)`.
-     - Validate that current in-memory `compute_projection_hash(mem_conn, ledger_id)` equals `projection_hash_before`. If mismatched, fail closed with `ReplayVerificationError`.
-     - Execute `dispatch_event_mutation(mem_conn, ledger_id, event_type, payload)`.
-     - Validate that resulting in-memory `compute_projection_hash(mem_conn, ledger_id)` equals `projection_hash_after`. If mismatched, fail closed with `ReplayVerificationError`.
-  6. Return verified in-memory projection database and point-in-time trial balance.
+  2. **Phase 1: Global Sequence & Merkle Chain Integrity Verification (Global $1 \dots \text{target\_seq}$):**
+     - Query all `mutation_events` and `mutation_payloads` from `seq = 1` to `target_seq` ordered by `seq ASC`.
+     - Assert `seq` sequence is strictly contiguous $1, 2, \dots, N$ with zero gaps.
+     - Assert timestamps `ts_utc` are strictly monotonic.
+     - For each row:
+       - Validate `payload_sha256 == sha256(payload_json)`.
+       - Recompute canonical `mutation_hash` from `canonical_dict` and assert equality with `event.mutation_hash`.
+       - Assert `event.prev_mutation_hash` matches prior event's `mutation_hash` (or $0^{64}$ for `seq = 1`).
+  3. **Phase 2: Tenant-Scoped In-Memory Projection Replay:**
+     - Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
+     - Stream the validated events from `seq = 1` to `target_seq`:
+       - If `event.ledger_id == target_ledger_id`:
+         - Validate that in-memory `compute_projection_hash(mem_conn, target_ledger_id)` equals `payload.projection_hash_before`. If mismatched, raise `ReplayVerificationError`.
+         - Execute `dispatch_event_mutation(mem_conn, target_ledger_id, payload.event_type, json.loads(payload.payload_json))`.
+         - Validate that resulting in-memory `compute_projection_hash(mem_conn, target_ledger_id)` equals `payload.projection_hash_after`. If mismatched, raise `ReplayVerificationError`.
+       - If `event.ledger_id != target_ledger_id`:
+         - Skip projection mutation (tenant isolation).
+  4. Return verified in-memory projection database and point-in-time trial balance.
 
 ### Task 8.5: Scoped Capability Tokens & RBAC Policy Enforcement
 * **Location:** `src/ironledger/auth/capabilities.py`, `src/ironledger/auth/policy.py`
@@ -723,7 +741,7 @@ END;
 
 ### Task 8.6: Acceptance Regression Suite & Phase 8 Exit Evidence
 * **Location:** `tests/test_valuation.py`, `tests/test_lineage.py`, `tests/test_multi_ledger.py`, `tests/test_replay.py`, `tests/test_capabilities.py`, `tests/test_phase8_exit_contract.py`
-* **Static Analysis Import Guard:** AST scanner in `tests/test_phase8_exit_contract.py` scans `src/ironledger/**/*.py` to assert zero `import beancount` or dynamic `__import__("beancount")`.
+* **Static Analysis Import Guard:** AST scanner in `tests/test_phase8_exit_contract.py` scans `src/ironledger/**/*.py` to assert zero `ast.Import` or `ast.ImportFrom` of `beancount`, and zero `ast.Call` to `__import__`, `importlib.import_module`, or `builtins.__import__` targeting `beancount`.
 * **Exit Evidence Artifact:** `docs/meta/phases/ironledger-phase-8-evidence.md`.
 
 ---
@@ -741,7 +759,7 @@ END;
    - Verify complete isolation of staging queues, lineage nodes, review rules, and concurrent compilation locks across multiple `ledger_id`s.
    - Verify multi-entity consolidated balance aggregation.
 4. **Replay Suite (`tests/test_replay.py`):**
-   - Verify full hash-chain validation and payload replay into in-memory projection database validating `projection_hash_before` and `projection_hash_after`.
+   - Verify global sequence contiguity, Merkle chain verification, and payload replay into in-memory projection database validating `projection_hash_before` and `projection_hash_after`.
    - Verify zero side-effects on live database files.
 5. **RBAC Suite (`tests/test_capabilities.py`):**
    - Verify token creation, constant-time hash verification, role ceiling enforcement, expiration/revocation gating, and global vs tenant-scoped validation.
