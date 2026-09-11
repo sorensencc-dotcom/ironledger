@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS mutation_payloads (
     payload_sha256 TEXT NOT NULL CHECK(length(payload_sha256) = 64),
     projection_hash_before TEXT NOT NULL CHECK(length(projection_hash_before) = 64),
     projection_hash_after TEXT NOT NULL CHECK(length(projection_hash_after) = 64),
+    authority_signature TEXT NOT NULL CHECK(length(authority_signature) = 64),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     FOREIGN KEY(seq) REFERENCES mutation_events(seq) ON DELETE CASCADE
 ) STRICT;

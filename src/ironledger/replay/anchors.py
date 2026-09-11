@@ -8,7 +8,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from uuid import uuid4
 
 from ironledger.ledger.topology import validate_and_resolve_ledger_root
@@ -47,12 +47,26 @@ def verify_authority_signature(signature: str, digest: str, authority_key: str |
     return hmac.compare_digest(signature, expected)
 
 
+LEDGER_ID_PATTERN: Final[re.Pattern] = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def validate_anchor_ledger_id(ledger_id: str) -> None:
+    if not isinstance(ledger_id, str) or not LEDGER_ID_PATTERN.match(ledger_id):
+        raise SecurityError(f"Invalid or unsafe ledger_id: {ledger_id!r}")
+
+
 def get_anchor_path(beancount_root: Path | str, ledger_id: str) -> Path:
-    """Get the external trust anchor file path for a ledger."""
+    """Get the external trust anchor file path for a ledger with path traversal and symlink guards."""
+    validate_anchor_ledger_id(ledger_id)
     base = Path(beancount_root).resolve()
     anchor_dir = base / ".ironledger" / "anchors"
+    if anchor_dir.is_symlink():
+        raise SecurityError(f"Symlink detected in anchor directory: {anchor_dir}")
     anchor_dir.mkdir(parents=True, exist_ok=True)
-    return anchor_dir / f"{ledger_id}.anchor.json"
+    target = anchor_dir / f"{ledger_id}.anchor.json"
+    if target.is_symlink():
+        raise SecurityError(f"Symlink detected at anchor target: {target}")
+    return target
 
 
 def read_trust_anchor(beancount_root: Path | str, ledger_id: str) -> TrustAnchor:

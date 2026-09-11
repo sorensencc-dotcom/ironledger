@@ -453,7 +453,7 @@ def render_price_directive_manifest(target_dir: Path, ledger_id: str, payload: d
     scale = payload.get("precision_scale", 4)
 
     if denom == 1:
-        rate_str = f"{num:.{scale}f}" if scale > 0 else str(num)
+        rate_str = f"{num}.{0:0{scale}d}" if scale > 0 else str(num)
     else:
         from ironledger.valuation.engine import convert_amount_rational
         rate_minor = convert_amount_rational(
@@ -463,9 +463,12 @@ def render_price_directive_manifest(target_dir: Path, ledger_id: str, payload: d
             rate_denominator=denom,
             target_scale=scale,
         )
-        int_part = rate_minor // (10 ** scale)
-        frac_part = rate_minor % (10 ** scale)
-        rate_str = f"{int_part}.{frac_part:0{scale}d}"
+        if scale > 0:
+            int_part = rate_minor // (10 ** scale)
+            frac_part = rate_minor % (10 ** scale)
+            rate_str = f"{int_part}.{frac_part:0{scale}d}"
+        else:
+            rate_str = str(rate_minor)
 
     line = f"{date} price {base:<8} {rate_str} {quote}\n"
 

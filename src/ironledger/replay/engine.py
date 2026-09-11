@@ -28,6 +28,7 @@ from ironledger.replay.anchors import (
     get_anchor_path,
     read_trust_anchor,
     sign_authority_payload,
+    validate_anchor_ledger_id,
     verify_authority_signature,
     write_trust_anchor,
 )
@@ -38,6 +39,7 @@ from ironledger.replay.models import (
     MutationPayload,
     ReconciliationFailedError,
     ReplayBoundaryError,
+    ReplayError,
     ReplayResult,
     ReplayVerificationReport,
     SecurityError,
@@ -69,6 +71,8 @@ def apply_mutation_and_append(
     authority_key: str | bytes = "ironledger-dev-key",
 ) -> tuple[dict[str, Any], MutationPayload]:
     """Execute in-memory mutation, generate outbox promotion, commit DB append-only event, and update external trust anchor."""
+    validate_anchor_ledger_id(ledger_id)
+
     payload.setdefault("ledger_id", ledger_id)
     if event_type == "REVIEW_DECISION":
         payload.setdefault("prior_status", "pending")
@@ -119,106 +123,120 @@ def apply_mutation_and_append(
     else:
         sha256_after = sha256_before
 
-    cur = conn.execute("SELECT seq, mutation_hash, ts_utc FROM mutation_events ORDER BY seq DESC LIMIT 1")
-    last_event = cur.fetchone()
-    if last_event is None:
-        next_seq = 1
-        prev_mutation_hash = "0" * 64
-        last_ts = "1970-01-01T00:00:00Z"
-    else:
-        next_seq = last_event[0] + 1
-        prev_mutation_hash = last_event[1]
-        last_ts = last_event[2]
+    # Concurrency boundary: acquire transaction lock for monotonic sequence allocation
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        cur = conn.execute("SELECT seq, mutation_hash, ts_utc FROM mutation_events ORDER BY seq DESC LIMIT 1")
+        last_event = cur.fetchone()
+        if last_event is None:
+            next_seq = 1
+            prev_mutation_hash = "0" * 64
+            last_ts = "1970-01-01T00:00:00Z"
+        else:
+            next_seq = last_event[0] + 1
+            prev_mutation_hash = last_event[1]
+            last_ts = last_event[2]
 
-    now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if "created_at_utc" in payload and payload["created_at_utc"]:
-        candidate_ts = payload["created_at_utc"]
-    elif "decided_at_utc" in payload and payload["decided_at_utc"]:
-        candidate_ts = payload["decided_at_utc"]
-    else:
-        candidate_ts = now_ts
+        now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if "created_at_utc" in payload and payload["created_at_utc"]:
+            candidate_ts = payload["created_at_utc"]
+        elif "decided_at_utc" in payload and payload["decided_at_utc"]:
+            candidate_ts = payload["decided_at_utc"]
+        else:
+            candidate_ts = now_ts
 
-    if not candidate_ts.endswith("Z"):
-        candidate_ts += "Z"
+        if not candidate_ts.endswith("Z"):
+            candidate_ts += "Z"
 
-    if candidate_ts <= last_ts:
-        try:
-            parsed = datetime.datetime.strptime(last_ts.rstrip("Z"), "%Y-%m-%dT%H:%M:%S")
-            parsed = parsed + datetime.timedelta(seconds=1)
-            ts_utc = parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
-        except Exception:
-            ts_utc = last_ts + "0"
-    else:
-        ts_utc = candidate_ts
+        if candidate_ts <= last_ts:
+            try:
+                clean_ts = last_ts.rstrip("Z")
+                if "." in clean_ts:
+                    dt = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc)
+                    dt = dt + datetime.timedelta(microseconds=1000)
+                    ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                else:
+                    dt = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc)
+                    dt = dt + datetime.timedelta(seconds=1)
+                    ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except Exception:
+                ts_utc = last_ts + "0"
+        else:
+            ts_utc = candidate_ts
 
-    mutation_id = payload.get("mutation_id") or f"mut_{uuid4().hex[:12]}"
+        mutation_id = payload.get("mutation_id") or f"mut_{uuid4().hex[:12]}"
 
-    dispatch_event_mutation(conn, ledger_id, event_type, payload)
-    projection_hash_after = compute_projection_hash(conn, ledger_id)
+        dispatch_event_mutation(conn, ledger_id, event_type, payload)
+        projection_hash_after = compute_projection_hash(conn, ledger_id)
 
-    staged_count = 1 if event_type == "STAGE_TRANSACTION" else 0
+        staged_count = 1 if event_type == "STAGE_TRANSACTION" else 0
 
-    raw_mut = f"{next_seq}:{mutation_id}:{prev_mutation_hash}:{sha256_before}:{sha256_after}:{rules_applied}:{rules_created}:{payload_sha256}"
-    mutation_hash = hashlib.sha256(raw_mut.encode("utf-8")).hexdigest()
+        raw_mut = f"{next_seq}:{mutation_id}:{prev_mutation_hash}:{sha256_before}:{sha256_after}:{rules_applied}:{rules_created}:{payload_sha256}"
+        mutation_hash = hashlib.sha256(raw_mut.encode("utf-8")).hexdigest()
 
-    sig_digest = compute_anchor_signature_digest(
-        seq=next_seq,
-        mutation_id=mutation_id,
-        ledger_id=ledger_id,
-        ts_utc=ts_utc,
-        mutation_hash=mutation_hash,
-        prev_mutation_hash=prev_mutation_hash,
-        manifest_hash=sha256_after,
-        projection_hash=projection_hash_after,
-    )
-    authority_signature = sign_authority_payload(sig_digest, authority_key)
+        sig_digest = compute_anchor_signature_digest(
+            seq=next_seq,
+            mutation_id=mutation_id,
+            ledger_id=ledger_id,
+            ts_utc=ts_utc,
+            mutation_hash=mutation_hash,
+            prev_mutation_hash=prev_mutation_hash,
+            manifest_hash=sha256_after,
+            projection_hash=projection_hash_after,
+        )
+        authority_signature = sign_authority_payload(sig_digest, authority_key)
 
-    journal_path = _get_journal_path(tenant_dir)
-    journal_data = {
-        "state": "PRE_COMMIT",
-        "seq": next_seq,
-        "mutation_id": mutation_id,
-        "ledger_id": ledger_id,
-        "ts_utc": ts_utc,
-        "staging_dir": str(staging_dir) if staging_dir else None,
-        "sha256_before": sha256_before,
-        "sha256_after": sha256_after,
-        "projection_hash_before": projection_hash_before,
-        "projection_hash_after": projection_hash_after,
-        "prev_mutation_hash": prev_mutation_hash,
-        "mutation_hash": mutation_hash,
-        "authority_signature": authority_signature,
-        "payload_sha256": payload_sha256,
-    }
-    journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+        journal_path = _get_journal_path(tenant_dir)
+        journal_data = {
+            "state": "PRE_COMMIT",
+            "seq": next_seq,
+            "mutation_id": mutation_id,
+            "ledger_id": ledger_id,
+            "ts_utc": ts_utc,
+            "staging_dir": str(staging_dir) if staging_dir else None,
+            "sha256_before": sha256_before,
+            "sha256_after": sha256_after,
+            "projection_hash_before": projection_hash_before,
+            "projection_hash_after": projection_hash_after,
+            "prev_mutation_hash": prev_mutation_hash,
+            "mutation_hash": mutation_hash,
+            "authority_signature": authority_signature,
+            "payload_sha256": payload_sha256,
+        }
+        journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
 
-    conn.execute(
-        """
-        INSERT INTO mutation_events (
-            seq, mutation_id, ledger_id, ts_utc, operator_session, action,
-            staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-            prev_mutation_hash, mutation_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            next_seq, mutation_id, ledger_id, ts_utc, operator_session, action,
-            staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-            prev_mutation_hash, mutation_hash,
-        ),
-    )
-    conn.execute(
-        """
-        INSERT INTO mutation_payloads (
-            seq, mutation_id, ledger_id, payload_schema_version, event_type,
-            payload_json, payload_sha256, projection_hash_before, projection_hash_after, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            next_seq, mutation_id, ledger_id, payload_schema_version, event_type,
-            payload_json, payload_sha256, projection_hash_before, projection_hash_after, ts_utc,
-        ),
-    )
-    conn.commit()
+        conn.execute(
+            """
+            INSERT INTO mutation_events (
+                seq, mutation_id, ledger_id, ts_utc, operator_session, action,
+                staged_count, rules_applied, rules_created, sha256_before, sha256_after,
+                prev_mutation_hash, mutation_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                next_seq, mutation_id, ledger_id, ts_utc, operator_session, action,
+                staged_count, rules_applied, rules_created, sha256_before, sha256_after,
+                prev_mutation_hash, mutation_hash,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO mutation_payloads (
+                seq, mutation_id, ledger_id, payload_schema_version, event_type,
+                payload_json, payload_sha256, projection_hash_before, projection_hash_after,
+                authority_signature, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                next_seq, mutation_id, ledger_id, payload_schema_version, event_type,
+                payload_json, payload_sha256, projection_hash_before, projection_hash_after,
+                authority_signature, ts_utc,
+            ),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     journal_data["state"] = "COMMITTED_PRE_SWAP"
     journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
@@ -286,6 +304,7 @@ def apply_mutation_and_append(
         payload_sha256=payload_sha256,
         projection_hash_before=projection_hash_before,
         projection_hash_after=projection_hash_after,
+        authority_signature=authority_signature,
         created_at=ts_utc,
     )
     return event_record, mutation_payload
@@ -296,11 +315,12 @@ def reconcile_manifest_on_startup(
     beancount_root: Path | str,
     authority_key: str | bytes = "ironledger-dev-key",
 ) -> None:
-    """Startup reconciliation: verify journals, complete pending directory swaps, and validate trust anchors."""
+    """Startup reconciliation: verify journals, complete pending directory swaps, and validate trust anchors and live manifests."""
     cur = conn.execute("SELECT ledger_id FROM ledgers WHERE is_active = 1")
     active_ledgers = [row[0] for row in cur.fetchall()]
 
     for ledger_id in active_ledgers:
+        validate_anchor_ledger_id(ledger_id)
         tenant_dir = validate_and_resolve_ledger_root(beancount_root, ledger_id)
         current_dir = tenant_dir / "current"
         current_dir.mkdir(parents=True, exist_ok=True)
@@ -330,6 +350,11 @@ def reconcile_manifest_on_startup(
 
             if state == "COMMITTED_PRE_SWAP":
                 if staging_path and staging_path.exists():
+                    staged_manifest = compute_directory_manifest_hash(staging_path)
+                    if staged_manifest != journal["sha256_after"]:
+                        raise ReconciliationFailedError(
+                            f"Staged recovery manifest hash mismatch: expected {journal['sha256_after']}, got {staged_manifest}"
+                        )
                     backup_dir = tenant_dir / f".backup_{uuid4().hex}"
                     if current_dir.exists():
                         os.replace(current_dir, backup_dir)
@@ -383,48 +408,47 @@ def reconcile_manifest_on_startup(
             tip_seq, tip_mut_id, tip_mut_hash, tip_prev_hash, tip_manifest, tip_ts, tip_proj = tip_row
             anchor_path = get_anchor_path(beancount_root, ledger_id)
             if not anchor_path.exists():
-                sig_digest = compute_anchor_signature_digest(
-                    seq=tip_seq,
-                    mutation_id=tip_mut_id,
-                    ledger_id=ledger_id,
-                    ts_utc=tip_ts,
-                    mutation_hash=tip_mut_hash,
-                    prev_mutation_hash=tip_prev_hash,
-                    manifest_hash=tip_manifest,
-                    projection_hash=tip_proj,
+                raise MissingAnchorCommitmentError(
+                    f"Missing external trust anchor file for ledger '{ledger_id}' with committed events"
                 )
-                sig = sign_authority_payload(sig_digest, authority_key)
-                anchor = TrustAnchor(
-                    anchor_version=1,
-                    ledger_id=ledger_id,
-                    seq=tip_seq,
-                    mutation_id=tip_mut_id,
-                    mutation_hash=tip_mut_hash,
-                    prev_mutation_hash=tip_prev_hash,
-                    manifest_hash=tip_manifest,
-                    projection_hash=tip_proj,
-                    authority_signature=sig,
-                    anchored_at_utc=tip_ts,
+
+            anchor = read_trust_anchor(beancount_root, ledger_id)
+            if (
+                anchor.seq != tip_seq
+                or anchor.mutation_id != tip_mut_id
+                or anchor.mutation_hash != tip_mut_hash
+                or anchor.prev_mutation_hash != tip_prev_hash
+                or anchor.manifest_hash != tip_manifest
+                or anchor.projection_hash != tip_proj
+                or anchor.anchored_at_utc != tip_ts
+            ):
+                raise ReconciliationFailedError(
+                    f"Trust anchor tip does not match DB tip for ledger '{ledger_id}'"
                 )
-                write_trust_anchor(beancount_root, anchor)
-            else:
-                anchor = read_trust_anchor(beancount_root, ledger_id)
-                if anchor.seq != tip_seq or anchor.mutation_hash != tip_mut_hash:
-                    raise ReconciliationFailedError(
-                        f"Trust anchor tip ({anchor.seq}) does not match DB tip ({tip_seq}) for ledger '{ledger_id}'"
-                    )
-                sig_digest = compute_anchor_signature_digest(
-                    seq=anchor.seq,
-                    mutation_id=anchor.mutation_id,
-                    ledger_id=anchor.ledger_id,
-                    ts_utc=anchor.anchored_at_utc,
-                    mutation_hash=anchor.mutation_hash,
-                    prev_mutation_hash=anchor.prev_mutation_hash,
-                    manifest_hash=anchor.manifest_hash,
-                    projection_hash=anchor.projection_hash,
+            sig_digest = compute_anchor_signature_digest(
+                seq=anchor.seq,
+                mutation_id=anchor.mutation_id,
+                ledger_id=anchor.ledger_id,
+                ts_utc=anchor.anchored_at_utc,
+                mutation_hash=anchor.mutation_hash,
+                prev_mutation_hash=anchor.prev_mutation_hash,
+                manifest_hash=anchor.manifest_hash,
+                projection_hash=anchor.projection_hash,
+            )
+            if not verify_authority_signature(anchor.authority_signature, sig_digest, authority_key):
+                raise AuditTamperDetectedError(f"Trust anchor signature verification failed for ledger '{ledger_id}'")
+
+            live_manifest = compute_ledger_manifest_hash(beancount_root, ledger_id)
+            if live_manifest != tip_manifest:
+                raise AuditTamperDetectedError(
+                    f"Live manifest hash mismatch for ledger '{ledger_id}': live={live_manifest}, recorded={tip_manifest}"
                 )
-                if not verify_authority_signature(anchor.authority_signature, sig_digest, authority_key):
-                    raise AuditTamperDetectedError(f"Trust anchor signature verification failed for ledger '{ledger_id}'")
+        else:
+            live_manifest = compute_ledger_manifest_hash(beancount_root, ledger_id)
+            if live_manifest != GENESIS_MANIFEST_HASH:
+                raise AuditTamperDetectedError(
+                    f"Untracked files detected in empty ledger '{ledger_id}': live={live_manifest}"
+                )
 
 
 def replay_audit_stream(
@@ -436,8 +460,16 @@ def replay_audit_stream(
     authority_key: str | bytes = "ironledger-dev-key",
 ) -> ReplayResult:
     """Deterministic Point-in-Time audit replay over global mutation stream."""
+    validate_anchor_ledger_id(target_ledger_id)
+
     total_events_count = live_conn.execute("SELECT COUNT(*) FROM mutation_events").fetchone()[0]
     if total_events_count == 0:
+        live_manifest = compute_ledger_manifest_hash(beancount_root, target_ledger_id)
+        if live_manifest != GENESIS_MANIFEST_HASH:
+            raise AuditTamperDetectedError(
+                f"Untracked files detected in empty ledger: live={live_manifest}, expected={GENESIS_MANIFEST_HASH}"
+            )
+
         replay_conn = connect(":memory:")
         migrations.migrate(replay_conn)
         temp_dir = Path(tempfile.mkdtemp(prefix="ironledger_replay_"))
@@ -470,34 +502,55 @@ def replay_audit_stream(
     else:
         effective_target_seq = max_seq_db
 
+    # Check for legacy unreplayable events
+    payloads_count = live_conn.execute(
+        "SELECT COUNT(*) FROM mutation_payloads WHERE seq <= ?", (effective_target_seq,)
+    ).fetchone()[0]
+    if payloads_count != effective_target_seq:
+        raise AuditTamperDetectedError(
+            f"Audit stream contains unreplayable legacy events without payloads ({payloads_count} payloads for {effective_target_seq} events)"
+        )
+
     target_tip_row = live_conn.execute(
-        "SELECT seq, mutation_id, mutation_hash, ts_utc FROM mutation_events WHERE ledger_id = ? ORDER BY seq DESC LIMIT 1",
+        """
+        SELECT e.seq, e.mutation_id, e.mutation_hash, e.prev_mutation_hash, e.sha256_after, e.ts_utc,
+               p.projection_hash_after
+        FROM mutation_events e
+        JOIN mutation_payloads p ON e.seq = p.seq
+        WHERE e.ledger_id = ?
+        ORDER BY e.seq DESC LIMIT 1
+        """,
         (target_ledger_id,),
     ).fetchone()
 
     verified_anchor: TrustAnchor | None = None
     if target_tip_row is not None and effective_target_seq >= target_tip_row[0]:
-        try:
-            anchor = read_trust_anchor(beancount_root, target_ledger_id)
-            sig_digest = compute_anchor_signature_digest(
-                seq=anchor.seq,
-                mutation_id=anchor.mutation_id,
-                ledger_id=anchor.ledger_id,
-                ts_utc=anchor.anchored_at_utc,
-                mutation_hash=anchor.mutation_hash,
-                prev_mutation_hash=anchor.prev_mutation_hash,
-                manifest_hash=anchor.manifest_hash,
-                projection_hash=anchor.projection_hash,
+        anchor = read_trust_anchor(beancount_root, target_ledger_id)
+        sig_digest = compute_anchor_signature_digest(
+            seq=anchor.seq,
+            mutation_id=anchor.mutation_id,
+            ledger_id=anchor.ledger_id,
+            ts_utc=anchor.anchored_at_utc,
+            mutation_hash=anchor.mutation_hash,
+            prev_mutation_hash=anchor.prev_mutation_hash,
+            manifest_hash=anchor.manifest_hash,
+            projection_hash=anchor.projection_hash,
+        )
+        if not verify_authority_signature(anchor.authority_signature, sig_digest, authority_key):
+            raise AuditTamperDetectedError(f"External trust anchor signature invalid for '{target_ledger_id}'")
+        if (
+            anchor.seq != target_tip_row[0]
+            or anchor.mutation_id != target_tip_row[1]
+            or anchor.mutation_hash != target_tip_row[2]
+            or anchor.prev_mutation_hash != target_tip_row[3]
+            or anchor.manifest_hash != target_tip_row[4]
+            or anchor.anchored_at_utc != target_tip_row[5]
+            or anchor.projection_hash != target_tip_row[6]
+        ):
+            raise AuditTamperDetectedError(
+                f"External trust anchor does not match DB tip for ledger '{target_ledger_id}'"
             )
-            if not verify_authority_signature(anchor.authority_signature, sig_digest, authority_key):
-                raise AuditTamperDetectedError(f"External trust anchor signature invalid for '{target_ledger_id}'")
-            if anchor.seq != target_tip_row[0] or anchor.mutation_hash != target_tip_row[2]:
-                raise AuditTamperDetectedError(
-                    f"External trust anchor ({anchor.seq}:{anchor.mutation_hash}) does not match DB tip ({target_tip_row[0]}:{target_tip_row[2]})"
-                )
-            verified_anchor = anchor
-        except MissingAnchorCommitmentError:
-            raise
+        verified_anchor = anchor
 
     cur = live_conn.execute(
         """
@@ -506,7 +559,7 @@ def replay_audit_stream(
             e.staged_count, e.rules_applied, e.rules_created, e.sha256_before, e.sha256_after,
             e.prev_mutation_hash, e.mutation_hash,
             p.payload_schema_version, p.event_type, p.payload_json, p.payload_sha256,
-            p.projection_hash_before, p.projection_hash_after
+            p.projection_hash_before, p.projection_hash_after, p.authority_signature
         FROM mutation_events e
         JOIN mutation_payloads p ON e.seq = p.seq
         WHERE e.seq <= ?
@@ -520,7 +573,6 @@ def replay_audit_stream(
     migrations.migrate(replay_conn)
     replay_manifest_dir = Path(tempfile.mkdtemp(prefix="ironledger_replay_"))
 
-    # Seed ledgers registry into replay sandbox
     cur_ledgers = live_conn.execute(
         "SELECT ledger_id, name, root_account, base_currency, storage_root, is_active, created_at FROM ledgers"
     )
@@ -563,6 +615,7 @@ def replay_audit_stream(
         payload_sha256 = r[16]
         projection_hash_before = r[17]
         projection_hash_after = r[18]
+        row_authority_sig = r[19]
 
         if seq != expected_seq:
             raise AuditTamperDetectedError(f"Sequence break detected at seq {seq}, expected {expected_seq}")
@@ -594,7 +647,8 @@ def replay_audit_stream(
             manifest_hash=sha256_after,
             projection_hash=projection_hash_after,
         )
-        expected_sig = sign_authority_payload(sig_digest, authority_key)
+        if not verify_authority_signature(row_authority_sig, sig_digest, authority_key):
+            raise AuditTamperDetectedError(f"Authority signature invalid at seq {seq}")
 
         total_events_verified += 1
         expected_seq += 1

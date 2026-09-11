@@ -1,6 +1,7 @@
 """Comprehensive test suite for Deterministic Audit Replay & Outbox Point-in-Time Engine (Task 8.4)."""
 
 import json
+import shutil
 import sqlite3
 from pathlib import Path
 from uuid import uuid4
@@ -617,12 +618,9 @@ def test_startup_reconciliation(conn, beancount_root, ledger_alpha):
     anchor_file = get_anchor_path(beancount_root, ledger_alpha)
     anchor_file.unlink()
 
-    # Startup reconciliation should regenerate anchor from DB tip
-    reconcile_manifest_on_startup(conn, beancount_root)
-    assert anchor_file.exists()
-    restored_anchor = read_trust_anchor(beancount_root, ledger_alpha)
-    assert restored_anchor.seq == evt["seq"]
-    assert restored_anchor.mutation_hash == evt["mutation_hash"]
+    # Startup reconciliation must fail closed when trust anchor is missing
+    with pytest.raises(MissingAnchorCommitmentError):
+        reconcile_manifest_on_startup(conn, beancount_root)
 
 
 def test_payload_validation_failure(conn, beancount_root, ledger_alpha):
@@ -691,27 +689,31 @@ def test_startup_reconciliation_all_journal_states(conn, beancount_root, ledger_
     assert not journal_path.exists()
     assert not staging_dir.exists()
 
-    # 2. Simulate COMMITTED_PRE_SWAP where DB has the mutation
+    # 2. Simulate COMMITTED_PRE_SWAP where DB has the mutation and staging was not yet swapped
     evt, p = apply_mutation_and_append(
         conn=conn,
         beancount_root=beancount_root,
         ledger_id=ledger_alpha,
         operator_session="sess_recon2",
-        action="rule",
-        event_type="RULE_UPDATE",
+        action="price",
+        event_type="PRICE_DIRECTIVE",
         payload={
-            "action": "CREATE",
-            "rule_id": 99,
-            "match_type": "EXACT",
-            "pattern": "ReconPattern",
-            "target_account": "Expenses:Alpha:Recon",
+            "id": 88,
+            "directive_date": "2026-09-05",
+            "base_currency": "JPY",
+            "quote_currency": "USD",
+            "rate_numerator": 1,
+            "rate_denominator": 150,
+            "precision_scale": 4,
+            "source": "POLLED_FEED",
         },
     )
-    # Staging dir with files to swap
-    staging_dir2 = tenant_dir / ".staging_fake_committed"
+    # Move current to staging to simulate crash right before swap
+    staging_dir2 = tenant_dir / ".staging_crash_swap"
     staging_dir2.mkdir(parents=True, exist_ok=True)
-    (staging_dir2 / "swap.beancount").write_text("; swapped file\n", encoding="utf-8")
-    sha_swapped = compute_directory_manifest_hash(staging_dir2)
+    current_dir = tenant_dir / "current"
+    for f in current_dir.glob("*.beancount"):
+        shutil.move(str(f), str(staging_dir2 / f.name))
 
     journal_data2 = {
         "state": "COMMITTED_PRE_SWAP",
@@ -721,12 +723,12 @@ def test_startup_reconciliation_all_journal_states(conn, beancount_root, ledger_
         "ts_utc": evt["ts_utc"],
         "staging_dir": str(staging_dir2),
         "sha256_before": evt["sha256_before"],
-        "sha256_after": sha_swapped,
+        "sha256_after": evt["sha256_after"],
         "projection_hash_before": p.projection_hash_before,
         "projection_hash_after": p.projection_hash_after,
         "prev_mutation_hash": evt["prev_mutation_hash"],
         "mutation_hash": evt["mutation_hash"],
-        "authority_signature": "sig_dummy",
+        "authority_signature": p.authority_signature,
         "payload_sha256": p.payload_sha256,
     }
     journal_path.write_text(json.dumps(journal_data2), encoding="utf-8")
@@ -734,7 +736,5 @@ def test_startup_reconciliation_all_journal_states(conn, beancount_root, ledger_
     reconcile_manifest_on_startup(conn, beancount_root)
     assert not journal_path.exists()
     assert not staging_dir2.exists()
-    # verify swap succeeded
-    current_dir = tenant_dir / "current"
-    assert (current_dir / "swap.beancount").exists()
+    assert (current_dir / "prices.beancount").exists()
 

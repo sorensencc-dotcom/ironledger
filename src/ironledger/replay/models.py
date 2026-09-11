@@ -51,6 +51,7 @@ class MutationPayload:
     payload_sha256: str
     projection_hash_before: str
     projection_hash_after: str
+    authority_signature: str
     created_at: str
 
 
