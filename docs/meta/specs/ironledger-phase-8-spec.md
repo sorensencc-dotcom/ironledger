@@ -5,7 +5,9 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Status:** Approved Design Specification (Pointer)  
+**Version:** 1.0.0 (Hardened Canonical Specification Pointer)  
+**Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
+**Status:** Approved Design Specification  
 
 > Canonical Specification Reference:  
 > [`docs/superpowers/specs/2026-09-10-phase-8-lineage-valuation-replay-design.md`](../../superpowers/specs/2026-09-10-phase-8-lineage-valuation-replay-design.md)

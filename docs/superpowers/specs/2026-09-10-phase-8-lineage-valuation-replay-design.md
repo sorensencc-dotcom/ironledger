@@ -5,7 +5,9 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Status:** Hardened Specification (Codex Review Finding Resolutions Applied)  
+**Version:** 1.0.0 (Hardened Canonical Specification)  
+**Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
+**Status:** Approved Design Specification  
 
 ---
 
@@ -16,9 +18,9 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 ### Upstream Invariants Inherited & Enforced
 
 1. **Exact Rational Integer Arithmetic:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift.
-2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through an acyclic directed graph (DAG) stored in SQLite with atomic transactional registration.
-3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) replays canonical event mutation payloads into an ephemeral in-memory projection database to reconstruct exact historical state snapshots at any sequence number without mutating live files.
-4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries enforce strict isolation across staging buffers, price histories, compile journals, mutation ledgers, and compilation mutex lockfiles (`.ironledger/.compile.<ledger_id>.lock`).
+2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration.
+3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database to reconstruct exact historical state snapshots at any sequence number without mutating live files.
+4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries and composite foreign keys enforce strict isolation across staging buffers, price histories, compile journals, mutation ledgers, lineage nodes/edges, and compilation mutex lockfiles (`.ironledger/.compile.<ledger_id>.lock`).
 5. **Zero Runtime `import beancount`:** All Beancount commodity and price directives are generated via deterministic string template emission, guarded by AST static analysis and import prohibition tests.
 6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement across CLI, web, and programmatic interfaces.
 
@@ -40,7 +42,7 @@ Phase 8: Lineage, Valuation & Replay Engine
 
 ## 3. Database Schema Architecture
 
-Phase 8 additions are split across modular migrations:
+Phase 8 schema migrations use `STRICT` table definitions and SQLite-compatible alteration patterns:
 
 ### Migration `0008_price_history.sql` (Task 8.1)
 ```sql
@@ -52,10 +54,11 @@ CREATE TABLE IF NOT EXISTS price_history (
     quote_currency TEXT NOT NULL CHECK(length(quote_currency) >= 1 AND quote_currency GLOB '[A-Z0-9_.-]*'),
     rate_numerator INTEGER NOT NULL CHECK(rate_numerator > 0),
     rate_denominator INTEGER NOT NULL CHECK(rate_denominator > 0),
+    precision_scale INTEGER NOT NULL DEFAULT 4 CHECK(precision_scale >= 0 AND precision_scale <= 18),
     source TEXT NOT NULL CHECK(source IN ('MANUAL', 'POLLED_FEED', 'EXCHANGE_API')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     UNIQUE(ledger_id, directive_date, base_currency, quote_currency)
-);
+) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_price_history_lookup 
 ON price_history(ledger_id, base_currency, quote_currency, directive_date DESC);
@@ -64,28 +67,30 @@ ON price_history(ledger_id, base_currency, quote_currency, directive_date DESC);
 ### Migration `0009_ledger_lineage.sql` (Task 8.2)
 ```sql
 CREATE TABLE IF NOT EXISTS lineage_nodes (
-    node_id TEXT PRIMARY KEY,              -- SHA-256 or UUID
     ledger_id TEXT NOT NULL DEFAULT 'default',
+    node_id TEXT NOT NULL,                 -- SHA-256 or UUID
     node_type TEXT NOT NULL CHECK(node_type IN ('EVIDENCE_BLOB', 'SOURCE_RECORD', 'STAGED_TX', 'POSTING')),
     entity_ref TEXT NOT NULL,              -- Target ID (posting_id, tx_id, record_id, or blob sha256)
     metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json) = 1),
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
-);
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    PRIMARY KEY(ledger_id, node_id)
+) STRICT;
 
-CREATE INDEX IF NOT EXISTS idx_lineage_nodes_ledger ON lineage_nodes(ledger_id, node_type);
+CREATE INDEX IF NOT EXISTS idx_lineage_nodes_entity ON lineage_nodes(ledger_id, entity_ref);
 
 CREATE TABLE IF NOT EXISTS lineage_edges (
+    ledger_id TEXT NOT NULL DEFAULT 'default',
     source_node_id TEXT NOT NULL,
     target_node_id TEXT NOT NULL,
     relationship TEXT NOT NULL CHECK(relationship IN ('EXTRACTED_FROM', 'STAGED_FROM', 'COMPILED_FROM')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
-    PRIMARY KEY(source_node_id, target_node_id, relationship),
-    FOREIGN KEY(source_node_id) REFERENCES lineage_nodes(node_id) ON DELETE CASCADE,
-    FOREIGN KEY(target_node_id) REFERENCES lineage_nodes(node_id) ON DELETE CASCADE
-);
+    PRIMARY KEY(ledger_id, source_node_id, target_node_id, relationship),
+    FOREIGN KEY(ledger_id, source_node_id) REFERENCES lineage_nodes(ledger_id, node_id) ON DELETE CASCADE,
+    FOREIGN KEY(ledger_id, target_node_id) REFERENCES lineage_nodes(ledger_id, node_id) ON DELETE CASCADE
+) STRICT;
 
-CREATE INDEX IF NOT EXISTS idx_lineage_edges_forward ON lineage_edges(source_node_id);
-CREATE INDEX IF NOT EXISTS idx_lineage_edges_backward ON lineage_edges(target_node_id);
+CREATE INDEX IF NOT EXISTS idx_lineage_edges_forward ON lineage_edges(ledger_id, source_node_id);
+CREATE INDEX IF NOT EXISTS idx_lineage_edges_backward ON lineage_edges(ledger_id, target_node_id);
 ```
 
 ### Migration `0010_multi_ledger_rbac.sql` (Tasks 8.3 & 8.5)
@@ -96,18 +101,21 @@ CREATE TABLE IF NOT EXISTS ledgers (
     base_currency TEXT NOT NULL DEFAULT 'USD' CHECK(length(base_currency) >= 1 AND base_currency GLOB '[A-Z0-9_.-]*'),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
-);
+) STRICT;
 
 INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default', 'Default Ledger', 'USD');
 
--- Add ledger_id tenant isolation columns to core tables if missing
-ALTER TABLE staged_transactions ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id);
-ALTER TABLE staged_postings ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id);
-ALTER TABLE compile_runs ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id);
-ALTER TABLE mutation_events ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id);
+-- Non-destructive SQLite column extensions for tenant isolation
+ALTER TABLE source_documents ADD COLUMN ledger_id TEXT DEFAULT 'default';
+ALTER TABLE source_records ADD COLUMN ledger_id TEXT DEFAULT 'default';
+ALTER TABLE staged_transactions ADD COLUMN ledger_id TEXT DEFAULT 'default';
+ALTER TABLE staged_postings ADD COLUMN ledger_id TEXT DEFAULT 'default';
+ALTER TABLE compile_runs ADD COLUMN ledger_id TEXT DEFAULT 'default';
+ALTER TABLE mutation_events ADD COLUMN ledger_id TEXT DEFAULT 'default';
 
 CREATE INDEX IF NOT EXISTS idx_staged_tx_ledger ON staged_transactions(ledger_id, status);
 CREATE INDEX IF NOT EXISTS idx_mutation_events_ledger ON mutation_events(ledger_id, seq);
+CREATE INDEX IF NOT EXISTS idx_compile_runs_ledger ON compile_runs(ledger_id, compile_run_id);
 
 CREATE TABLE IF NOT EXISTS capability_tokens (
     token_id TEXT PRIMARY KEY,             -- UUID
@@ -120,7 +128,7 @@ CREATE TABLE IF NOT EXISTS capability_tokens (
     revoked_at TEXT CHECK(revoked_at IS NULL OR revoked_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     CHECK((is_global = 1 AND ledger_id IS NULL) OR (is_global = 0 AND ledger_id IS NOT NULL))
-);
+) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_token_hash_lookup ON capability_tokens(token_hash);
 ```
@@ -130,11 +138,16 @@ CREATE INDEX IF NOT EXISTS idx_token_hash_lookup ON capability_tokens(token_hash
 CREATE TABLE IF NOT EXISTS mutation_payloads (
     seq INTEGER PRIMARY KEY,
     mutation_id TEXT NOT NULL UNIQUE,
+    ledger_id TEXT NOT NULL DEFAULT 'default',
     event_type TEXT NOT NULL CHECK(event_type IN ('STAGE_TRANSACTION', 'REVIEW_DECISION', 'COMPILE_LEDGER', 'PRICE_DIRECTIVE', 'RULE_UPDATE')),
     payload_json TEXT NOT NULL CHECK(json_valid(payload_json) = 1),
+    projection_hash_before TEXT NOT NULL,
+    projection_hash_after TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
     FOREIGN KEY(seq) REFERENCES mutation_events(seq) ON DELETE CASCADE
-);
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(ledger_id, seq);
 ```
 
 ---
@@ -152,13 +165,26 @@ CREATE TABLE IF NOT EXISTS mutation_payloads (
   1. Direct lookup: `WHERE ledger_id = :l AND base_currency = :b AND quote_currency = :q AND directive_date <= :d ORDER BY directive_date DESC LIMIT 1`.
   2. Inverse lookup fallback: `WHERE ledger_id = :l AND base_currency = :q AND quote_currency = :b AND directive_date <= :d ORDER BY directive_date DESC LIMIT 1`, inverted as `(rate_denominator, rate_numerator)`.
   3. Staleness boundary: If `(requested_date - directive_date).days > max_staleness_days`, raise `StalePriceDirectiveError`. If no directive exists, raise `MissingPriceDirectiveError`.
-* **Zero-Import Directives:** Template-based emission: `f"{directive_date} price {base_currency} {Decimal(num)/Decimal(denom):.4f} {quote_currency}"`.
+* **Zero-Import Directives:** Template-based emission with parameterized precision:
+  ```python
+  def format_beancount_price_directive(
+      directive_date: str,
+      base_currency: str,
+      quote_currency: str,
+      rate_numerator: int,
+      rate_denominator: int,
+      precision_scale: int = 4,
+  ) -> str:
+      decimal_val = Decimal(rate_numerator) / Decimal(rate_denominator)
+      fmt = f"{{:.{precision_scale}f}}"
+      return f"{directive_date} price {base_currency} {fmt.format(decimal_val)} {quote_currency}"
+  ```
 
 ### Task 8.2: Ledger Lineage Explorer & Bi-Directional Provenance DAG
 * **Location:** `src/ironledger/lineage/explorer.py`, `src/ironledger/lineage/dag.py`
 * **Lineage Layers:** `EVIDENCE_BLOB` $\xrightarrow{\text{EXTRACTED\_FROM}}$ `SOURCE_RECORD` $\xrightarrow{\text{STAGED\_FROM}}$ `STAGED_TX` $\xrightarrow{\text{COMPILED\_FROM}}$ `POSTING`.
 * **Acyclicity & Cycle Prevention:**
-  - Insertion-time check: `LineageDAG.add_edge(source_id, target_id)` runs a recursive reachability check. If `target_id` can reach `source_id`, insertion is aborted with `LineageCycleError`.
+  - Insertion-time check: `LineageDAG.add_edge(ledger_id, source_id, target_id)` runs a recursive reachability check. If `target_id` can reach `source_id` within the ledger, insertion is aborted with `LineageCycleError`.
   - Query recursion bound: Recursive CTEs enforce `depth <= 50` hard limit.
 * **Atomic Edge Recording:** Staging and compile writers execute lineage node and edge inserts inside the *same atomic database transaction* (`BEGIN IMMEDIATE`) as the accounting mutations.
 
@@ -170,14 +196,22 @@ CREATE TABLE IF NOT EXISTS mutation_payloads (
 
 ### Task 8.4: Deterministic Audit Replay & Point-in-Time Time Travel
 * **Location:** `src/ironledger/replay/engine.py`, `src/ironledger/replay/snapshot.py`
-* **Hash-Chain Canonical Verification:** Uses the repository canonical JSON hash calculation (`json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")`) verifying $H_i = \text{SHA-256}(\text{CanonicalEvent}_i)$.
+* **Fingerprint Duality Defined:**
+  1. `sha256_after` (Beancount manifest hash): Canonical hash of `.beancount` year files on disk (`src/ironledger/manifests.py:compute_ledger_manifest_hash`).
+  2. `projection_hash` (SQLite table state hash): Canonical UTF-8 JSON hash over sorted rows of staged transactions, postings, and price history in SQLite.
+* **Payload Event Schemas:**
+  - `STAGE_TRANSACTION`: `{ "staged_transaction_id": str, "source_record_id": str, "postings": list[dict] }`
+  - `REVIEW_DECISION`: `{ "staged_transaction_id": str, "decision": str, "assigned_account": str | None }`
+  - `COMPILE_LEDGER`: `{ "compile_run_id": str, "beancount_version": str, "input_hash": str, "intended_output_hash": str }`
+  - `PRICE_DIRECTIVE`: `{ "directive_date": str, "base_currency": str, "quote_currency": str, "rate_numerator": int, "rate_denominator": int }`
+  - `RULE_UPDATE`: `{ "rule_id": str, "action": str, "rule_definition": dict }`
 * **Deterministic Replay Execution:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select $\max(\text{seq})$ where `ts_utc <= target_timestamp`.
   2. Verify hash chain from sequence 1 to `target_sequence`.
   3. Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
   4. Stream `mutation_payloads` and execute schema-versioned deterministic event handlers.
-  5. Validate final projection fingerprint against `sha256_after` and return the point-in-time balance snapshot.
-* **Zero Side-Effects:** Live database and filesystem are strictly untouched during replay.
+  5. Validate final projection fingerprint against `projection_hash_after` and return the point-in-time balance snapshot.
+* **Atomic Append:** `append_mutation_event` writes both `mutation_events` and `mutation_payloads` in a single SQLite transaction.
 
 ### Task 8.5: Scoped Capability Tokens & RBAC Policy Enforcement
 * **Location:** `src/ironledger/auth/capabilities.py`, `src/ironledger/auth/policy.py`
@@ -198,15 +232,15 @@ CREATE TABLE IF NOT EXISTS mutation_payloads (
 1. **Valuation Suite (`tests/test_valuation.py`):**
    - Verify integer rational price conversion with 0 floating-point drift across mixed decimal precisions (USD 2-dec, BTC 8-dec, AAPL 4-dec).
    - Verify bounded preceding price resolution, stale price rejection, identity same-currency conversion, and inverse quote resolution.
-   - Verify Beancount price directive string template output with zero runtime Beancount imports.
+   - Verify Beancount price directive string template output with zero runtime Beancount imports and configurable scale precision.
 2. **Lineage Suite (`tests/test_lineage.py`):**
-   - Verify bi-directional recursive CTE DAG traversals (posting $\to$ evidence hash, and evidence hash $\to$ postings).
+   - Verify bi-directional recursive CTE DAG traversals within tenant boundaries (posting $\to$ evidence hash, and evidence hash $\to$ postings).
    - Verify cycle prevention rejection and transactional atomicity on edge registration.
 3. **Multi-Ledger Suite (`tests/test_multi_ledger.py`):**
-   - Verify complete isolation of staging queues and concurrent compilation locks across multiple `ledger_id`s.
+   - Verify complete isolation of staging queues, lineage nodes, and concurrent compilation locks across multiple `ledger_id`s.
    - Verify multi-entity consolidated balance aggregation.
 4. **Replay Suite (`tests/test_replay.py`):**
-   - Verify full hash-chain validation and payload replay into in-memory projection database.
+   - Verify full hash-chain validation and payload replay into in-memory projection database validating `projection_hash_after`.
    - Verify zero side-effects on live database files.
 5. **RBAC Suite (`tests/test_capabilities.py`):**
    - Verify token creation, constant-time hash verification, global vs tenant-scoped validation, and fine-grained capability scope gating.
