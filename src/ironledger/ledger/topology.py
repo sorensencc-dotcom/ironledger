@@ -27,7 +27,6 @@ def validate_and_resolve_ledger_root(base_path: Path | str, storage_root: Path |
     # 1. Reject any symlinks in the path hierarchy
     raw_target = storage_path if storage_path.is_absolute() else (base / storage_path)
     
-    # Check if raw_target or any of its parents is a symlink
     curr = raw_target
     while True:
         if curr.is_symlink() or os.path.islink(curr):
@@ -93,6 +92,8 @@ class LedgerRegistry:
         """Register a new tenant ledger in the catalog and ensure its directory exists."""
         if not isinstance(name, str) or not (1 <= len(name) <= 128):
             raise ValueError("Invalid name length")
+        if not isinstance(root_account, str) or not (1 <= len(root_account) <= 128):
+            raise ValueError(f"Invalid root_account length: {len(root_account) if isinstance(root_account, str) else 'non-string'}")
 
         if ledger_id is None:
             slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", name).strip("_").lower()
@@ -105,19 +106,21 @@ class LedgerRegistry:
         if not isinstance(base_currency, str) or not CURRENCY_PATTERN.match(base_currency):
             raise ValueError(f"Invalid base_currency: {base_currency!r}")
 
-        # Reject ID collisions
-        if self.get_ledger(ledger_id) is not None:
-            raise ValueError(f"Ledger with ID '{ledger_id}' already exists")
-
         effective_storage = storage_root if storage_root else ledger_id
         resolved_path = validate_and_resolve_ledger_root(self.base_path, effective_storage)
-        self._check_storage_root_unique(ledger_id, resolved_path)
-        resolved_path.mkdir(parents=True, exist_ok=True)
 
         in_tx = self.conn.in_transaction
         if not in_tx:
             self.conn.execute("BEGIN IMMEDIATE")
         try:
+            # Reject ID collisions within transaction
+            if self.get_ledger(ledger_id) is not None:
+                raise ValueError(f"Ledger with ID '{ledger_id}' already exists")
+
+            # Check unique storage root within transaction
+            self._check_storage_root_unique(ledger_id, resolved_path)
+            resolved_path.mkdir(parents=True, exist_ok=True)
+
             self.conn.execute(
                 """
                 INSERT INTO ledgers (ledger_id, name, root_account, base_currency, storage_root, is_active)
@@ -193,13 +196,14 @@ class LedgerRegistry:
     def register_storage_root(self, ledger_id: str, storage_root: Path | str) -> Path:
         """Validate, register, and update the storage root for a ledger."""
         resolved = validate_and_resolve_ledger_root(self.base_path, storage_root)
-        self._check_storage_root_unique(ledger_id, resolved)
-        resolved.mkdir(parents=True, exist_ok=True)
 
         in_tx = self.conn.in_transaction
         if not in_tx:
             self.conn.execute("BEGIN IMMEDIATE")
         try:
+            self._check_storage_root_unique(ledger_id, resolved)
+            resolved.mkdir(parents=True, exist_ok=True)
+
             self.conn.execute(
                 "UPDATE ledgers SET storage_root = ? WHERE ledger_id = ?",
                 (str(storage_root), ledger_id),
