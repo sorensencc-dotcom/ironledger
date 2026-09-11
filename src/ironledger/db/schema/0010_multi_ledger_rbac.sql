@@ -6,6 +6,15 @@ ALTER TABLE ledgers ADD COLUMN storage_root TEXT NOT NULL DEFAULT '';
 
 UPDATE ledgers SET storage_root = 'default' WHERE ledger_id = 'default' AND storage_root = '';
 
+-- Alter legacy tables to add tenant isolation ledger_id
+ALTER TABLE source_documents ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT;
+ALTER TABLE source_records ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT;
+ALTER TABLE staged_transactions ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT;
+ALTER TABLE staged_postings ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT;
+ALTER TABLE categorization_rules ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE CASCADE;
+ALTER TABLE compile_runs ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE CASCADE;
+ALTER TABLE mutation_events ADD COLUMN ledger_id TEXT NOT NULL DEFAULT 'default' REFERENCES ledgers(ledger_id) ON DELETE RESTRICT;
+
 CREATE TABLE IF NOT EXISTS ledger_accounts (
     ledger_id TEXT NOT NULL REFERENCES ledgers(ledger_id) ON DELETE CASCADE,
     id INTEGER NOT NULL,
@@ -52,3 +61,11 @@ CREATE TABLE IF NOT EXISTS capability_tokens (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_token_hash_lookup ON capability_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_source_records_doc ON source_records (ledger_id, source_document_id);
+CREATE INDEX IF NOT EXISTS idx_staged_source_record ON staged_transactions (ledger_id, source_record_id);
+CREATE INDEX IF NOT EXISTS idx_staged_tx_ledger ON staged_transactions (ledger_id, status);
+CREATE INDEX IF NOT EXISTS idx_staged_postings_transaction ON staged_postings (ledger_id, staged_transaction_id);
+CREATE INDEX IF NOT EXISTS idx_staged_postings_source ON staged_postings (ledger_id, source_record_id);
+CREATE INDEX IF NOT EXISTS idx_categorization_rules_active_priority ON categorization_rules (ledger_id, active, priority);
+CREATE INDEX IF NOT EXISTS idx_mutation_events_ledger ON mutation_events (ledger_id, seq);
+CREATE INDEX IF NOT EXISTS idx_compile_runs_lookup ON compile_runs (ledger_id, compile_run_id);

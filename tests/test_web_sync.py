@@ -55,13 +55,17 @@ def test_status_states_and_pending_count(tmp_path):
     conn = sqlite3.connect(db)
     migrate_governed(conn, db)
     conn.execute(
-        "INSERT INTO source_documents VALUES "
+        "INSERT INTO source_documents "
+        "(source_document_id, mime_type, encoding, provenance, acquisition_time_utc, content_sha256, raw_payload_ref, created_at_utc) "
+        "VALUES "
         "('sd1','text/csv','utf-8','bank','2026-09-09T00:00:00Z',"
         "'1111111111111111111111111111111111111111111111111111111111111111',"
         "'ref1','2026-09-09T00:00:00Z')"
     )
     conn.execute(
-        "INSERT INTO source_records VALUES "
+        "INSERT INTO source_records "
+        "(source_record_id, source_document_id, record_index, canonical_payload, content_sha256, created_at_utc) "
+        "VALUES "
         "('sr1','sd1',0,'payload',"
         "'2222222222222222222222222222222222222222222222222222222222222222','2026-09-09T00:00:00Z')"
     )

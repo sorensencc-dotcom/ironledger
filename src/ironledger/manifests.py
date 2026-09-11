@@ -31,6 +31,11 @@ __all__ = [
     "parse_manifest",
     "generate_projection_manifest",
     "verify_manifest",
+    "GENESIS_MANIFEST_HASH",
+    "compute_directory_manifest_hash",
+    "compute_ledger_manifest_hash",
+    "render_compiled_ledger_manifest",
+    "render_price_directive_manifest",
 ]
 
 MANIFEST_VERSION: Final[str] = "1.0"
@@ -158,7 +163,18 @@ def parse_manifest(text: str) -> Manifest:
     try:
         header = json.loads(lines[1])
     except json.JSONDecodeError as exc:
-        raise ManifestError(f"malformed manifest header JSON: {exc}") from exc
+        raise ManifestError(f"malformed manifest JSON header: {exc}") from exc
+
+    required_fields = {
+        "manifest_version",
+        "manifest_kind",
+        "created_ts_utc",
+        "schema_version",
+        "manifest_self_hash",
+    }
+    missing = required_fields - set(header.keys())
+    if missing:
+        raise ManifestError(f"manifest header missing required fields: {sorted(missing)}")
 
     entries: list[ManifestEntry] = []
     in_entries = False
@@ -356,3 +372,102 @@ def verify_manifest(
         entry_count=len(parsed.entries),
         digest=computed_digest,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: Multi-Ledger Plaintext Beancount Manifest Hashing & Generation
+# ---------------------------------------------------------------------------
+
+GENESIS_MANIFEST_HASH: Final[str] = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def compute_directory_manifest_hash(target_dir: Path | str) -> str:
+    """Compute canonical SHA-256 manifest hash over all *.beancount files directly within target_dir."""
+    path = Path(target_dir)
+    if not path.exists() or not path.is_dir():
+        return GENESIS_MANIFEST_HASH
+
+    files = sorted([f for f in path.glob("*.beancount") if f.is_file()], key=lambda f: f.name)
+    if not files:
+        return GENESIS_MANIFEST_HASH
+
+    parts: list[str] = []
+    for f in files:
+        content_hash = hashlib.sha256(f.read_bytes()).hexdigest()
+        parts.append(f"{f.name}\n{content_hash}\n")
+
+    canonical_bytes = "".join(parts).encode("utf-8")
+    return hashlib.sha256(canonical_bytes).hexdigest()
+
+
+def compute_ledger_manifest_hash(beancount_root: Path | str, ledger_id: str) -> str:
+    """Compute current manifest hash for a specific tenant ledger."""
+    from ironledger.ledger.topology import validate_and_resolve_ledger_root
+    tenant_dir = validate_and_resolve_ledger_root(beancount_root, ledger_id)
+    return compute_directory_manifest_hash(tenant_dir / "current")
+
+
+def render_compiled_ledger_manifest(target_dir: Path, ledger_id: str, payload: dict[str, Any]) -> None:
+    """Render compiled directives into target_dir/*.beancount."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    tx_file = target_dir / "transactions.beancount"
+
+    directives = payload.get("compiled_directives", [])
+    lines: list[str] = []
+    for d in directives:
+        date = d["proposed_date"]
+        payee = d.get("payee", "")
+        narration = d.get("narration", "")
+        header = f'{date} * "{payee}" "{narration}"'
+        lines.append(header)
+        for p in d.get("postings", []):
+            acc = p["account"]
+            units = p["minor_units"]
+            scale = p["minor_unit_scale"]
+            curr = p["currency"]
+            if scale > 0:
+                sign = "-" if units < 0 else ""
+                abs_val = abs(units)
+                int_part = abs_val // (10 ** scale)
+                frac_part = abs_val % (10 ** scale)
+                frac_str = f"{frac_part:0{scale}d}"
+                amt_str = f"{sign}{int_part}.{frac_str}"
+            else:
+                amt_str = str(units)
+            lines.append(f"  {acc:<40} {amt_str:>12} {curr}")
+        lines.append("")
+
+    tx_file.write_text("\n".join(lines), encoding="utf-8")
+
+
+def render_price_directive_manifest(target_dir: Path, ledger_id: str, payload: dict[str, Any]) -> None:
+    """Append or write price directive in prices.beancount."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    prices_file = target_dir / "prices.beancount"
+
+    date = payload["directive_date"]
+    base = payload["base_currency"]
+    quote = payload["quote_currency"]
+    num = payload["rate_numerator"]
+    denom = payload["rate_denominator"]
+    scale = payload.get("precision_scale", 4)
+
+    if denom == 1:
+        rate_str = f"{num:.{scale}f}" if scale > 0 else str(num)
+    else:
+        from ironledger.valuation.engine import convert_amount_rational
+        rate_minor = convert_amount_rational(
+            source_minor=1,
+            source_scale=0,
+            rate_numerator=num,
+            rate_denominator=denom,
+            target_scale=scale,
+        )
+        int_part = rate_minor // (10 ** scale)
+        frac_part = rate_minor % (10 ** scale)
+        rate_str = f"{int_part}.{frac_part:0{scale}d}"
+
+    line = f"{date} price {base:<8} {rate_str} {quote}\n"
+
+    existing = prices_file.read_text(encoding="utf-8") if prices_file.exists() else ""
+    prices_file.write_text(existing + line, encoding="utf-8")

@@ -24,13 +24,17 @@ def test_external_id_column_exists(db):
 def test_external_id_unique_constraint(db):
     conn = sqlite3.connect(db)
     conn.execute(
-        "INSERT INTO source_documents VALUES "
+        "INSERT INTO source_documents "
+        "(source_document_id, mime_type, encoding, provenance, acquisition_time_utc, content_sha256, raw_payload_ref, created_at_utc) "
+        "VALUES "
         "('sd1','application/json','utf-8','test',"
         "'2024-01-01T00:00:00Z','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',"
         "'ref1','2024-01-01T00:00:00Z')"
     )
     conn.execute(
-        "INSERT INTO source_records VALUES "
+        "INSERT INTO source_records "
+        "(source_record_id, source_document_id, record_index, canonical_payload, content_sha256, created_at_utc) "
+        "VALUES "
         "('sr1','sd1',0,'payload',"
         "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2024-01-01T00:00:00Z')"
     )
