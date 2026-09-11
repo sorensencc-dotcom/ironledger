@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Version:** 1.0.0 (Hardened Canonical Specification - Pass 17 Remediation)  
+**Version:** 1.0.0 (Hardened Canonical Specification - Pass 18 Remediation)  
 **Specification Role:** Canonical Implementation Specification & Governed Mirror  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
@@ -59,12 +59,18 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 
 ### Migration Runner Execution Lifecycle (`ironledger.governance.migrations`)
 1. **Connection Setup & Deterministic SQL Function Registration:**
-   - Every SQLite connection configured by `get_connection()` or migration runner registers deterministic Python cryptographic functions prior to DDL execution:
+   - Every SQLite connection configured by `get_connection()` or migration runner registers deterministic Python cryptographic functions prior to DDL execution, bound to the active `authority_key`:
      ```python
      conn.create_function(
          "sha256_hex",
          1,
          lambda val: hashlib.sha256(val.encode("utf-8") if isinstance(val, str) else bytes(val)).hexdigest(),
+         deterministic=True,
+     )
+     conn.create_function(
+         "sign_authority_sql",
+         1,
+         lambda digest: sign_authority_payload(digest, authority_key),
          deterministic=True,
      )
      ```
@@ -100,25 +106,57 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
              raise ForeignKeyViolationError(f"Foreign key violations after migration {v}: {fk_violations}")
              
          # 5. Record applied migration in same transaction
-         normalized_sql_bytes = migration_sql.replace("
-
-", "
-").encode("utf-8")
+        normalized_sql_bytes = migration_sql.replace("\r\n", "\n").encode("utf-8")
         checksum = hashlib.sha256(normalized_sql_bytes).hexdigest()
-         applied_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-         conn.execute(
-             "INSERT INTO schema_migrations (version, name, checksum, applied_at_utc) VALUES (?, ?, ?, ?)",
-             (v, migration_name, checksum, applied_at),
+        applied_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        conn.execute(
+            "INSERT INTO schema_migrations (version, name, checksum, applied_at_utc) VALUES (?, ?, ?, ?)",
+            (v, migration_name, checksum, applied_at),
+        )
+        
+        # 6. Commit migration
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        # 7. Restore foreign keys
+        conn.execute("PRAGMA foreign_keys = ON")
+        
+5. **Post-Migration Trust Anchor Establishment:**
+   - After applying migrations, the runner ensures external trust anchors exist for all active ledgers:
+     ```python
+     anchor_dir = beancount_root / ".ironledger" / "anchors"
+     anchor_dir.mkdir(parents=True, exist_ok=True)
+     for (ledger_id,) in conn.execute("SELECT ledger_id FROM ledgers").fetchall():
+         cur = conn.execute(
+             "SELECT e.seq, e.mutation_id, e.mutation_hash, e.prev_mutation_hash, e.sha256_after, "
+             "e.authority_signature, e.ts_utc, p.projection_hash_after "
+             "FROM mutation_events e "
+             "JOIN mutation_payloads p ON e.seq = p.seq AND e.ledger_id = p.ledger_id "
+             "WHERE e.ledger_id = ? ORDER BY e.seq DESC LIMIT 1",
+             (ledger_id,),
          )
-         
-         # 6. Commit migration
-         conn.execute("COMMIT")
-     except Exception:
-         conn.execute("ROLLBACK")
-         raise
-     finally:
-         # 7. Restore foreign keys
-         conn.execute("PRAGMA foreign_keys = ON")
+         row = cur.fetchone()
+         anchor_file = anchor_dir / f"{ledger_id}.anchor.json"
+         if row:
+             seq, m_id, m_hash, p_hash, s_after, sig, ts, proj_after = row
+             anchor_data = {
+                 "anchor_version": 1,
+                 "ledger_id": ledger_id,
+                 "seq": seq,
+                 "mutation_id": m_id,
+                 "mutation_hash": m_hash,
+                 "prev_mutation_hash": p_hash,
+                 "manifest_hash": s_after,
+                 "projection_hash": proj_after,
+                 "authority_signature": sig,
+                 "anchored_at_utc": ts,
+             }
+             temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"
+             temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")
+             os.replace(temp_a, anchor_file)
+     ```
      ```
 
 ### Entity & Key Isolation Coverage Matrix
@@ -424,8 +462,14 @@ SELECT
     seq, mutation_id, 'default', ts_utc, operator_session, action,
     staged_count, rules_applied, rules_created, sha256_before, sha256_after,
     prev_mutation_hash, mutation_hash,
-    -- Deterministic migration seal: SHA-256 HMAC-equivalent transition digest over canonical tuple
-    sha256_hex('MIGRATION_SEAL_0010:' || seq || ':' || mutation_id || ':' || mutation_hash || ':' || sha256_after)
+    -- Cryptographic authority signature over canonical digest using registered authority key
+    sign_authority_sql(
+        sha256_hex(
+            seq || ':' || mutation_id || ':default:' || ts_utc || ':' ||
+            mutation_hash || ':' || prev_mutation_hash || ':' ||
+            sha256_after || ':1e3b03f64f2e93ca3cde5c5fd5e63b6194416b8b31871df1153ab643f7342314'
+        )
+    )
 FROM mutation_events_backup_0010;
 DROP TABLE mutation_events_backup_0010;
 
@@ -498,6 +542,40 @@ BEFORE DELETE ON mutation_payloads
 BEGIN
     SELECT RAISE(ABORT, 'mutation_payloads is append-only: DELETE is forbidden');
 END;
+
+-- Backfill mutation_payloads for all pre-Phase 8 legacy events
+INSERT OR IGNORE INTO mutation_payloads (
+    seq, mutation_id, ledger_id, payload_schema_version, event_type,
+    payload_json, payload_sha256, projection_hash_before, projection_hash_after, created_at
+)
+SELECT
+    seq,
+    mutation_id,
+    ledger_id,
+    1,
+    'COMPILE_LEDGER',
+    json_object(
+        'action', action,
+        'rules_applied', rules_applied,
+        'rules_created', rules_created,
+        'sha256_before', sha256_before,
+        'sha256_after', sha256_after,
+        'staged_count', staged_count
+    ),
+    sha256_hex(
+        json_object(
+            'action', action,
+            'rules_applied', rules_applied,
+            'rules_created', rules_created,
+            'sha256_before', sha256_before,
+            'sha256_after', sha256_after,
+            'staged_count', staged_count
+        )
+    ),
+    '1e3b03f64f2e93ca3cde5c5fd5e63b6194416b8b31871df1153ab643f7342314',
+    '1e3b03f64f2e93ca3cde5c5fd5e63b6194416b8b31871df1153ab643f7342314',
+    ts_utc
+FROM mutation_events;
 ```
 
 ---
@@ -1171,7 +1249,24 @@ END;
      - Let `anchor_dir = beancount_root / ".ironledger" / "anchors"`.
      - Let `anchor_file = anchor_dir / f"{ledger_id}.anchor.json"`.
      - If `journal_file.exists()`:
-       - Read journal metadata: `state = journal.get("state")`, `staged_cand = tenant_dir / journal.get("staging_dir", "")` if journal.get("staging_dir") else None, `bak_cand = tenant_dir / journal.get("backup_dir", "")` if journal.get("backup_dir") else None, `anchor_data = journal.get("anchor_data")`.
+       - Read journal metadata: `state = journal.get("state")`, `anchor_data = journal.get("anchor_data")`.
+       - **Strict Journal Path Containment Guard:**
+         ```python
+         SUBDIR_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
+         def resolve_journal_subpath(parent_dir: Path, subpath_str: str | None) -> Path | None:
+             if not subpath_str:
+                 return None
+             if not SUBDIR_NAME_PATTERN.match(subpath_str) or ".." in subpath_str or "/" in subpath_str or "\\" in subpath_str:
+                 raise SecurityError(f"Path traversal or invalid directory name in promotion journal: {subpath_str}")
+             resolved = (parent_dir / subpath_str).resolve()
+             if not resolved.is_relative_to(parent_dir.resolve()):
+                 raise SecurityError(f"Directory escape detected in journal path: {resolved}")
+             if resolved.is_symlink():
+                 raise SecurityError(f"Symlink detected in journal path: {resolved}")
+             return resolved
+         ```
+       - `staged_cand = resolve_journal_subpath(tenant_dir, journal.get("staging_dir"))`
+       - `bak_cand = resolve_journal_subpath(tenant_dir, journal.get("backup_dir"))`
        - Check if sequence was committed in DB: `db_has_seq = bool(conn.execute("SELECT 1 FROM mutation_events WHERE seq = ?", (journal["seq"],)).fetchone())`.
        - If `state == "PRE_COMMIT"`:
          - If not `db_has_seq`:
