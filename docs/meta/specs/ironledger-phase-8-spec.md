@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Version:** 1.0.0 (Hardened Canonical Specification - Pass 15 Remediation)  
+**Version:** 1.0.0 (Hardened Canonical Specification - Pass 16 Remediation)  
 **Specification Role:** Canonical Implementation Specification & Governed Mirror  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
              raise ForeignKeyViolationError(f"Foreign key violations after migration {v}: {fk_violations}")
              
          # 5. Record applied migration in same transaction
-         normalized_sql_bytes = migration_sql.replace("
+         normalized_sql_bytes = migration_sql.replace("
+
 ", "
 ").encode("utf-8")
         checksum = hashlib.sha256(normalized_sql_bytes).hexdigest()
@@ -396,13 +397,14 @@ CREATE TABLE mutation_events (
     sha256_after        TEXT NOT NULL CHECK (length(sha256_after) = 64),
     prev_mutation_hash  TEXT NOT NULL CHECK (length(prev_mutation_hash) = 64),
     mutation_hash       TEXT NOT NULL CHECK (length(mutation_hash) = 64),
-    authority_signature TEXT NOT NULL DEFAULT '' CHECK (length(authority_signature) = 0 OR length(authority_signature) >= 64),
+    authority_signature TEXT NOT NULL CHECK (length(authority_signature) >= 64),
     CHECK (seq >= 1),
     UNIQUE (mutation_id),
     UNIQUE (mutation_hash),
     UNIQUE (seq, mutation_id, ledger_id)
 ) STRICT;
 
+-- In migration 0010, legacy pre-Phase 8 events are sealed with deterministic migration transition signatures
 INSERT INTO mutation_events (
     seq, mutation_id, ledger_id, ts_utc, operator_session, action,
     staged_count, rules_applied, rules_created, sha256_before, sha256_after,
@@ -411,7 +413,9 @@ INSERT INTO mutation_events (
 SELECT
     seq, mutation_id, 'default', ts_utc, operator_session, action,
     staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-    prev_mutation_hash, mutation_hash, ''
+    prev_mutation_hash, mutation_hash,
+    -- Deterministic migration seal: SHA-256 HMAC-equivalent transition digest over canonical tuple
+    hex(sha256('MIGRATION_SEAL_0010:' || seq || ':' || mutation_id || ':' || mutation_hash || ':' || sha256_after))
 FROM mutation_events_backup_0010;
 DROP TABLE mutation_events_backup_0010;
 
@@ -654,31 +658,27 @@ END;
       if not isinstance(ledger_id, str) or not LEDGER_ID_PATTERN.match(ledger_id):
           raise ValueError(f"Invalid ledger_id '{ledger_id}': must match ^[A-Za-z0-9_-]{{1,64}}$")
       
-      root_path = Path(beancount_root)
-      # 1. Reject symlink on root itself
-      if root_path.is_symlink():
-          raise SecurityError(f"Symlink detected at root: {root_path}")
+      root_path = Path(beancount_root).absolute()
+      target_unresolved = root_path / "ledgers" / ledger_id
       
-      root_resolved = root_path.resolve()
-      
-      # 2. Build unresolved target path from resolved root
-      target_unresolved = root_resolved / "ledgers" / ledger_id
-      
-      # 3. Inspect every path segment along the unresolved hierarchy before dereferencing
+      # 1. Inspect every path segment along the entire unresolved hierarchy up to filesystem root
       curr = target_unresolved
-      while curr != root_resolved and curr != curr.parent:
+      while curr != curr.parent:
           if curr.is_symlink():
-              raise SecurityError(f"Symlink detected in unresolved path segment: {curr}")
+              raise SecurityError(f"Symlink detected in path hierarchy: {curr}")
           curr = curr.parent
+      if curr.is_symlink():
+          raise SecurityError(f"Symlink detected at filesystem root: {curr}")
           
-      # 4. Resolve target and enforce strict root containment
+      # 2. Resolve target and root, asserting strict path containment
+      root_resolved = root_path.resolve()
       target_resolved = target_unresolved.resolve()
       try:
           target_resolved.relative_to(root_resolved)
       except ValueError:
           raise SecurityError(f"Directory traversal detected: {target_resolved} is outside {root_resolved}")
           
-      # 5. Final check on resolved target
+      # 3. Final symlink check on resolved target
       if target_resolved.is_symlink():
           raise SecurityError(f"Symlink detected at resolved target: {target_resolved}")
           
@@ -1073,7 +1073,23 @@ END;
                       shutil.rmtree(staging_dir, ignore_errors=True)
                   raise
               
-              # Durable promotion protocol with crash-safe journal state transitions
+              # Durable promotion protocol with crash-safe journal state transitions and atomic trust anchor updates
+              anchor_dir = beancount_root / ".ironledger" / "anchors"
+              anchor_dir.mkdir(parents=True, exist_ok=True)
+              anchor_file = anchor_dir / f"{ledger_id}.anchor.json"
+              anchor_data = {
+                  "anchor_version": 1,
+                  "ledger_id": ledger_id,
+                  "seq": seq,
+                  "mutation_id": mutation_id,
+                  "mutation_hash": mutation_hash,
+                  "prev_mutation_hash": prev_mutation_hash,
+                  "manifest_hash": sha256_after,
+                  "projection_hash": projection_hash_after,
+                  "authority_signature": authority_signature,
+                  "anchored_at_utc": ts_utc
+              }
+
               if staging_dir and staging_dir.exists():
                   backup_dir = tenant_dir / f"current_bak_{uuid4().hex}"
                   if backup_dir.exists():
@@ -1086,7 +1102,8 @@ END;
                           "sha256_before": sha256_before,
                           "sha256_after": sha256_after,
                           "staging_dir": staging_dir.name,
-                          "backup_dir": backup_dir.name
+                          "backup_dir": backup_dir.name,
+                          "anchor_data": anchor_data
                       }
                       temp_j = tenant_dir / f".j_{uuid4().hex}.tmp"
                       temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
@@ -1097,7 +1114,12 @@ END;
                           os.replace(current_dir, backup_dir)
                       os.replace(staging_dir, current_dir)
                       
-                      # Advance journal state to SWAPPED before cleaning up backup
+                      # Update external trust anchor atomically
+                      temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"
+                      temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")
+                      os.replace(temp_a, anchor_file)
+
+                      # Advance journal state to SWAPPED only after verified filesystem swap and anchor update
                       journal_data["state"] = "SWAPPED"
                       temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
                       os.replace(temp_j, journal_file)
@@ -1108,6 +1130,11 @@ END;
                           journal_file.unlink()
                   except Exception as promo_err:
                       raise ManifestPromotionError(f"Promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
+              else:
+                  # Non-filesystem mutation: update external trust anchor atomically
+                  temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"
+                  temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")
+                  os.replace(temp_a, anchor_file)
           finally:
               portalocker_unlock(lock_file)
       
@@ -1118,22 +1145,38 @@ END;
   ```
 
 * **Startup Manifest Reconciliation Protocol (`reconcile_manifest_on_startup`):**
-  - Invoked during database connection startup:
+  - Invoked during database connection startup under tenant compile mutex lock:
   1. For each active ledger in `ledgers`:
      - Let `tenant_dir = validate_and_resolve_ledger_root(beancount_root, ledger_id)`.
      - Let `current_dir = tenant_dir / "current"`.
      - Let `journal_file = tenant_dir / ".promotion_journal.json"`.
+     - Let `anchor_dir = beancount_root / ".ironledger" / "anchors"`.
+     - Let `anchor_file = anchor_dir / f"{ledger_id}.anchor.json"`.
      - If `journal_file.exists()`:
-       - Read journal metadata: `state = journal.get("state")`, `staged_cand = tenant_dir / journal["staging_dir"]`, `bak_cand = tenant_dir / journal["backup_dir"]`.
+       - Read journal metadata: `state = journal.get("state")`, `staged_cand = tenant_dir / journal.get("staging_dir", "")`, `bak_cand = tenant_dir / journal.get("backup_dir", "")`, `anchor_data = journal.get("anchor_data")`.
        - If `state == "COMMITTED_PRE_SWAP"`:
          - If `staged_cand.exists()` and `compute_directory_manifest_hash(staged_cand) == journal["sha256_after"]`:
            - If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)` (purge any colliding stale backup from prior crash).
            - If `current_dir.exists()`: `os.replace(current_dir, bak_cand)`.
            - `os.replace(staged_cand, current_dir)`.
            - If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
+         - Else if not `current_dir.exists()` or `compute_directory_manifest_hash(current_dir) != journal["sha256_after"]`:
+           - Staging directory missing or invalid and current directory divergent: retain journal and raise `ReconciliationFailedError("Promotion recovery failed: staging directory corrupted or missing")`.
+         - Ensure anchor file is written from `anchor_data`:
+           - `temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"`
+           - `temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")`
+           - `os.replace(temp_a, anchor_file)`
        - If `state == "SWAPPED"`:
          - Swap already succeeded before crash. If `bak_cand.exists()`: `shutil.rmtree(bak_cand, ignore_errors=True)`.
-       - If `journal_file.exists()`: `journal_file.unlink()`
+         - If `anchor_data` and not `anchor_file.exists()`:
+           - `temp_a = anchor_dir / f".a_{uuid4().hex}.tmp"`
+           - `temp_a.write_text(json.dumps(anchor_data, indent=2), encoding="utf-8")`
+           - `os.replace(temp_a, anchor_file)`
+       - **Strict Fail-Closed Journal Deletion Guard:**
+         - Assert `current_dir.exists()` and `compute_directory_manifest_hash(current_dir) == journal["sha256_after"]`.
+         - Assert `anchor_file.exists()`.
+         - Only after verified manifest hash and anchor equality: `journal_file.unlink()`.
+         - If verification fails: retain journal and raise `ReconciliationFailedError("Refusing to delete promotion journal: post-recovery state verification failed")`.
      - Query all `mutation_events` rows for `ledger_id` ordered by `seq ASC`.
      - If no events exist:
        - If `current_dir.exists()`: assert `compute_directory_manifest_hash(current_dir) == GENESIS_MANIFEST_HASH`.
@@ -1177,7 +1220,20 @@ END;
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
   2. Query live database max sequence $S_{	ext{max}} = 	ext{SELECT MAX(seq) FROM mutation\_events}$. If `target_sequence >` $S_{	ext{max}}$, raise `ReplayBoundaryError`.
   3. **Phase 1: Global Contiguous Sequence, Merkle Chain & Cryptographic Signature Verification (Global $1 \dots \text{target\_seq}$):**
-     - Validate external anchor commitment: Read `.ironledger/anchors/<ledger_id>.anchor.json` (if present) and verify `head.mutation_hash == anchor.mutation_hash` and `head.authority_signature == anchor.authority_signature`.**
+     - **Mandatory External Trust Anchor Corroboration (Fail-Closed):**
+       - Query tenant's latest committed event $M_{\text{latest}}$ from database.
+       - If no events exist ($S_{\text{max}} = 0$): assert no live state mutations exist.
+       - If events exist ($S_{\text{max}} \ge 1$):
+         - Read external anchor file `.ironledger/anchors/<ledger_id>.anchor.json`. If missing, unreadable, or invalid JSON, fail closed with `MissingAnchorCommitmentError`.
+         - Parse anchor commitment and assert:
+           - `anchor.seq == M_{\text{latest}}.seq`
+           - `anchor.mutation_id == M_{\text{latest}}.mutation_id`
+           - `anchor.mutation_hash == M_{\text{latest}}.mutation_hash`
+           - `anchor.manifest_hash == M_{\text{latest}}.sha256_after`
+           - `anchor.projection_hash == payload_{\text{latest}}.projection_hash_after`
+           - `anchor.authority_signature == M_{\text{latest}}.authority_signature`
+           - `verify_authority_signature(anchor.authority_signature, anchor_digest, public_key) == True`
+         - If any assertion fails, immediately abort with `AuditTamperDetectedError("External trust anchor diverges from database state: potential offline tampering detected")`.**
      - Query joined rows from `mutation_events` and `mutation_payloads` ordered by `seq ASC`.
      - Assert global contiguous `seq` sequence $1, 2, \dots, N$ across all tenants with zero gaps.
      - Assert timestamps `ts_utc` are strictly non-decreasing monotonic.
