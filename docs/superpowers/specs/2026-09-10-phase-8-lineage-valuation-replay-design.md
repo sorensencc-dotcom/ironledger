@@ -6,6 +6,7 @@
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
 **Version:** 1.0.0 (Hardened Canonical Specification)  
+**Specification Role:** Canonical Implementation Specification  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
 **Governance Authority:** Tier 1 Architecture Board  
@@ -109,13 +110,14 @@ CREATE TABLE IF NOT EXISTS ledgers (
 INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default', 'Default Ledger', 'USD');
 
 -- Scoped ledger_id column additions for existing tables executed once via governed migration runner
+-- (Migration runner uses PRAGMA table_info inspection to guarantee idempotency across re-runs)
 ALTER TABLE source_documents ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE source_records ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE staged_transactions ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE staged_postings ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE review_rules ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE compile_runs ADD COLUMN ledger_id TEXT DEFAULT 'default';
-ALTER TABLE mutation_events ADD COLUMN ledger_id TEXT DEFAULT 'default';
+ALTER TABLE mutation_events ADD COLUMN ledger_id TEXT DEFAULT 'default' REFERENCES ledgers(ledger_id);
 
 CREATE INDEX IF NOT EXISTS idx_staged_tx_ledger ON staged_transactions(ledger_id, status);
 CREATE INDEX IF NOT EXISTS idx_review_rules_ledger ON review_rules(ledger_id, is_active);
@@ -210,6 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
 * **Fingerprint Duality Defined:**
   1. `sha256_after` (Beancount manifest hash): Recorded on `mutation_events`. Canonical hash of `.beancount` files on disk (`src/ironledger/manifests.py:compute_ledger_manifest_hash`).
   2. `projection_hash` (SQLite table state hash): Recorded on `mutation_payloads`. Deterministic SHA-256 computed by `compute_projection_hash(conn, ledger_id)`.
+* **Global Sequence vs Tenant-Scoped Streams:** Sequence numbers (`seq`) are globally monotonic and contiguous across the entire database instance to preserve global append-only Merkle chain integrity (`prev_mutation_hash`). Each event explicitly records `ledger_id` (foreign key to `ledgers.ledger_id`), and tenant-specific audit or replay streams are queried using the composite index `(ledger_id, seq)`. Tenant replay streams process only the events belonging to the requested `ledger_id` while verifying global chain continuity against the root database.
 * **Canonical `projection_hash` Algorithm:**
   ```python
   STATIC_PROJECTION_COLUMNS: dict[str, list[str]] = {
@@ -266,8 +269,10 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
       return hashlib.sha256(encoded).hexdigest()
   ```
 * **Payload Event Schemas (`payload_schema_version = 1`):**
-  - All payloads conform to standard JSON Schema draft-07. Required top-level discriminator: `schema_version` (integer `>= 1`), `ledger_id` (string), and event-specific properties:
+  - All payloads conform to JSON Schema draft-07 and enforce `additionalProperties: false`.
+  - Every payload requires `ledger_id` matching the event's `ledger_id`, plus event-specific properties:
   - `STAGE_TRANSACTION`:
+    - `ledger_id`: string (required, must equal event `ledger_id`)
     - `staged_transaction_id`: string (required)
     - `source_record_id`: string (required)
     - `source_document_id`: string (required)
@@ -285,12 +290,14 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
       - `currency`: string (required)
       - `minor_unit_scale`: integer `>= 0` (required)
   - `REVIEW_DECISION`:
+    - `ledger_id`: string (required, must equal event `ledger_id`)
     - `staged_transaction_id`: string (required)
     - `prior_status`: enum `["PENDING", "APPROVED", "REJECTED"]` (required)
     - `new_status`: enum `["PENDING", "APPROVED", "REJECTED"]` (required)
     - `assigned_account`: string or null (required)
     - `rule_id`: string or null (required)
   - `COMPILE_LEDGER`:
+    - `ledger_id`: string (required, must equal event `ledger_id`)
     - `compile_run_id`: string (required)
     - `beancount_version`: string (required)
     - `compiler_version`: string (required)
@@ -299,6 +306,7 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
     - `actual_output_hash`: string length 64 hex (required)
     - `compiled_tx_ids`: array of string (required)
   - `PRICE_DIRECTIVE`:
+    - `ledger_id`: string (required, must equal event `ledger_id`)
     - `directive_date`: string format `YYYY-MM-DD` (required)
     - `base_currency`: string (required)
     - `quote_currency`: string (required)
@@ -307,6 +315,7 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
     - `precision_scale`: integer `0..18` (required)
     - `source`: enum `["MANUAL", "POLLED_FEED", "EXCHANGE_API"]` (required)
   - `RULE_UPDATE`:
+    - `ledger_id`: string (required, must equal event `ledger_id`)
     - `rule_id`: string (required)
     - `action`: enum `["CREATE", "UPDATE", "DELETE"]` (required)
     - `name`: string (required)
@@ -331,70 +340,82 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
       sha256_after: str = "0" * 64,
   ) -> tuple[MutationEvent, MutationPayload]:
       """Apply domain mutation and append mutation event + payload in a single atomic transaction."""
-      # 1. Validate payload schema
+      # 1. Validate payload schema and enforce additionalProperties: false & tenant consistency
       validate_payload_schema(event_type, payload, payload_schema_version)
+      if payload.get("ledger_id") != ledger_id:
+          raise ValueError(
+              f"Payload ledger_id '{payload.get('ledger_id')}' does not match target ledger_id '{ledger_id}'"
+          )
       
-      # 2. Compute projection hash before
-      projection_hash_before = compute_projection_hash(conn, ledger_id)
-      
-      # 3. Dispatch and execute domain table mutations inside transaction
-      dispatch_event_mutation(conn, ledger_id, event_type, payload)
-      
-      # 4. Compute projection hash after
-      projection_hash_after = compute_projection_hash(conn, ledger_id)
-      
-      # 5. Allocate monotonic sequence and fetch previous hash
-      cur = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM mutation_events")
-      seq = cur.fetchone()[0] + 1
-      
-      if seq == 1:
-          prev_mutation_hash = "0" * 64
-      else:
-          cur = conn.execute("SELECT mutation_hash FROM mutation_events WHERE seq = ?", (seq - 1,))
-          prev_mutation_hash = cur.fetchone()[0]
+      # 2. Begin immediate transaction for write exclusivity
+      conn.execute("BEGIN IMMEDIATE")
+      try:
+          # 3. Compute projection hash before mutation
+          projection_hash_before = compute_projection_hash(conn, ledger_id)
           
-      mutation_id = f"mut_{uuid4().hex}"
-      ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-      
-      # 6. Canonical JSON hash computation
-      canonical_dict = {
-          "action": action,
-          "event_type": event_type,
-          "ledger_id": ledger_id,
-          "mutation_id": mutation_id,
-          "operator_session": operator_session,
-          "payload": payload,
-          "payload_schema_version": payload_schema_version,
-          "prev_mutation_hash": prev_mutation_hash,
-          "projection_hash_after": projection_hash_after,
-          "projection_hash_before": projection_hash_before,
-          "rules_applied": rules_applied,
-          "rules_created": rules_created,
-          "seq": seq,
-          "sha256_after": sha256_after,
-          "sha256_before": sha256_before,
-          "ts_utc": ts_utc,
-      }
-      mutation_hash = hashlib.sha256(
-          json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-      ).hexdigest()
-      
-      # 7. Insert into mutation_events and mutation_payloads
-      conn.execute(
-          "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
-          "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          (seq, mutation_id, ledger_id, ts_utc, operator_session, action, 0, rules_applied, rules_created,
-           sha256_before, sha256_after, prev_mutation_hash, mutation_hash)
-      )
-      conn.execute(
-          "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
-          "payload_json, projection_hash_before, projection_hash_after, created_at) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          (seq, mutation_id, ledger_id, payload_schema_version, event_type,
-           json.dumps(payload, sort_keys=True, separators=(",", ":")),
-           projection_hash_before, projection_hash_after, ts_utc)
-      )
+          # 4. Dispatch and execute domain table mutations inside transaction
+          dispatch_event_mutation(conn, ledger_id, event_type, payload)
+          
+          # 5. Compute projection hash after mutation
+          projection_hash_after = compute_projection_hash(conn, ledger_id)
+          
+          # 6. Allocate monotonic sequence and fetch previous hash
+          cur = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM mutation_events")
+          seq = cur.fetchone()[0] + 1
+          
+          if seq == 1:
+              prev_mutation_hash = "0" * 64
+          else:
+              cur = conn.execute("SELECT mutation_hash FROM mutation_events WHERE seq = ?", (seq - 1,))
+              prev_mutation_hash = cur.fetchone()[0]
+              
+          mutation_id = f"mut_{uuid4().hex}"
+          ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+          
+          # 7. Canonical JSON hash computation
+          canonical_dict = {
+              "action": action,
+              "event_type": event_type,
+              "ledger_id": ledger_id,
+              "mutation_id": mutation_id,
+              "operator_session": operator_session,
+              "payload": payload,
+              "payload_schema_version": payload_schema_version,
+              "prev_mutation_hash": prev_mutation_hash,
+              "projection_hash_after": projection_hash_after,
+              "projection_hash_before": projection_hash_before,
+              "rules_applied": rules_applied,
+              "rules_created": rules_created,
+              "seq": seq,
+              "sha256_after": sha256_after,
+              "sha256_before": sha256_before,
+              "ts_utc": ts_utc,
+          }
+          mutation_hash = hashlib.sha256(
+              json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+          ).hexdigest()
+          
+          # 8. Insert into mutation_events and mutation_payloads
+          conn.execute(
+              "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
+              "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              (seq, mutation_id, ledger_id, ts_utc, operator_session, action, 0, rules_applied, rules_created,
+               sha256_before, sha256_after, prev_mutation_hash, mutation_hash)
+          )
+          conn.execute(
+              "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
+              "payload_json, projection_hash_before, projection_hash_after, created_at) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              (seq, mutation_id, ledger_id, payload_schema_version, event_type,
+               json.dumps(payload, sort_keys=True, separators=(",", ":")),
+               projection_hash_before, projection_hash_after, ts_utc)
+          )
+          
+          conn.execute("COMMIT")
+      except Exception:
+          conn.execute("ROLLBACK")
+          raise
       
       return (
           MutationEvent(seq=seq, mutation_id=mutation_id, ledger_id=ledger_id, ts_utc=ts_utc,
@@ -403,11 +424,14 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
       )
   ```
 
-* **Deterministic Replay Engine:**
+* **Deterministic Replay Engine Algorithm:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
   2. Verify hash chain from sequence 1 to `target_sequence`.
   3. Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
-  4. Stream `mutation_payloads` and execute `dispatch_event_mutation` for each event, validating `projection_hash_before` and `projection_hash_after` at every step.
+  4. Stream `mutation_payloads` ordered by `seq ASC`:
+     - Validate that current in-memory `compute_projection_hash(mem_conn, event.ledger_id)` equals `event.projection_hash_before`. If mismatched, fail closed with `ReplayVerificationError`.
+     - Execute `dispatch_event_mutation(mem_conn, event.ledger_id, event.event_type, event.payload)`.
+     - Validate that resulting in-memory `compute_projection_hash(mem_conn, event.ledger_id)` equals `event.projection_hash_after`. If mismatched, fail closed with `ReplayVerificationError`.
   5. Return verified in-memory projection database and point-in-time trial balance.
 
 ### Task 8.5: Scoped Capability Tokens & RBAC Policy Enforcement
@@ -450,7 +474,7 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
    - Verify complete isolation of staging queues, lineage nodes, review rules, and concurrent compilation locks across multiple `ledger_id`s.
    - Verify multi-entity consolidated balance aggregation.
 4. **Replay Suite (`tests/test_replay.py`):**
-   - Verify full hash-chain validation and payload replay into in-memory projection database validating `projection_hash_after`.
+   - Verify full hash-chain validation and payload replay into in-memory projection database validating `projection_hash_before` and `projection_hash_after`.
    - Verify zero side-effects on live database files.
 5. **RBAC Suite (`tests/test_capabilities.py`):**
    - Verify token creation, constant-time hash verification, role ceiling enforcement, expiration/revocation gating, and global vs tenant-scoped validation.
