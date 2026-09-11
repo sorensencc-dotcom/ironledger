@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-CURRENCY_PATTERN = re.compile(r"^[A-Z0-9_.-]{1,12}$")
+CURRENCY_PATTERN = re.compile(r"^[A-Z0-9_.-]{1,12}\Z")
 
 
 def validate_calendar_date(date_str: str) -> str:

@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-CURRENCY_PATTERN = re.compile(r"^[A-Z0-9_.-]{1,12}$")
-LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CURRENCY_PATTERN = re.compile(r"^[A-Z0-9_.-]{1,12}\Z")
+LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
 
 
 class ValuationError(Exception):

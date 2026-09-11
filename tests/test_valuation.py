@@ -514,3 +514,92 @@ def test_ast_zero_float_division_and_no_beancount_import():
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     assert not node.module.startswith("beancount"), f"Forbidden import from {py_file.name}"
+
+
+def test_reject_trailing_newline_in_currency():
+    with pytest.raises(ValueError):
+        PriceDirective(
+            directive_date="2026-09-01",
+            base_currency="USD\n",
+            quote_currency="EUR",
+            rate_numerator=1,
+            rate_denominator=1,
+        )
+    with pytest.raises(ValueError):
+        format_beancount_price_directive(
+            directive_date="2026-09-01",
+            base_currency="USD\n",
+            quote_currency="EUR",
+            rate_numerator=1,
+            rate_denominator=1,
+        )
+
+
+def test_convert_identity_validates_inputs(db_conn):
+    engine = ValuationEngine(db_conn)
+    # Invalid date should fail even on same-currency conversion
+    with pytest.raises(ValueError):
+        engine.convert(
+            source_minor=100,
+            source_scale=2,
+            base_currency="USD",
+            quote_currency="USD",
+            as_of_date="invalid-date",
+            target_scale=2,
+        )
+    # Invalid scale type should fail
+    with pytest.raises(TypeError):
+        engine.convert(
+            source_minor=100,
+            source_scale=2.5,
+            base_currency="USD",
+            quote_currency="USD",
+            as_of_date="2026-09-01",
+            target_scale=2,
+        )
+
+
+def test_serialized_id_allocation_in_transaction(tmp_path):
+    import threading
+    db_file = str(tmp_path / "test_concurrent.db")
+    init_conn = sqlite3.connect(db_file)
+    init_conn.execute("PRAGMA journal_mode = WAL;")
+    init_conn.execute("PRAGMA foreign_keys = ON;")
+    migrations.migrate(init_conn)
+    init_conn.close()
+
+    errors = []
+    created_ids = []
+
+    def insert_worker(date_str: str, num: int):
+        conn = sqlite3.connect(db_file, timeout=5.0)
+        conn.execute("PRAGMA foreign_keys = ON;")
+        engine = ValuationEngine(conn)
+        try:
+            d = engine.add_price_directive(
+                PriceDirective(
+                    directive_date=date_str,
+                    base_currency="EUR",
+                    quote_currency="USD",
+                    rate_numerator=num,
+                    rate_denominator=1,
+                )
+            )
+            created_ids.append(d.id)
+        except Exception as e:
+            errors.append(e)
+        finally:
+            conn.close()
+
+    threads = [
+        threading.Thread(target=insert_worker, args=(f"2026-09-0{i}", i))
+        for i in range(1, 5)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+    assert len(created_ids) == 4
+    assert len(set(created_ids)) == 4  # All IDs must be distinct
