@@ -5,7 +5,7 @@
 **Governed Repo:** `C:\dev\IronLedger`  
 **Governed Docs:** `C:\dev\docs\meta\`  
 **Date:** 2026-09-10  
-**Version:** 1.0.0 (Hardened Canonical Specification - Pass 13 Remediation)  
+**Version:** 1.0.0 (Hardened Canonical Specification - Pass 14 Remediation)  
 **Specification Role:** Canonical Implementation Specification & Governed Mirror  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
 **Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
@@ -20,10 +20,10 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 
 ### Upstream Invariants Inherited & Enforced
 
-1. **Exact Rational Integer Arithmetic & Zero Float Drift:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift. Strict integer type guards (`type(v) is int and not isinstance(v, bool)`) enforce pure integer inputs across all valuation, formatting, and conversion functions. No float division `/` is permitted anywhere in valuation or rendering code paths, strictly enforced by AST guards.
+1. **Exact Rational Integer Arithmetic & Zero Float Drift:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift. Strict integer type guards (`type(v) is int and not isinstance(v, bool)`) enforce pure integer inputs across all valuation, formatting, and conversion functions. Exact Banker's half-even integer rounding applies uniformly across all precisions, including `precision_scale == 0`. No float division `/` is permitted anywhere in valuation or rendering code paths, strictly enforced by AST guards.
 2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration, strict self-edge rejection (`source != target`), and unbounded insertion-time cycle detection.
 3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence and Merkle chain from genesis anchors, then replays schema-versioned canonical self-contained event mutation payloads into an ephemeral in-memory projection database and ephemeral filesystem manifest to reconstruct exact historical state snapshots at any sequence number without mutating live files.
-4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` validation (`^[A-Za-z0-9_-]+$`), canonical path boundary enforcement (`Path.relative_to`), composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), tenant-isolated directory subtrees (`beancount_root/ledgers/<ledger_id>/current/`), tenant-scoped lockfiles (`.ironledger/.compile.<ledger_id>.lock`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema and filesystem boundaries with mandatory `PRAGMA foreign_keys = ON;`.
+4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` validation (`^[A-Za-z0-9_-]+$`), symlink refusal and canonical path boundary enforcement (`Path.relative_to`), composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), tenant-isolated directory subtrees (`beancount_root/ledgers/<ledger_id>/current/`), tenant-scoped compile lockfiles (`.ironledger/.compile.<ledger_id>.lock`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema and filesystem boundaries with mandatory `PRAGMA foreign_keys = ON;`.
 5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by symbol-tracking static AST scanners forbidding `import beancount`, `from beancount import ...`, `__import__("beancount")`, `importlib.import_module("beancount")`, and dynamic `getattr` module loaders (reading package version metadata via `importlib.metadata.version("beancount")` is permitted).
 6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement and issuance-time role ceiling validation across CLI, web, and programmatic interfaces.
 
@@ -45,31 +45,31 @@ Phase 8: Lineage, Valuation & Replay Engine
 
 ## 3. Database Schema Architecture & Migration Contract
 
-Phase 8 schema migrations use `STRICT` table definitions and forward-only SQLite migration scripts tracked in `schema_migrations` with SHA-256 checksum verification. Migration scripts reside authoritatively in `src/ironledger/db/schema/` (`0001_core_schema.sql` through `0011_mutation_payloads.sql`) and are executed by the governed runner in `src/ironledger/db/migrations.py` (backed by `src/ironledger/governance/migrations.py`).
+Phase 8 schema migrations use `STRICT` table definitions and forward-only SQLite migration scripts tracked in `schema_migrations` with SHA-256 checksum verification. Migration scripts reside authoritatively in `src/ironledger/db/schema/` (`0001_core_schema.sql` through `0011_mutation_payloads.sql`) and are executed by `src/ironledger/db/migrations.py` / `src/ironledger/governance/migrations.py`.
 
-### Migration Schema DDL
+### Migration Schema DDL (Authoritative Governance Schema)
 ```sql
 CREATE TABLE IF NOT EXISTS schema_migrations (
-    version INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    checksum_sha256 TEXT NOT NULL CHECK(length(checksum_sha256) = 64),
-    applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now'))
+    version        INTEGER PRIMARY KEY,
+    name           TEXT NOT NULL,
+    checksum       TEXT NOT NULL,
+    applied_at_utc TEXT NOT NULL
 ) STRICT;
 ```
 
-### Migration Runner Execution Lifecycle (`ironledger.db.migrations`)
+### Migration Runner Execution Lifecycle (`ironledger.governance.migrations`)
 1. **Discovery & Contiguity Validation:**
    - Discovers migration files `NNNN_<name>.sql` in `src/ironledger/db/schema/`.
    - Parses integer version numbers and sorts ascending.
-   - Asserts versions form a strictly contiguous sequence starting at 1 ($1, 2, \dots, N$). If any version is missing or duplicate, raises `MigrationGapError`.
+   - Asserts versions form a strictly contiguous sequence starting at 1 ($1, 2, \dots, N$). If any version is missing or duplicate, raises `MigrationError`.
 2. **Preflight Checksum Verification:**
    - Reads `schema_migrations` rows from database.
    - For every already-applied version $v \in \{1 \dots K\}$:
      - Computes SHA-256 checksum of the migration file on disk.
-     - Asserts `recorded.checksum_sha256 == computed_sha256` and `recorded.name == file.name`.
-     - If mismatch, raises `MigrationChecksumMismatchError(version, name, recorded, computed)`.
+     - Asserts `recorded.checksum == computed_checksum` and `recorded.name == file.name`.
+     - If mismatch, raises `ChecksumMismatch(version, name, recorded, computed)`.
 3. **Transaction-Preserving Statement Execution:**
-   - Instead of calling `executescript()` (which implicitly commits open transactions in Python `sqlite3`), the runner splits the script into individual SQL statements and executes them inside an explicit transactional boundary:
+   - Splits the migration SQL into individual executable statements using a semicolon-aware SQL tokenizer, executing them sequentially within an explicit `BEGIN IMMEDIATE ... COMMIT` block to ensure transactional atomicity across DDL, DML, foreign key checks, and metadata recording:
      ```python
      # 1. Connection-level preflight: disable foreign keys outside transaction for table rebuild safety
      conn.execute("PRAGMA foreign_keys = OFF")
@@ -87,13 +87,14 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
          cur = conn.execute("PRAGMA foreign_key_check")
          fk_violations = cur.fetchall()
          if fk_violations:
-             raise MigrationConstraintError(f"Foreign key violations after migration {v}: {fk_violations}")
+             raise ForeignKeyViolationError(f"Foreign key violations after migration {v}: {fk_violations}")
              
          # 5. Record applied migration in same transaction
          checksum = hashlib.sha256(migration_sql.encode("utf-8")).hexdigest()
+         applied_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
          conn.execute(
-             "INSERT INTO schema_migrations (version, name, checksum_sha256) VALUES (?, ?, ?)",
-             (v, migration_name, checksum),
+             "INSERT INTO schema_migrations (version, name, checksum, applied_at_utc) VALUES (?, ?, ?, ?)",
+             (v, migration_name, checksum, applied_at),
          )
          
          # 6. Commit migration
@@ -540,13 +541,21 @@ END;
   1. Direct lookup: `WHERE ledger_id = :l AND base_currency = :b AND quote_currency = :q AND directive_date <= :d ORDER BY directive_date DESC, id DESC LIMIT 1`.
   2. Inverse lookup fallback: `WHERE ledger_id = :l AND base_currency = :q AND quote_currency = :b AND directive_date <= :d ORDER BY directive_date DESC, id DESC LIMIT 1`, inverted as `(rate_denominator, rate_numerator)`.
   3. Staleness boundary: If `(requested_date - directive_date).days > max_staleness_days`, raise `StalePriceDirectiveError`. If no directive exists, raise `MissingPriceDirectiveError`.
-* **Zero-Import Plaintext Directives (Pure Integer Formatting with Strict Validation):**
-  Template-based emission uses pure integer arithmetic with Banker's (half-even) rounding (zero floating-point approximation):
+* **Zero-Import Plaintext Directives (Pure Integer Formatting with Strict Calendar & Integer Validation):**
   ```python
   import re
+  from datetime import datetime
 
   CURRENCY_PATTERN = re.compile(r"^[A-Z0-9_.-]{1,12}$")
-  DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+  def validate_calendar_date(date_str: str) -> str:
+      if not isinstance(date_str, str) or len(date_str) != 10:
+          raise ValueError(f"Invalid date string format: {date_str!r}")
+      try:
+          parsed = datetime.strptime(date_str, "%Y-%m-%d").date()
+      except ValueError as e:
+          raise ValueError(f"Invalid calendar date {date_str!r}: {e}") from e
+      return parsed.strftime("%Y-%m-%d")
 
   def format_minor_units(minor_units: int, scale: int) -> str:
       """Format minor units to decimal string using pure integer arithmetic (zero float)."""
@@ -570,8 +579,7 @@ END;
       rate_denominator: int,
       precision_scale: int = 4,
   ) -> str:
-      if not isinstance(directive_date, str) or not DATE_PATTERN.match(directive_date):
-          raise ValueError(f"Invalid directive_date format: {directive_date}")
+      valid_date = validate_calendar_date(directive_date)
       if not isinstance(base_currency, str) or not CURRENCY_PATTERN.match(base_currency):
           raise ValueError(f"Invalid base_currency: {base_currency}")
       if not isinstance(quote_currency, str) or not CURRENCY_PATTERN.match(quote_currency):
@@ -583,12 +591,21 @@ END;
       if type(precision_scale) is not int or isinstance(precision_scale, bool) or not (0 <= precision_scale <= 18):
           raise TypeError("precision_scale must be an integer between 0 and 18")
       
-      # Pure integer division and Banker's (half-even) tie-breaking
-      integer_part = rate_numerator // rate_denominator
-      remainder = rate_numerator % rate_denominator
-      multiplier = 10 ** precision_scale
+      # Handle precision_scale == 0 with Banker's rounding
+      if precision_scale == 0:
+          quot, rem = divmod(rate_numerator, rate_denominator)
+          doubled_rem = rem * 2
+          if doubled_rem > rate_denominator:
+              quot += 1
+          elif doubled_rem == rate_denominator:
+              if quot % 2 == 1:
+                  quot += 1
+          return f"{valid_date} price {base_currency} {quot} {quote_currency}"
       
-      quot, subrem = divmod(remainder * multiplier, rate_denominator)
+      # Pure integer division and Banker's (half-even) tie-breaking for precision_scale > 0
+      integer_part, rem = divmod(rate_numerator, rate_denominator)
+      multiplier = 10 ** precision_scale
+      quot, subrem = divmod(rem * multiplier, rate_denominator)
       doubled_subrem = subrem * 2
       
       if doubled_subrem > rate_denominator:
@@ -602,8 +619,8 @@ END;
           integer_part += 1
           quot -= multiplier
           
-      formatted_rate = f"{integer_part}.{quot:0{precision_scale}d}" if precision_scale > 0 else str(integer_part)
-      return f"{directive_date} price {base_currency} {formatted_rate} {quote_currency}"
+      formatted_rate = f"{integer_part}.{quot:0{precision_scale}d}"
+      return f"{valid_date} price {base_currency} {formatted_rate} {quote_currency}"
   ```
 
 ---
@@ -625,7 +642,7 @@ END;
 
 ### Task 8.3: Multi-Ledger Topology & Isolated Staging Queues
 * **Location:** `src/ironledger/ledger/topology.py`, `src/ironledger/ledger/staging.py`
-* **Tenant Isolation & Path Validation:**
+* **Tenant Isolation, Symlink Refusal & Path Validation:**
   ```python
   LEDGER_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$" )
 
@@ -638,9 +655,12 @@ END;
           tenant_dir.relative_to(root_resolved)
       except ValueError:
           raise ValueError(f"Path traversal detected: {ledger_id}")
+      # Symlink refusal policy
+      if tenant_dir.is_symlink() or any(p.is_symlink() for p in tenant_dir.parents):
+          raise ValueError(f"Symlink detected in tenant directory path: {tenant_dir}")
       return tenant_dir
   ```
-* **Compile Mutex Locking:** Scoped lockfile path: `.ironledger/.compile.<ledger_id>.lock`.
+* **Compile Mutex Locking:** Scoped lockfile path: `.ironledger/.compile.<ledger_id>.lock`. Lock is acquired **before** reading pre-mutation filesystem state and held until post-mutation directory promotion completes.
 * **Consolidation Engine:** Read-only multi-entity balance normalization into a designated reporting currency using Task 8.1 valuation routines.
 
 ---
@@ -649,8 +669,9 @@ END;
 * **Location:** `src/ironledger/replay/engine.py`, `src/ironledger/replay/snapshot.py`, `src/ironledger/manifests.py`
 * **Tenant Directory Layout:**
   `beancount_root / "ledgers" / <ledger_id> /`
-  - `current/`: Live manifest directory containing authoritative `.beancount` files.
+  - `current/`: Authoritative live directory containing active `.beancount` files.
   - `staging_<seq>_<id>/`: Immutable scratch staging directories.
+  - `.promotion_journal.json`: Durable journal state file.
 * **Manifest Hash Calculation Contract:**
   ```python
   def compute_directory_manifest_hash(target_dir: Path) -> str:
@@ -718,89 +739,190 @@ END;
           )
           rows = []
           for row in cur.fetchall():
-              normalized_row = [
-                  None if val is None
-                  else int(val) if isinstance(val, (int, bool))
-                  else str(val)
-                  for val in row
-              ]
+              normalized_row = []
+              for val in row:
+                  if val is None:
+                      normalized_row.append(None)
+                  elif type(val) is int and not isinstance(val, bool):
+                      normalized_row.append(val)
+                  elif isinstance(val, bool):
+                      raise TypeError("Boolean value encountered in projection table; must be integer 0 or 1")
+                  else:
+                      normalized_row.append(str(val))
               rows.append(normalized_row)
           payload.append([table, cols, rows])
       encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
       return hashlib.sha256(encoded).hexdigest()
   ```
 
-* **Fully Self-Contained Payload Event Schemas (`payload_schema_version = 1`):**
-  - All payloads conform to JSON Schema draft-07 and enforce `additionalProperties: false`.
-  - `STAGE_TRANSACTION`:
-    - `ledger_id`: string (required)
-    - `staged_transaction_id`: string (required)
-    - `source_record_id`: string (required)
-    - `proposed_date`: string format `YYYY-MM-DD` (required)
-    - `payee`: string (required)
-    - `narration`: string (required)
-    - `status`: enum `["pending", "categorized", "approved", "rejected"]` (required)
-    - `identity_algo_version`: integer `>= 1` (required)
-    - `identity_method`: enum `["fitid", "sha256_fallback"]` (required)
-    - `identity_fingerprint`: string length 64 hex (required)
-    - `created_at_utc`: ISO8601 UTC timestamp string (required)
-    - `source_record`: object containing `{ "source_document_id": str, "record_index": int, "canonical_payload": str, "content_sha256": str, "mime_type": str, "encoding": str, "provenance": str, "raw_payload_ref": str }` (required for pure self-contained parent reconstruction during standalone replay)
-    - `postings`: array of posting objects (minItems 2, required):
-      - `staged_posting_id`: string (required)
-      - `source_record_id`: string (required)
-      - `role`: enum `["imported", "contra"]` (required)
-      - `posting_index`: integer `>= 0` (required)
-      - `account`: string or null (required)
-      - `minor_units`: integer (required)
-      - `currency`: string (required)
-      - `minor_unit_scale`: integer `0..18` (required)
-      - `created_at_utc`: string (required)
-  - `REVIEW_DECISION`: Contains `staged_transaction_id`, `prior_status`, `new_status`, `assigned_account`, `rule_id`, `reject_reason`, `decided_at_utc`.
-  - `COMPILE_LEDGER` (Self-Contained):
-    - `ledger_id`: string (required)
-    - `compile_run_id`: string (required)
-    - `beancount_version`: string (required)
-    - `compiler_version`: string (required)
-    - `input_hash`: string length 64 hex (required)
-    - `intended_output_hash`: string length 64 hex (required)
-    - `actual_output_hash`: string length 64 hex (required)
-    - `status`: enum `["SUCCESS", "FAILED"]` (required)
-    - `compiled_tx_ids`: array of string (required)
-    - `compiled_directives`: array of self-contained directive objects (required for pure standalone deterministic replay):
-      - `proposed_date`: string format `YYYY-MM-DD`
-      - `payee`: string
-      - `narration`: string
-      - `postings`: array of objects `{ "account": str, "minor_units": int, "currency": str, "minor_unit_scale": int }`
-  - `PRICE_DIRECTIVE`: Contains `id`, `directive_date`, `base_currency`, `quote_currency`, `rate_numerator`, `rate_denominator`, `precision_scale`, `source`.
-  - `RULE_UPDATE`: Contains `rule_id`, `action`, `match_type`, `pattern`, `importing_account`, `target_account`, `priority`, `active`.
+* **Complete JSON Schema Draft-07 Specifications for All 5 Mutation Payload Types:**
+  All payloads enforce `additionalProperties: false` and are validated via `jsonschema.validate()` raising `PayloadValidationError` on violation.
 
-* **Deterministic Plaintext Manifest Rendering Contracts (Pure Integer Formatting):**
   ```python
-  def render_compiled_ledger_manifest(staging_dir: Path, ledger_id: str, payload: dict[str, Any]) -> None:
-      """Render deterministic ledger.beancount manifest into staging directory using self-contained payload."""
-      ledger_file = staging_dir / f"{ledger_id}.beancount"
-      lines = [f";; IronLedger Compiled Ledger: {ledger_id}", f";; Compile Run: {payload['compile_run_id']}", ""]
-      for tx in payload["compiled_directives"]:
-          lines.append(f"{tx['proposed_date']} * \"{tx['payee']}\" \"{tx['narration']}\"")
-          for p in tx["postings"]:
-              amount_str = format_minor_units(p["minor_units"], p["minor_unit_scale"])
-              lines.append(f"  {p['account']}  {amount_str} {p['currency']}")
-          lines.append("")
-      ledger_file.write_text("\n".join(lines), encoding="utf-8")
+  STAGE_TRANSACTION_SCHEMA = {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": [
+          "ledger_id", "staged_transaction_id", "source_record_id",
+          "proposed_date", "payee", "narration", "status",
+          "identity_algo_version", "identity_method", "identity_fingerprint",
+          "created_at_utc", "source_record", "postings"
+      ],
+      "additionalProperties": False,
+      "properties": {
+          "ledger_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+          "staged_transaction_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "source_record_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "proposed_date": {"type": "string", "pattern": "^\d{4}-\d{2}-\d{2}$"},
+          "payee": {"type": "string"},
+          "narration": {"type": "string"},
+          "status": {"type": "string", "enum": ["pending", "categorized", "approved", "rejected"]},
+          "identity_algo_version": {"type": "integer", "minimum": 1},
+          "identity_method": {"type": "string", "enum": ["fitid", "sha256_fallback"]},
+          "identity_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "created_at_utc": {"type": "string", "pattern": "^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*Z$"},
+          "source_record": {
+              "type": "object",
+              "required": ["source_document_id", "record_index", "canonical_payload", "content_sha256", "mime_type", "encoding", "provenance", "raw_payload_ref"],
+              "additionalProperties": False,
+              "properties": {
+                  "source_document_id": {"type": "string"},
+                  "record_index": {"type": "integer", "minimum": 0},
+                  "canonical_payload": {"type": "string"},
+                  "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                  "mime_type": {"type": "string"},
+                  "encoding": {"type": "string"},
+                  "provenance": {"type": "string"},
+                  "raw_payload_ref": {"type": "string"}
+              }
+          },
+          "postings": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                  "type": "object",
+                  "required": ["staged_posting_id", "source_record_id", "role", "posting_index", "account", "minor_units", "currency", "minor_unit_scale", "created_at_utc"],
+                  "additionalProperties": False,
+                  "properties": {
+                      "staged_posting_id": {"type": "string"},
+                      "source_record_id": {"type": "string"},
+                      "role": {"type": "string", "enum": ["imported", "contra"]},
+                      "posting_index": {"type": "integer", "minimum": 0},
+                      "account": {"type": ["string", "null"]},
+                      "minor_units": {"type": "integer"},
+                      "currency": {"type": "string", "pattern": "^[A-Z0-9_.-]{1,12}$"},
+                      "minor_unit_scale": {"type": "integer", "minimum": 0, "maximum": 18},
+                      "created_at_utc": {"type": "string"}
+                  }
+              }
+          }
+      }
+  }
 
-  def render_price_directive_manifest(staging_dir: Path, ledger_id: str, payload: dict[str, Any]) -> None:
-      """Append deterministic price directive into prices.beancount in staging directory."""
-      prices_file = staging_dir / "prices.beancount"
-      directive_line = format_beancount_price_directive(
-          payload["directive_date"], payload["base_currency"], payload["quote_currency"],
-          payload["rate_numerator"], payload["rate_denominator"], payload["precision_scale"]
-      )
-      current_content = prices_file.read_text(encoding="utf-8") if prices_file.exists() else ""
-      new_content = current_content + directive_line + "\n"
-      prices_file.write_text(new_content, encoding="utf-8")
+  REVIEW_DECISION_SCHEMA = {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["ledger_id", "staged_transaction_id", "prior_status", "new_status", "assigned_account", "rule_id", "reject_reason", "decided_at_utc"],
+      "additionalProperties": False,
+      "properties": {
+          "ledger_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+          "staged_transaction_id": {"type": "string"},
+          "prior_status": {"type": "string", "enum": ["pending", "categorized", "approved", "rejected"]},
+          "new_status": {"type": "string", "enum": ["pending", "categorized", "approved", "rejected"]},
+          "assigned_account": {"type": ["string", "null"]},
+          "rule_id": {"type": ["string", "null"]},
+          "reject_reason": {"type": ["string", "null"]},
+          "decided_at_utc": {"type": "string"}
+      }
+  }
+
+  COMPILE_LEDGER_SCHEMA = {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": [
+          "ledger_id", "compile_run_id", "beancount_version", "compiler_version",
+          "input_hash", "intended_output_hash", "actual_output_hash", "status",
+          "compiled_tx_ids", "compiled_directives"
+      ],
+      "additionalProperties": False,
+      "properties": {
+          "ledger_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+          "compile_run_id": {"type": "string"},
+          "beancount_version": {"type": "string"},
+          "compiler_version": {"type": "string"},
+          "input_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "intended_output_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "actual_output_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "status": {"type": "string", "enum": ["SUCCESS", "FAILED"]},
+          "compiled_tx_ids": {"type": "array", "items": {"type": "string"}},
+          "compiled_directives": {
+              "type": "array",
+              "items": {
+                  "type": "object",
+                  "required": ["proposed_date", "payee", "narration", "postings"],
+                  "additionalProperties": False,
+                  "properties": {
+                      "proposed_date": {"type": "string", "pattern": "^\d{4}-\d{2}-\d{2}$"},
+                      "payee": {"type": "string"},
+                      "narration": {"type": "string"},
+                      "postings": {
+                          "type": "array",
+                          "items": {
+                              "type": "object",
+                              "required": ["account", "minor_units", "currency", "minor_unit_scale"],
+                              "additionalProperties": False,
+                              "properties": {
+                                  "account": {"type": "string"},
+                                  "minor_units": {"type": "integer"},
+                                  "currency": {"type": "string"},
+                                  "minor_unit_scale": {"type": "integer", "minimum": 0, "maximum": 18}
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+
+  PRICE_DIRECTIVE_SCHEMA = {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["ledger_id", "id", "directive_date", "base_currency", "quote_currency", "rate_numerator", "rate_denominator", "precision_scale", "source"],
+      "additionalProperties": False,
+      "properties": {
+          "ledger_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+          "id": {"type": "integer"},
+          "directive_date": {"type": "string", "pattern": "^\d{4}-\d{2}-\d{2}$"},
+          "base_currency": {"type": "string", "pattern": "^[A-Z0-9_.-]{1,12}$"},
+          "quote_currency": {"type": "string", "pattern": "^[A-Z0-9_.-]{1,12}$"},
+          "rate_numerator": {"type": "integer", "minimum": 1},
+          "rate_denominator": {"type": "integer", "minimum": 1},
+          "precision_scale": {"type": "integer", "minimum": 0, "maximum": 18},
+          "source": {"type": "string", "enum": ["MANUAL", "POLLED_FEED", "EXCHANGE_API"]}
+      }
+  }
+
+  RULE_UPDATE_SCHEMA = {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["ledger_id", "rule_id", "action", "match_type", "pattern", "importing_account", "target_account", "priority", "active"],
+      "additionalProperties": False,
+      "properties": {
+          "ledger_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+          "rule_id": {"type": "string"},
+          "action": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE"]},
+          "match_type": {"type": "string", "enum": ["exact", "prefix", "regex"]},
+          "pattern": {"type": "string"},
+          "importing_account": {"type": ["string", "null"]},
+          "target_account": {"type": "string"},
+          "priority": {"type": "integer"},
+          "active": {"type": "integer", "enum": [0, 1]}
+      }
+  }
   ```
 
-* **Crash-Atomic Outbox Protocol with Directory Swap:**
+* **Crash-Atomic Outbox Protocol with Lock and Promotion Journal:**
   ```python
   def apply_mutation_and_append(
       conn: sqlite3.Connection,
@@ -814,117 +936,142 @@ END;
       rules_applied: int = 0,
       rules_created: int = 0,
   ) -> tuple[MutationEvent, MutationPayload]:
-      """Apply domain mutation and append mutation event + payload in a deterministic 2-phase commit."""
       validate_payload_schema(event_type, payload, payload_schema_version)
       tenant_dir = validate_and_resolve_ledger_root(beancount_root, ledger_id)
       tenant_dir.mkdir(parents=True, exist_ok=True)
       current_dir = tenant_dir / "current"
       current_dir.mkdir(parents=True, exist_ok=True)
       
-      staging_dir: Path | None = None
-      sha256_before = compute_directory_manifest_hash(current_dir)
+      # Acquire tenant compile lock before staging
+      lock_path = beancount_root / ".ironledger" / f".compile.{ledger_id}.lock"
+      lock_path.parent.mkdir(parents=True, exist_ok=True)
       
-      if event_type in ("COMPILE_LEDGER", "PRICE_DIRECTIVE"):
-          staging_dir = tenant_dir / f"staging_{uuid4().hex}"
-          staging_dir.mkdir(parents=True, exist_ok=True)
-          for f in current_dir.glob("*.beancount"):
-              shutil.copy2(f, staging_dir / f.name)
-          if event_type == "COMPILE_LEDGER":
-              render_compiled_ledger_manifest(staging_dir, ledger_id, payload)
-          elif event_type == "PRICE_DIRECTIVE":
-              render_price_directive_manifest(staging_dir, ledger_id, payload)
-          for f in staging_dir.rglob("*.beancount"):
-              with open(f, "a+b") as fp:
-                  fp.flush()
-                  os.fsync(fp.fileno())
-          sha256_after = compute_directory_manifest_hash(staging_dir)
-      else:
-          sha256_after = sha256_before
-      
-      conn.execute("BEGIN IMMEDIATE")
-      try:
-          projection_hash_before = compute_projection_hash(conn, ledger_id)
-          dispatch_event_mutation(conn, ledger_id, event_type, payload)
-          projection_hash_after = compute_projection_hash(conn, ledger_id)
-          
-          cur = conn.execute("SELECT seq, mutation_hash, ts_utc FROM mutation_events ORDER BY seq DESC LIMIT 1")
-          last_row = cur.fetchone()
-          if not last_row:
-              seq = 1
-              prev_mutation_hash = "0" * 64
-              last_ts = ""
-          else:
-              seq = last_row[0] + 1
-              prev_mutation_hash = last_row[1]
-              last_ts = last_row[2]
-              
-          mutation_id = f"mut_{uuid4().hex}"
-          
-          now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-          ts_utc = max(now_ts, last_ts)
-          if ts_utc == last_ts:
-              dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00")) + timedelta(microseconds=1)
-              ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-          
-          canonical_payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-          payload_sha256 = hashlib.sha256(canonical_payload_bytes).hexdigest()
-          
-          canonical_dict = {
-              "action": action,
-              "event_type": event_type,
-              "ledger_id": ledger_id,
-              "mutation_id": mutation_id,
-              "operator_session": operator_session,
-              "payload": payload,
-              "payload_schema_version": payload_schema_version,
-              "prev_mutation_hash": prev_mutation_hash,
-              "projection_hash_after": projection_hash_after,
-              "projection_hash_before": projection_hash_before,
-              "rules_applied": rules_applied,
-              "rules_created": rules_created,
-              "seq": seq,
-              "sha256_after": sha256_after,
-              "sha256_before": sha256_before,
-              "ts_utc": ts_utc,
-          }
-          mutation_hash = hashlib.sha256(
-              json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-          ).hexdigest()
-          
-          conn.execute(
-              "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
-              "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              (seq, mutation_id, ledger_id, ts_utc, operator_session, action, 0, rules_applied, rules_created,
-               sha256_before, sha256_after, prev_mutation_hash, mutation_hash)
-          )
-          conn.execute(
-              "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
-              "payload_json, payload_sha256, projection_hash_before, projection_hash_after, created_at) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-              (seq, mutation_id, ledger_id, payload_schema_version, event_type,
-               canonical_payload_bytes.decode("utf-8"), payload_sha256,
-               projection_hash_before, projection_hash_after, ts_utc)
-          )
-          
-          conn.execute("COMMIT")
-      except Exception:
-          conn.execute("ROLLBACK")
-          if staging_dir and staging_dir.exists():
-              shutil.rmtree(staging_dir, ignore_errors=True)
-          raise
-      
-      if staging_dir and staging_dir.exists():
+      with open(lock_path, "w") as lock_file:
+          portalocker_lock(lock_file)
           try:
-              # Complete directory swap: move staging to current atomically
-              backup_dir = tenant_dir / f"current_bak_{uuid4().hex}"
-              if current_dir.exists():
-                  os.replace(current_dir, backup_dir)
-              os.replace(staging_dir, current_dir)
-              if backup_dir.exists():
-                  shutil.rmtree(backup_dir, ignore_errors=True)
-          except Exception as promo_err:
-              raise ManifestPromotionError(f"Filesystem promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
+              staging_dir: Path | None = None
+              journal_file = tenant_dir / ".promotion_journal.json"
+              sha256_before = compute_directory_manifest_hash(current_dir)
+              
+              if event_type in ("COMPILE_LEDGER", "PRICE_DIRECTIVE"):
+                  staging_dir = tenant_dir / f"staging_{uuid4().hex}"
+                  staging_dir.mkdir(parents=True, exist_ok=True)
+                  for f in current_dir.glob("*.beancount"):
+                      shutil.copy2(f, staging_dir / f.name)
+                  if event_type == "COMPILE_LEDGER":
+                      if payload.get("status") == "SUCCESS":
+                          render_compiled_ledger_manifest(staging_dir, ledger_id, payload)
+                  elif event_type == "PRICE_DIRECTIVE":
+                      render_price_directive_manifest(staging_dir, ledger_id, payload)
+                  for f in staging_dir.rglob("*.beancount"):
+                      with open(f, "a+b") as fp:
+                          fp.flush()
+                          os.fsync(fp.fileno())
+                  sha256_after = compute_directory_manifest_hash(staging_dir)
+              else:
+                  sha256_after = sha256_before
+              
+              conn.execute("BEGIN IMMEDIATE")
+              try:
+                  projection_hash_before = compute_projection_hash(conn, ledger_id)
+                  dispatch_event_mutation(conn, ledger_id, event_type, payload)
+                  projection_hash_after = compute_projection_hash(conn, ledger_id)
+                  
+                  cur = conn.execute("SELECT seq, mutation_hash, ts_utc FROM mutation_events ORDER BY seq DESC LIMIT 1")
+                  last_row = cur.fetchone()
+                  if not last_row:
+                      seq = 1
+                      prev_mutation_hash = "0" * 64
+                      last_ts = ""
+                  else:
+                      seq = last_row[0] + 1
+                      prev_mutation_hash = last_row[1]
+                      last_ts = last_row[2]
+                      
+                  mutation_id = f"mut_{uuid4().hex}"
+                  now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                  ts_utc = max(now_ts, last_ts)
+                  if ts_utc == last_ts:
+                      dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00")) + timedelta(microseconds=1)
+                      ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                  
+                  canonical_payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+                  payload_sha256 = hashlib.sha256(canonical_payload_bytes).hexdigest()
+                  
+                  canonical_dict = {
+                      "action": action,
+                      "event_type": event_type,
+                      "ledger_id": ledger_id,
+                      "mutation_id": mutation_id,
+                      "operator_session": operator_session,
+                      "payload": payload,
+                      "payload_schema_version": payload_schema_version,
+                      "prev_mutation_hash": prev_mutation_hash,
+                      "projection_hash_after": projection_hash_after,
+                      "projection_hash_before": projection_hash_before,
+                      "rules_applied": rules_applied,
+                      "rules_created": rules_created,
+                      "seq": seq,
+                      "sha256_after": sha256_after,
+                      "sha256_before": sha256_before,
+                      "ts_utc": ts_utc,
+                  }
+                  mutation_hash = hashlib.sha256(
+                      json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+                  ).hexdigest()
+                  
+                  conn.execute(
+                      "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
+                      "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (seq, mutation_id, ledger_id, ts_utc, operator_session, action, 0, rules_applied, rules_created,
+                       sha256_before, sha256_after, prev_mutation_hash, mutation_hash)
+                  )
+                  conn.execute(
+                      "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
+                      "payload_json, payload_sha256, projection_hash_before, projection_hash_after, created_at) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                      (seq, mutation_id, ledger_id, payload_schema_version, event_type,
+                       canonical_payload_bytes.decode("utf-8"), payload_sha256,
+                       projection_hash_before, projection_hash_after, ts_utc)
+                  )
+                  
+                  conn.execute("COMMIT")
+              except Exception:
+                  conn.execute("ROLLBACK")
+                  if staging_dir and staging_dir.exists():
+                      shutil.rmtree(staging_dir, ignore_errors=True)
+                  raise
+              
+              # Durable promotion protocol
+              if staging_dir and staging_dir.exists():
+                  backup_dir = tenant_dir / f"current_bak_{uuid4().hex}"
+                  try:
+                      journal_data = {
+                          "state": "COMMITTED_PRE_SWAP",
+                          "seq": seq,
+                          "ledger_id": ledger_id,
+                          "sha256_before": sha256_before,
+                          "sha256_after": sha256_after,
+                          "staging_dir": staging_dir.name,
+                          "backup_dir": backup_dir.name
+                      }
+                      temp_j = tenant_dir / f".j_{uuid4().hex}.tmp"
+                      temp_j.write_text(json.dumps(journal_data), encoding="utf-8")
+                      os.replace(temp_j, journal_file)
+                      
+                      if current_dir.exists():
+                          os.replace(current_dir, backup_dir)
+                      os.replace(staging_dir, current_dir)
+                      
+                      if backup_dir.exists():
+                          shutil.rmtree(backup_dir, ignore_errors=True)
+                      if journal_file.exists():
+                          journal_file.unlink()
+                  except Exception as promo_err:
+                      raise ManifestPromotionError(f"Promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
+          finally:
+              portalocker_unlock(lock_file)
       
       return (
           MutationEvent(seq=seq, mutation_id=mutation_id, ledger_id=ledger_id, ...),
@@ -933,26 +1080,32 @@ END;
   ```
 
 * **Startup Manifest Reconciliation Protocol (`reconcile_manifest_on_startup`):**
-  - Invoked during database startup:
+  - Invoked during database connection startup:
   1. For each active ledger in `ledgers`:
      - Let `tenant_dir = validate_and_resolve_ledger_root(beancount_root, ledger_id)`.
      - Let `current_dir = tenant_dir / "current"`.
+     - Let `journal_file = tenant_dir / ".promotion_journal.json"`.
+     - If `journal_file.exists()`:
+       - Read journal metadata.
+       - Let `staged_cand = tenant_dir / journal["staging_dir"]`.
+       - Let `bak_cand = tenant_dir / journal["backup_dir"]`.
+       - If `staged_cand.exists()` and `compute_directory_manifest_hash(staged_cand) == journal["sha256_after"]`:
+           `if current_dir.exists(): os.replace(current_dir, bak_cand)`
+           `os.replace(staged_cand, current_dir)`
+       - If `journal_file.exists()`: journal_file.unlink()
      - Query all `mutation_events` rows for `ledger_id` ordered by `seq ASC`.
-     - If no events exist for this ledger:
+     - If no events exist:
        - If `current_dir.exists()`: assert `compute_directory_manifest_hash(current_dir) == GENESIS_MANIFEST_HASH`.
      - If events exist:
        - Let $M_{	ext{latest}}$ be the last event in sequence for this ledger.
        - Let $H_{	ext{live}} = 	ext{compute\_directory\_manifest\_hash}(current\_dir)$.
        - If $H_{	ext{live}} == M_{	ext{latest}}.	ext{sha256\_after}$:
-         - Clean up any leftover `staging_*` or `current_bak_*` directories.
+         - Filesystem is clean. Remove leftover `staging_*` or `current_bak_*` folders.
        - If $H_{	ext{live}} != M_{	ext{latest}}.	ext{sha256\_after}$:
-         - If any `staging_*` directory in `tenant_dir` matches $M_{	ext{latest}}.	ext{sha256\_after}$:
-           - Atomically swap that staging directory to `current/`.
-         - Else:
-           - Sequentially re-emit plaintext manifests from the payloads of all tenant events $M_1 \dots M_{	ext{latest}}$ into a fresh `staging_recovery/` directory, verifying each step.
-           - Swap `staging_recovery/` to `current/`.
-           - Assert `compute_directory_manifest_hash(current_dir) == M_{	ext{latest}}.	ext{sha256\_after}`.
-           - Prune temporary directories.
+         - Sequentially re-emit plaintext manifests from the payloads of all tenant events $M_1 \dots M_{	ext{latest}}$ into a fresh `staging_recovery/` directory, verifying each step.
+         - Atomically swap `staging_recovery/` to `current/`.
+         - Assert `compute_directory_manifest_hash(current_dir) == M_{	ext{latest}}.	ext{sha256\_after}`.
+         - Prune temporary directories.
 
 * **Deterministic Replay Engine Algorithm & Interleaved Multi-Tenant Semantics:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
@@ -1049,7 +1202,7 @@ END;
 
 1. **Valuation Suite (`tests/test_valuation.py`):**
    - Verify integer rational price conversion with 0 floating-point drift across mixed decimal precisions (USD 2-dec, BTC 8-dec, AAPL 4-dec).
-   - Verify exact Banker's half-even rounding for positive, negative, tie, and carry cases.
+   - Verify exact Banker's half-even rounding for positive, negative, tie, and carry cases across all scales including `precision_scale == 0`.
    - Verify strict integer type assertion rejection on bool, float, and non-integer inputs.
    - Verify bounded preceding price resolution, stale price rejection, identity same-currency conversion, and inverse quote resolution.
    - Verify Beancount price directive string template output with zero runtime Beancount imports and pure integer Banker's rounding.
