@@ -38,12 +38,23 @@ def run_web(
         static_dist = Path.cwd() / 'web' / 'dist'
     static_dir = static_dist if static_dist.is_dir() else None
 
+    import os
+    from ironledger.db.connection import connect
+    from ironledger.governance.migrations import migrate_governed
+
+    conn = connect(resolved_db)
+    try:
+        migrate_governed(conn, resolved_db)
+    finally:
+        conn.close()
+
     app = create_app(
         db_path=resolved_db,
         projection_db_path=resolved_proj,
         config_dir=resolved_config,
         static_dir=static_dir,
     )
+    app.state.op_token = os.environ.get("IRONLEDGER_OP_TOKEN", "d0-localhost-token")
 
     if open_browser:
         webbrowser.open(f'http://{host}:{port}')

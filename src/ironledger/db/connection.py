@@ -30,7 +30,10 @@ def connect(database: str | Path) -> sqlite3.Connection:
     :class:`ForeignKeysNotEnforced` if ``PRAGMA foreign_keys`` does not report
     ``1`` after being set.
     """
-    conn = sqlite3.connect(str(database))
+    try:
+        conn = sqlite3.connect(str(database), check_same_thread=False)
+    except TypeError:
+        conn = sqlite3.connect(str(database))
     try:
         conn.execute("PRAGMA foreign_keys = ON")
         (fk_state,) = conn.execute("PRAGMA foreign_keys").fetchone()
@@ -38,9 +41,12 @@ def connect(database: str | Path) -> sqlite3.Connection:
             raise ForeignKeysNotEnforced(
                 f"PRAGMA foreign_keys reported {fk_state!r} after being set to ON"
             )
-        # WAL is unavailable for pure in-memory databases; that is acceptable.
+        # WAL is unavailable for pure in-memory databases and some mounted filesystems; that is acceptable.
         if str(database) != ":memory:":
-            conn.execute("PRAGMA journal_mode = WAL")
+            try:
+                conn.execute("PRAGMA journal_mode = WAL")
+            except sqlite3.OperationalError:
+                pass
         conn.execute("PRAGMA busy_timeout = 5000")
     except Exception:
         conn.close()

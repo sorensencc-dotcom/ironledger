@@ -49,9 +49,11 @@ def list_staged_transactions(
     """List staged transactions with postings, confidence scores, and rule match metadata."""
     query = (
         "SELECT st.staged_transaction_id, st.source_record_id, sr.source_document_id, "
-        "       st.proposed_date, st.payee, st.narration, st.status "
+        "       st.proposed_date, st.payee, st.narration, st.status, st.external_id, "
+        "       sd.raw_payload_ref, sd.provenance "
         "FROM staged_transactions st "
         "JOIN source_records sr ON sr.source_record_id = st.source_record_id "
+        "JOIN source_documents sd ON sd.source_document_id = sr.source_document_id "
     )
     params: list[Any] = []
     if status:
@@ -63,7 +65,7 @@ def list_staged_transactions(
     rows = db.execute(query, params).fetchall()
     results: list[StagedTransactionResponse] = []
 
-    for stx_id, srec_id, sdoc_id, date, payee, narration, st_status in rows:
+    for stx_id, srec_id, sdoc_id, date, payee, narration, st_status, ext_id, raw_ref, prov in rows:
         postings_rows = db.execute(
             "SELECT account, currency, minor_units, minor_unit_scale, role "
             "FROM staged_postings WHERE staged_transaction_id = ? "
@@ -124,6 +126,9 @@ def list_staged_transactions(
                 confidence_score=confidence_score,
                 matched_rule_id=matched_rule_id,
                 notes=None,
+                external_id=ext_id,
+                raw_payload_ref=raw_ref,
+                provenance=prov,
             )
         )
 

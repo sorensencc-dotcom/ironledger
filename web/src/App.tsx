@@ -16,6 +16,7 @@ import type {
   Rule,
   SafeModeStatus,
   StagedTransaction,
+  SyncStatus,
 } from './types';
 
 export default function App() {
@@ -32,6 +33,8 @@ export default function App() {
 
   const [safeMode, setSafeMode] = useState<SafeModeStatus | null>(null);
   const [freshness, setFreshness] = useState<FreshnessStatus | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   // Modals state
   const [isRuleWizardOpen, setIsRuleWizardOpen] = useState(false);
@@ -49,16 +52,18 @@ export default function App() {
   // Fetch initial data
   const refreshAll = async () => {
     try {
-      const [stg, rls, sm, fresh] = await Promise.all([
+      const [stg, rls, sm, fresh, sync] = await Promise.all([
         api.getStaging(statusFilter),
         api.getRules(),
         api.getSafeMode(),
         api.getFreshness(),
+        api.getSyncStatus().catch(() => null),
       ]);
       setStaging(stg);
       setRules(rls);
       setSafeMode(sm);
       setFreshness(fresh);
+      if (sync) setSyncStatus(sync);
     } catch (err) {
       console.error('Failed to load initial workbench data:', err);
     }
@@ -68,8 +73,12 @@ export default function App() {
     refreshAll();
     const interval = setInterval(async () => {
       try {
-        const fresh = await api.getFreshness();
-        setFreshness(fresh);
+        const [fresh, sync] = await Promise.all([
+          api.getFreshness().catch(() => null),
+          api.getSyncStatus().catch(() => null),
+        ]);
+        if (fresh) setFreshness(fresh);
+        if (sync) setSyncStatus(sync);
       } catch {}
     }, 5000);
     return () => clearInterval(interval);
@@ -143,6 +152,19 @@ export default function App() {
     }
   };
 
+  const handleTriggerSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.pollSync();
+      showNotification(`Bank Sync: ${res.inserted} inserted, ${res.skipped} skipped`);
+      refreshAll();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // Filter staging items by search query
   const filteredStaging = staging.filter((tx) => {
     if (!searchQuery.trim()) return true;
@@ -162,10 +184,13 @@ export default function App() {
       <TopHUD
         safeMode={safeMode}
         freshness={freshness}
+        syncStatus={syncStatus}
         onOpenSimulation={handleRunSimulation}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onTriggerCompile={handleTriggerCompile}
+        onTriggerSync={handleTriggerSync}
         isCompiling={compiling}
+        isSyncing={syncing}
       />
 
       {/* Main 3-Pane Body */}
@@ -360,6 +385,7 @@ export default function App() {
         onSelectView={setActiveView}
         onSimulate={handleRunSimulation}
         onCompile={handleTriggerCompile}
+        onSync={handleTriggerSync}
       />
 
       <SimulationModal

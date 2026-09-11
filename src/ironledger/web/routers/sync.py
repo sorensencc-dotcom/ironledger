@@ -99,6 +99,8 @@ class SyncStatusResponse(BaseModel):
     state: str
     pending_count: int
     last_error_code: Optional[str] = None
+    csrf_token: Optional[str] = None
+    last_poll_timestamp: Optional[str] = None
 
 
 class SyncPollResponse(BaseModel):
@@ -108,6 +110,7 @@ class SyncPollResponse(BaseModel):
 
 @router.get("/status", response_model=SyncStatusResponse)
 def sync_status(
+    request: Request,
     db: sqlite3.Connection = Depends(get_db),
     _auth=Depends(require_operator),
 ) -> SyncStatusResponse:
@@ -121,7 +124,22 @@ def sync_status(
         state = "UNCONFIGURED"
     except Exception:
         state = "DEGRADED"
-    return SyncStatusResponse(state=state, pending_count=pending)
+
+    op_token = getattr(request.app.state, "op_token", None)
+    csrf = generate_csrf_token(op_token.strip()) if op_token and isinstance(op_token, str) and op_token.strip() else None
+
+    # Retrieve most recent source document acquisition time
+    last_row = db.execute(
+        "SELECT acquisition_time_utc FROM source_documents ORDER BY acquisition_time_utc DESC LIMIT 1"
+    ).fetchone()
+    last_poll = last_row[0] if last_row else None
+
+    return SyncStatusResponse(
+        state=state,
+        pending_count=pending,
+        csrf_token=csrf,
+        last_poll_timestamp=last_poll,
+    )
 
 
 @router.post("/poll", response_model=SyncPollResponse)

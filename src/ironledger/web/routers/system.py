@@ -68,30 +68,33 @@ def get_mutation_log(
     db: sqlite3.Connection = Depends(get_db),
 ):
     """Retrieve append-only meta-ledger mutation records."""
-    rows = db.execute(
-        "SELECT seq, mutation_id, ts_utc, operator_session, action, staged_count, "
-        "rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash "
-        "FROM mutation_events ORDER BY seq DESC LIMIT ? OFFSET ?",
-        (limit, offset),
-    ).fetchall()
-    return {
-        "mutations": [
-            {
-                "seq": r[0],
-                "mutation_id": r[1],
-                "ts_utc": r[2],
-                "operator_session": r[3],
-                "action": r[4],
-                "staged_count": r[5],
-                "rules_applied": r[6],
-                "rules_created": r[7],
-                "sha256_before": r[8],
-                "sha256_after": r[9],
-                "prev_mutation_hash": r[10],
-                "mutation_hash": r[11],
-            }
-            for r in rows
-        ]
-    }
+    try:
+        rows = db.execute(
+            "SELECT seq, mutation_id, ts_utc, operator_session, action, staged_count, "
+            "rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash "
+            "FROM mutation_events ORDER BY seq DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        return {
+            "mutations": [
+                {
+                    "seq": r[0],
+                    "mutation_id": r[1],
+                    "ts_utc": r[2],
+                    "operator_session": r[3],
+                    "action": r[4],
+                    "staged_count": r[5],
+                    "rules_applied": r[6],
+                    "rules_created": r[7],
+                    "sha256_before": r[8],
+                    "sha256_after": r[9],
+                    "prev_mutation_hash": r[10],
+                    "mutation_hash": r[11],
+                }
+                for r in rows
+            ]
+        }
+    except sqlite3.OperationalError:
+        return {"mutations": []}
 
 

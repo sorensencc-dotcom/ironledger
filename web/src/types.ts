@@ -20,6 +20,22 @@ export interface StagedTransaction {
   confidence_score: number | null;
   matched_rule_id: string | null;
   notes: string | null;
+  external_id?: string | null;
+  raw_payload_ref?: string | null;
+  provenance?: string | null;
+}
+
+export interface SyncStatus {
+  state: 'HEALTHY' | 'UNCONFIGURED' | 'DEGRADED';
+  pending_count: number;
+  last_error_code?: string | null;
+  csrf_token?: string | null;
+  last_poll_timestamp?: string | null;
+}
+
+export interface SyncPollResult {
+  inserted: number;
+  skipped: number;
 }
 
 export interface Rule {

@@ -75,6 +75,9 @@ class StagedTransactionResponse(BaseModel):
     confidence_score: Optional[float] = None
     matched_rule_id: Optional[str] = None
     notes: Optional[str] = None
+    external_id: Optional[str] = None
+    raw_payload_ref: Optional[str] = None
+    provenance: Optional[str] = None
 
     @field_validator("minor_units", mode="before")
     @classmethod

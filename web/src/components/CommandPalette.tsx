@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Play, RefreshCw, Shield, Layers, Inbox, BookOpen, HelpCircle } from 'lucide-react';
+import { Search, Play, RefreshCw, Shield, Layers, Inbox, BookOpen, HelpCircle, Landmark } from 'lucide-react';
 import type { ActiveView } from './Sidebar';
 
 interface CommandPaletteProps {
@@ -8,6 +8,7 @@ interface CommandPaletteProps {
   onSelectView: (view: ActiveView) => void;
   onSimulate: () => void;
   onCompile: () => void;
+  onSync?: () => void;
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -16,6 +17,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectView,
   onSimulate,
   onCompile,
+  onSync,
 }) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -78,6 +80,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       icon: Inbox,
       run: () => {
         onSelectView('staging');
+        onClose();
+      },
+    },
+    {
+      id: 'run-sync',
+      title: 'Trigger SimpleFIN Bank Synchronization (/api/sync/poll)',
+      category: 'Actions',
+      icon: Landmark,
+      run: () => {
+        if (onSync) onSync();
         onClose();
       },
     },

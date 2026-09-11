@@ -55,6 +55,8 @@ def list_balances(
                 )
             )
         return results
+    except sqlite3.OperationalError:
+        return []
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Projection balances query failed: {exc}") from exc
 

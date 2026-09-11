@@ -9,9 +9,25 @@ import type {
   RuleDrift,
   SafeModeStatus,
   StagedTransaction,
+  SyncPollResult,
+  SyncStatus,
 } from './types';
 
 const API_BASE = '/api';
+
+let cachedCsrfToken: string | null = null;
+
+const getHeaders = (extra: Record<string, string> = {}) => {
+  const token = localStorage.getItem('ironledger_op_token') || 'd0-localhost-token';
+  const headers: Record<string, string> = {
+    'X-IronLedger-Op-Token': token,
+    ...extra,
+  };
+  if (cachedCsrfToken) {
+    headers['X-CSRF-Token'] = cachedCsrfToken;
+  }
+  return headers;
+};
 
 export const api = {
   // Staging
@@ -170,6 +186,34 @@ export const api = {
     if (!res.ok) throw new Error(`Failed to fetch mutations: ${res.statusText}`);
     const data = await res.json();
     return data.mutations || [];
+  },
+
+  // Bank Sync (SimpleFIN)
+  async getSyncStatus(): Promise<SyncStatus> {
+    const res = await fetch(`${API_BASE}/sync/status`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch sync status: ${res.statusText}`);
+    const data: SyncStatus = await res.json();
+    if (data.csrf_token) {
+      cachedCsrfToken = data.csrf_token;
+    }
+    return data;
+  },
+
+  async pollSync(): Promise<SyncPollResult> {
+    if (!cachedCsrfToken) {
+      await api.getSyncStatus();
+    }
+    const res = await fetch(`${API_BASE}/sync/poll`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Sync poll failed: ${res.statusText}`);
+    }
+    return res.json();
   },
 };
 

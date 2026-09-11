@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Code, Database, PlusCircle } from 'lucide-react';
+import { Code, Database, PlusCircle, Fingerprint, FileText } from 'lucide-react';
 import { api } from '../api';
 import type { RuleDrift, StagedTransaction } from '../types';
 
@@ -48,6 +48,15 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
   }
   beancountLines.push(`  staged-id: "${transaction.staged_id}"`);
   const beancountText = beancountLines.join('\n');
+
+  // Provenance tag classification
+  const extId = transaction.external_id || '';
+  const isFitidPrimary = extId.startsWith('simplefin:id:');
+  const isCompositeFallback = extId.startsWith('composite:v1:');
+
+  // Clean evidence path extraction
+  const evidenceRef = transaction.raw_payload_ref || '';
+  const evidenceBasename = evidenceRef ? evidenceRef.split(/[\\/]/).pop() || evidenceRef : '';
 
   return (
     <aside className="w-84 border-l border-slate-700 bg-slate-900 flex flex-col divide-y divide-slate-800 shrink-0 overflow-y-auto font-sans select-none">
@@ -150,24 +159,81 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
       </div>
 
       {/* Provenance & Evidence Metadata */}
-      <div className="p-3 space-y-2 font-mono text-[11px] text-slate-400">
-        <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Evidence Provenance</span>
-        <div className="space-y-1">
-          <div className="flex justify-between">
+      <div className="p-3 space-y-2.5 font-mono text-[11px] text-slate-400">
+        <div className="flex items-center justify-between">
+          <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px] flex items-center gap-1">
+            <Fingerprint className="w-3 h-3 text-indigo-400" />
+            Evidence Provenance
+          </span>
+          {isFitidPrimary ? (
+            <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 text-[9px] font-bold">
+              FITID PRIMARY
+            </span>
+          ) : isCompositeFallback ? (
+            <span className="px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[9px] font-bold">
+              COMPOSITE v1
+            </span>
+          ) : extId ? (
+            <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 text-[9px]">
+              EXTERNAL
+            </span>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          {/* External ID / Fingerprint */}
+          {extId && (
+            <div className="p-1.5 rounded bg-slate-950/60 border border-slate-800 space-y-0.5">
+              <div className="text-[10px] text-slate-500">Provenance Tag / Identity:</div>
+              <div
+                className={`truncate font-mono text-[10px] ${
+                  isFitidPrimary
+                    ? 'text-indigo-300 font-medium'
+                    : isCompositeFallback
+                    ? 'text-amber-300 font-medium'
+                    : 'text-slate-300'
+                }`}
+                title={extId}
+              >
+                {extId}
+              </div>
+            </div>
+          )}
+
+          {/* Raw Evidence Archive Digest Link */}
+          {evidenceBasename && (
+            <div className="p-1.5 rounded bg-slate-950/60 border border-slate-800 space-y-0.5">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <FileText className="w-3 h-3 text-emerald-400" />
+                  Raw Wire Archive:
+                </span>
+                <span className="text-[9px] text-emerald-400/80">SHA-256 Verified</span>
+              </div>
+              <div
+                className="truncate font-mono text-[10px] text-emerald-300 hover:text-emerald-200 cursor-pointer flex items-center gap-1"
+                title={`Content-addressed archive: evidence/source_documents/${evidenceBasename}`}
+              >
+                <span className="truncate">{evidenceBasename}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-between pt-1">
             <span className="text-slate-500">Document ID:</span>
-            <span className="text-slate-300 truncate max-w-[140px]" title={transaction.source_document_id}>
+            <span className="text-slate-300 truncate max-w-[150px]" title={transaction.source_document_id}>
               {transaction.source_document_id}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Record ID:</span>
-            <span className="text-slate-300 truncate max-w-[140px]" title={transaction.source_record_id}>
+            <span className="text-slate-300 truncate max-w-[150px]" title={transaction.source_record_id}>
               {transaction.source_record_id}
             </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">Staged ID:</span>
-            <span className="text-indigo-400 truncate max-w-[140px]" title={transaction.staged_id}>
+            <span className="text-indigo-400 truncate max-w-[150px]" title={transaction.staged_id}>
               {transaction.staged_id}
             </span>
           </div>

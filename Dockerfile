@@ -32,7 +32,9 @@ RUN pip install --no-cache-dir \
     fastapi==0.115.0 \
     uvicorn==0.52.4 \
     ofxtools==1.1.1 \
-    beancount==3.2.3
+    beancount==3.2.3 \
+    keyring \
+    psutil
 
 # Copy application source
 COPY src/ /app/src/
