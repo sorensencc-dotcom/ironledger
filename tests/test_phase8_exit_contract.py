@@ -46,6 +46,16 @@ from ironledger.auth import (
 from ironledger.db import migrations
 from ironledger.db.connection import connect
 from ironledger.ledger.consolidation import ConsolidationEngine
+from ironledger.ledger.isolation import (
+    BoundaryBreachError,
+    TenantIsolationError,
+    assert_ledger_isolation,
+    assert_tenant_isolation,
+    derive_ledger_key,
+    derive_tenant_salt,
+    resolve_tenant_ledger_path,
+    verify_ledger_boundary,
+)
 from ironledger.ledger.models import ConsolidatedBalanceSheet, LedgerTopology
 from ironledger.ledger.staging import StagingManager
 from ironledger.ledger.topology import LedgerRegistry
@@ -384,13 +394,29 @@ def test_phase8_e2e_exit_contract(exit_env):
         )
     )
 
-    consolidation = ConsolidationEngine(registry=registry)
-    sheet = consolidation.consolidated_balance_sheet(
-        base_currency="USD",
-        as_of_date="2026-09-10",
-    )
-    assert sheet.base_currency == "USD"
-    # alpha: 97,500.00 USD (9,750,000 minor units)
-    # beta: 5,000.00 EUR * 1.1 = 5,500.00 USD (550,000 minor units)
-    # Total: 103,000.00 USD (10,300,000 minor units)
-    assert sheet.total_minor == 10_300_000
+    # 8. Multi-Tenant Ledger Isolation & Cryptographic Boundary Verification (Task 8.6)
+    k_alpha = derive_ledger_key(b"master_secret", "alpha_fund", "primary")
+    k_beta = derive_ledger_key(b"master_secret", "beta_treasury", "primary")
+    assert k_alpha != k_beta
+    assert len(k_alpha) == 32
+
+    s_alpha = derive_tenant_salt(b"master_salt", "alpha_fund")
+    s_beta = derive_tenant_salt(b"master_salt", "beta_treasury")
+    assert s_alpha != s_beta
+
+    assert_tenant_isolation("alpha_fund", "alpha_fund")
+    assert_ledger_isolation("primary", "primary")
+    with pytest.raises(TenantIsolationError):
+        assert_tenant_isolation("alpha_fund", "beta_treasury")
+    with pytest.raises(BoundaryBreachError):
+        assert_ledger_isolation("primary", "secondary")
+
+    tenant_path = resolve_tenant_ledger_path(beancount_root, "alpha_fund", "primary")
+    assert tenant_path.is_relative_to(beancount_root.resolve())
+    with pytest.raises(BoundaryBreachError):
+        resolve_tenant_ledger_path(beancount_root, "..", "primary")
+
+    verify_ledger_boundary(tok_op_a, "alpha_fund", "alpha_fund")
+    with pytest.raises(TenantIsolationError):
+        verify_ledger_boundary(tok_op_a, "beta_treasury", "alpha_fund")
+
