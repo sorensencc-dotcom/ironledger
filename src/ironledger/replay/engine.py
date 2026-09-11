@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from ironledger.db import migrations
 from ironledger.db.connection import connect
-from ironledger.ledger.topology import validate_and_resolve_ledger_root
+from ironledger.ledger.topology import LedgerRegistry, validate_and_resolve_ledger_root
 from ironledger.manifests import (
     GENESIS_MANIFEST_HASH,
     compute_directory_manifest_hash,
@@ -102,212 +102,218 @@ def apply_mutation_and_append(
     current_dir = tenant_dir / "current"
     current_dir.mkdir(parents=True, exist_ok=True)
 
-    sha256_before = compute_ledger_manifest_hash(beancount_root, ledger_id)
-    projection_hash_before = compute_projection_hash(conn, ledger_id)
+    registry = LedgerRegistry(conn, Path(beancount_root))
+    with registry.acquire_compile_lock(ledger_id):
+        sha256_before = compute_ledger_manifest_hash(beancount_root, ledger_id)
+        projection_hash_before = compute_projection_hash(conn, ledger_id)
 
-    staging_dir: Path | None = None
-    if event_type in ("COMPILE_LEDGER", "PRICE_DIRECTIVE"):
-        staging_dir = tenant_dir / f".staging_{uuid4().hex}"
-        staging_dir.mkdir(parents=True, exist_ok=True)
-        if current_dir.exists():
-            for f in current_dir.glob("*.beancount"):
-                if f.is_file():
-                    shutil.copy2(f, staging_dir / f.name)
+        staging_dir: Path | None = None
+        if event_type in ("COMPILE_LEDGER", "PRICE_DIRECTIVE"):
+            staging_dir = tenant_dir / f".staging_{uuid4().hex}"
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            if current_dir.exists():
+                for f in current_dir.glob("*.beancount"):
+                    if f.is_file():
+                        shutil.copy2(f, staging_dir / f.name)
 
-        if event_type == "COMPILE_LEDGER":
-            render_compiled_ledger_manifest(staging_dir, ledger_id, payload)
-        elif event_type == "PRICE_DIRECTIVE":
-            render_price_directive_manifest(staging_dir, ledger_id, payload)
+            if event_type == "COMPILE_LEDGER":
+                render_compiled_ledger_manifest(staging_dir, ledger_id, payload)
+            elif event_type == "PRICE_DIRECTIVE":
+                render_price_directive_manifest(staging_dir, ledger_id, payload)
 
-        sha256_after = compute_directory_manifest_hash(staging_dir)
-    else:
-        sha256_after = sha256_before
-
-    # Concurrency boundary: acquire transaction lock for monotonic sequence allocation
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        cur = conn.execute("SELECT seq, mutation_hash, ts_utc FROM mutation_events ORDER BY seq DESC LIMIT 1")
-        last_event = cur.fetchone()
-        if last_event is None:
-            next_seq = 1
-            prev_mutation_hash = "0" * 64
-            last_ts = "1970-01-01T00:00:00Z"
+            sha256_after = compute_directory_manifest_hash(staging_dir)
         else:
-            next_seq = last_event[0] + 1
-            prev_mutation_hash = last_event[1]
-            last_ts = last_event[2]
+            sha256_after = sha256_before
 
-        now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        if "created_at_utc" in payload and payload["created_at_utc"]:
-            candidate_ts = payload["created_at_utc"]
-        elif "decided_at_utc" in payload and payload["decided_at_utc"]:
-            candidate_ts = payload["decided_at_utc"]
-        else:
-            candidate_ts = now_ts
+        # Concurrency boundary: acquire transaction lock for monotonic sequence allocation
+        in_tx = conn.in_transaction
+        if not in_tx:
+            conn.execute("BEGIN IMMEDIATE")
+        try:
+            cur = conn.execute("SELECT seq, mutation_hash, ts_utc FROM mutation_events ORDER BY seq DESC LIMIT 1")
+            last_event = cur.fetchone()
+            if last_event is None:
+                next_seq = 1
+                prev_mutation_hash = "0" * 64
+                last_ts = "1970-01-01T00:00:00Z"
+            else:
+                next_seq = last_event[0] + 1
+                prev_mutation_hash = last_event[1]
+                last_ts = last_event[2]
 
-        if not candidate_ts.endswith("Z"):
-            candidate_ts += "Z"
+            now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            if "created_at_utc" in payload and payload["created_at_utc"]:
+                candidate_ts = payload["created_at_utc"]
+            elif "decided_at_utc" in payload and payload["decided_at_utc"]:
+                candidate_ts = payload["decided_at_utc"]
+            else:
+                candidate_ts = now_ts
 
-        if candidate_ts <= last_ts:
-            try:
-                clean_ts = last_ts.rstrip("Z")
-                if "." in clean_ts:
-                    dt = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc)
-                    dt = dt + datetime.timedelta(microseconds=1000)
-                    ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-                else:
-                    dt = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc)
-                    dt = dt + datetime.timedelta(seconds=1)
-                    ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-            except Exception:
-                ts_utc = last_ts + "0"
-        else:
-            ts_utc = candidate_ts
+            if not candidate_ts.endswith("Z"):
+                candidate_ts += "Z"
 
-        mutation_id = payload.get("mutation_id") or f"mut_{uuid4().hex[:12]}"
+            if candidate_ts <= last_ts:
+                try:
+                    clean_ts = last_ts.rstrip("Z")
+                    if "." in clean_ts:
+                        dt = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc)
+                        dt = dt + datetime.timedelta(microseconds=1000)
+                        ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    else:
+                        dt = datetime.datetime.fromisoformat(clean_ts).replace(tzinfo=datetime.timezone.utc)
+                        dt = dt + datetime.timedelta(seconds=1)
+                        ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    ts_utc = last_ts + "0"
+            else:
+                ts_utc = candidate_ts
 
-        dispatch_event_mutation(conn, ledger_id, event_type, payload)
-        projection_hash_after = compute_projection_hash(conn, ledger_id)
+            mutation_id = payload.get("mutation_id") or f"mut_{uuid4().hex[:12]}"
 
-        staged_count = 1 if event_type == "STAGE_TRANSACTION" else 0
+            dispatch_event_mutation(conn, ledger_id, event_type, payload)
+            projection_hash_after = compute_projection_hash(conn, ledger_id)
 
-        raw_mut = f"{next_seq}:{mutation_id}:{prev_mutation_hash}:{sha256_before}:{sha256_after}:{rules_applied}:{rules_created}:{payload_sha256}"
-        mutation_hash = hashlib.sha256(raw_mut.encode("utf-8")).hexdigest()
+            staged_count = 1 if event_type == "STAGE_TRANSACTION" else 0
 
-        sig_digest = compute_anchor_signature_digest(
+            raw_mut = f"{next_seq}:{mutation_id}:{prev_mutation_hash}:{sha256_before}:{sha256_after}:{rules_applied}:{rules_created}:{payload_sha256}"
+            mutation_hash = hashlib.sha256(raw_mut.encode("utf-8")).hexdigest()
+
+            sig_digest = compute_anchor_signature_digest(
+                seq=next_seq,
+                mutation_id=mutation_id,
+                ledger_id=ledger_id,
+                ts_utc=ts_utc,
+                mutation_hash=mutation_hash,
+                prev_mutation_hash=prev_mutation_hash,
+                manifest_hash=sha256_after,
+                projection_hash=projection_hash_after,
+            )
+            authority_signature = sign_authority_payload(sig_digest, authority_key)
+
+            journal_path = _get_journal_path(tenant_dir)
+            journal_data = {
+                "state": "PRE_COMMIT",
+                "seq": next_seq,
+                "mutation_id": mutation_id,
+                "ledger_id": ledger_id,
+                "ts_utc": ts_utc,
+                "staging_dir": str(staging_dir) if staging_dir else None,
+                "sha256_before": sha256_before,
+                "sha256_after": sha256_after,
+                "projection_hash_before": projection_hash_before,
+                "projection_hash_after": projection_hash_after,
+                "prev_mutation_hash": prev_mutation_hash,
+                "mutation_hash": mutation_hash,
+                "authority_signature": authority_signature,
+                "payload_sha256": payload_sha256,
+            }
+            journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+
+            conn.execute(
+                """
+                INSERT INTO mutation_events (
+                    seq, mutation_id, ledger_id, ts_utc, operator_session, action,
+                    staged_count, rules_applied, rules_created, sha256_before, sha256_after,
+                    prev_mutation_hash, mutation_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    next_seq, mutation_id, ledger_id, ts_utc, operator_session, action,
+                    staged_count, rules_applied, rules_created, sha256_before, sha256_after,
+                    prev_mutation_hash, mutation_hash,
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO mutation_payloads (
+                    seq, mutation_id, ledger_id, payload_schema_version, event_type,
+                    payload_json, payload_sha256, projection_hash_before, projection_hash_after,
+                    authority_signature, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    next_seq, mutation_id, ledger_id, payload_schema_version, event_type,
+                    payload_json, payload_sha256, projection_hash_before, projection_hash_after,
+                    authority_signature, ts_utc,
+                ),
+            )
+            if not in_tx:
+                conn.commit()
+        except Exception:
+            if not in_tx:
+                conn.rollback()
+            raise
+
+        journal_data["state"] = "COMMITTED_PRE_SWAP"
+        journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+
+        if staging_dir is not None and staging_dir.exists():
+            backup_dir = tenant_dir / f".backup_{uuid4().hex}"
+            if current_dir.exists():
+                os.replace(current_dir, backup_dir)
+            os.replace(staging_dir, current_dir)
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+
+        anchor = TrustAnchor(
+            anchor_version=1,
+            ledger_id=ledger_id,
             seq=next_seq,
             mutation_id=mutation_id,
-            ledger_id=ledger_id,
-            ts_utc=ts_utc,
             mutation_hash=mutation_hash,
             prev_mutation_hash=prev_mutation_hash,
             manifest_hash=sha256_after,
             projection_hash=projection_hash_after,
+            authority_signature=authority_signature,
+            anchored_at_utc=ts_utc,
         )
-        authority_signature = sign_authority_payload(sig_digest, authority_key)
+        write_trust_anchor(beancount_root, anchor)
 
-        journal_path = _get_journal_path(tenant_dir)
-        journal_data = {
-            "state": "PRE_COMMIT",
+        journal_data["state"] = "SWAPPED"
+        journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
+
+        live_manifest = compute_ledger_manifest_hash(beancount_root, ledger_id)
+        if live_manifest != sha256_after:
+            raise ManifestPromotionError(
+                f"Live manifest hash mismatch after promotion: expected {sha256_after}, got {live_manifest}"
+            )
+        live_proj = compute_projection_hash(conn, ledger_id)
+        if live_proj != projection_hash_after:
+            raise ManifestPromotionError(
+                f"Live projection hash mismatch after promotion: expected {projection_hash_after}, got {live_proj}"
+            )
+
+        journal_path.unlink(missing_ok=True)
+
+        event_record = {
             "seq": next_seq,
             "mutation_id": mutation_id,
             "ledger_id": ledger_id,
             "ts_utc": ts_utc,
-            "staging_dir": str(staging_dir) if staging_dir else None,
+            "operator_session": operator_session,
+            "action": action,
+            "staged_count": staged_count,
+            "rules_applied": rules_applied,
+            "rules_created": rules_created,
             "sha256_before": sha256_before,
             "sha256_after": sha256_after,
-            "projection_hash_before": projection_hash_before,
-            "projection_hash_after": projection_hash_after,
             "prev_mutation_hash": prev_mutation_hash,
             "mutation_hash": mutation_hash,
-            "authority_signature": authority_signature,
-            "payload_sha256": payload_sha256,
         }
-        journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
-
-        conn.execute(
-            """
-            INSERT INTO mutation_events (
-                seq, mutation_id, ledger_id, ts_utc, operator_session, action,
-                staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-                prev_mutation_hash, mutation_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                next_seq, mutation_id, ledger_id, ts_utc, operator_session, action,
-                staged_count, rules_applied, rules_created, sha256_before, sha256_after,
-                prev_mutation_hash, mutation_hash,
-            ),
+        mutation_payload = MutationPayload(
+            seq=next_seq,
+            mutation_id=mutation_id,
+            ledger_id=ledger_id,
+            payload_schema_version=payload_schema_version,
+            event_type=event_type,
+            payload_json=payload_json,
+            payload_sha256=payload_sha256,
+            projection_hash_before=projection_hash_before,
+            projection_hash_after=projection_hash_after,
+            authority_signature=authority_signature,
+            created_at=ts_utc,
         )
-        conn.execute(
-            """
-            INSERT INTO mutation_payloads (
-                seq, mutation_id, ledger_id, payload_schema_version, event_type,
-                payload_json, payload_sha256, projection_hash_before, projection_hash_after,
-                authority_signature, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                next_seq, mutation_id, ledger_id, payload_schema_version, event_type,
-                payload_json, payload_sha256, projection_hash_before, projection_hash_after,
-                authority_signature, ts_utc,
-            ),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-
-    journal_data["state"] = "COMMITTED_PRE_SWAP"
-    journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
-
-    if staging_dir is not None and staging_dir.exists():
-        backup_dir = tenant_dir / f".backup_{uuid4().hex}"
-        if current_dir.exists():
-            os.replace(current_dir, backup_dir)
-        os.replace(staging_dir, current_dir)
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir, ignore_errors=True)
-
-    anchor = TrustAnchor(
-        anchor_version=1,
-        ledger_id=ledger_id,
-        seq=next_seq,
-        mutation_id=mutation_id,
-        mutation_hash=mutation_hash,
-        prev_mutation_hash=prev_mutation_hash,
-        manifest_hash=sha256_after,
-        projection_hash=projection_hash_after,
-        authority_signature=authority_signature,
-        anchored_at_utc=ts_utc,
-    )
-    write_trust_anchor(beancount_root, anchor)
-
-    journal_data["state"] = "SWAPPED"
-    journal_path.write_text(json.dumps(journal_data, indent=2), encoding="utf-8")
-
-    live_manifest = compute_ledger_manifest_hash(beancount_root, ledger_id)
-    if live_manifest != sha256_after:
-        raise ManifestPromotionError(
-            f"Live manifest hash mismatch after promotion: expected {sha256_after}, got {live_manifest}"
-        )
-    live_proj = compute_projection_hash(conn, ledger_id)
-    if live_proj != projection_hash_after:
-        raise ManifestPromotionError(
-            f"Live projection hash mismatch after promotion: expected {projection_hash_after}, got {live_proj}"
-        )
-
-    journal_path.unlink(missing_ok=True)
-
-    event_record = {
-        "seq": next_seq,
-        "mutation_id": mutation_id,
-        "ledger_id": ledger_id,
-        "ts_utc": ts_utc,
-        "operator_session": operator_session,
-        "action": action,
-        "staged_count": staged_count,
-        "rules_applied": rules_applied,
-        "rules_created": rules_created,
-        "sha256_before": sha256_before,
-        "sha256_after": sha256_after,
-        "prev_mutation_hash": prev_mutation_hash,
-        "mutation_hash": mutation_hash,
-    }
-    mutation_payload = MutationPayload(
-        seq=next_seq,
-        mutation_id=mutation_id,
-        ledger_id=ledger_id,
-        payload_schema_version=payload_schema_version,
-        event_type=event_type,
-        payload_json=payload_json,
-        payload_sha256=payload_sha256,
-        projection_hash_before=projection_hash_before,
-        projection_hash_after=projection_hash_after,
-        authority_signature=authority_signature,
-        created_at=ts_utc,
-    )
-    return event_record, mutation_payload
+        return event_record, mutation_payload
 
 
 def reconcile_manifest_on_startup(
@@ -395,7 +401,7 @@ def reconcile_manifest_on_startup(
         cur_tip = conn.execute(
             """
             SELECT e.seq, e.mutation_id, e.mutation_hash, e.prev_mutation_hash, e.sha256_after, e.ts_utc,
-                   p.projection_hash_after
+                   p.projection_hash_after, p.authority_signature
             FROM mutation_events e
             JOIN mutation_payloads p ON e.seq = p.seq
             WHERE e.ledger_id = ?
@@ -405,7 +411,7 @@ def reconcile_manifest_on_startup(
         )
         tip_row = cur_tip.fetchone()
         if tip_row is not None:
-            tip_seq, tip_mut_id, tip_mut_hash, tip_prev_hash, tip_manifest, tip_ts, tip_proj = tip_row
+            tip_seq, tip_mut_id, tip_mut_hash, tip_prev_hash, tip_manifest, tip_ts, tip_proj, tip_auth_sig = tip_row
             anchor_path = get_anchor_path(beancount_root, ledger_id)
             if not anchor_path.exists():
                 raise MissingAnchorCommitmentError(
@@ -421,6 +427,7 @@ def reconcile_manifest_on_startup(
                 or anchor.manifest_hash != tip_manifest
                 or anchor.projection_hash != tip_proj
                 or anchor.anchored_at_utc != tip_ts
+                or (tip_auth_sig and anchor.authority_signature != tip_auth_sig)
             ):
                 raise ReconciliationFailedError(
                     f"Trust anchor tip does not match DB tip for ledger '{ledger_id}'"
