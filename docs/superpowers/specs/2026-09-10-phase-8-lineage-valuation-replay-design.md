@@ -20,12 +20,12 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 
 ### Upstream Invariants Inherited & Enforced
 
-1. **Exact Rational Integer Arithmetic:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift. Price directive formatting uses pure integer division and modulus without floating-point approximations.
+1. **Exact Rational Integer Arithmetic:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift. Price directive formatting uses pure integer arithmetic with exact Banker's half-even rounding (no float or lossy division).
 2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration, strict self-edge rejection (`source != target`), and unbounded insertion-time cycle detection.
-3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence and Merkle chain, then replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database and ephemeral filesystem manifest to reconstruct exact historical state snapshots at any sequence number without mutating live files.
-4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries, composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema boundary with mandatory `PRAGMA foreign_keys = ON;`.
-5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by static AST scanners forbidding `import beancount`, `from beancount import ...`, `__import__("beancount")`, `importlib.import_module("beancount")`, and dynamic `getattr` imports (reading package version metadata via `importlib.metadata.version("beancount")` is permitted).
-6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement across CLI, web, and programmatic interfaces.
+3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) verifies the global contiguous sequence and Merkle chain from genesis anchors, then replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database and ephemeral filesystem manifest to reconstruct exact historical state snapshots at any sequence number without mutating live files.
+4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries, composite primary keys (`PRIMARY KEY(ledger_id, entity_id)`), composite foreign keys (`FOREIGN KEY(ledger_id, parent_id) REFERENCES parent_table(ledger_id, parent_id)`), tenant-scoped lockfiles (`.ironledger/.compile.<ledger_id>.lock`), and tenant-scoped uniqueness constraints enforce strict cross-tenant isolation at the relational schema and filesystem boundaries with mandatory `PRAGMA foreign_keys = ON;`.
+5. **Authoritative Plaintext Accounting & Zero Runtime `import beancount`:** Plaintext Beancount files remain the ultimate accounting authority. All Beancount commodity and price directives are generated via deterministic string template emission, guarded by symbol-tracking static AST scanners forbidding `import beancount`, `from beancount import ...`, `__import__("beancount")`, `importlib.import_module("beancount")`, and dynamic `getattr` module loaders (reading package version metadata via `importlib.metadata.version("beancount")` is permitted).
+6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement and issuance-time role ceiling validation across CLI, web, and programmatic interfaces.
 
 ---
 
@@ -410,8 +410,8 @@ END;
   1. Direct lookup: `WHERE ledger_id = :l AND base_currency = :b AND quote_currency = :q AND directive_date <= :d ORDER BY directive_date DESC, id DESC LIMIT 1`.
   2. Inverse lookup fallback: `WHERE ledger_id = :l AND base_currency = :q AND quote_currency = :b AND directive_date <= :d ORDER BY directive_date DESC, id DESC LIMIT 1`, inverted as `(rate_denominator, rate_numerator)`.
   3. Staleness boundary: If `(requested_date - directive_date).days > max_staleness_days`, raise `StalePriceDirectiveError`. If no directive exists, raise `MissingPriceDirectiveError`.
-* **Zero-Import Plaintext Directives (Pure Integer Formatting Algorithm):**
-  Template-based emission uses pure integer arithmetic with half-even rounding (zero float or non-integer division):
+* **Zero-Import Plaintext Directives (Pure Integer Formatting with Banker's Rounding):**
+  Template-based emission uses pure integer arithmetic with Banker's (half-even) rounding (zero floating-point approximation):
   ```python
   def format_beancount_price_directive(
       directive_date: str,
@@ -424,17 +424,26 @@ END;
       if rate_denominator <= 0 or rate_numerator <= 0:
           raise ValueError("Rate numerator and denominator must be positive integers")
       
-      # Pure integer division and fractional scale calculation with half-up rounding
+      # Pure integer division and Banker's (half-even) tie-breaking
       integer_part = rate_numerator // rate_denominator
       remainder = rate_numerator % rate_denominator
       multiplier = 10 ** precision_scale
-      scaled_fraction = (remainder * multiplier * 2 + rate_denominator) // (rate_denominator * 2)
       
-      if scaled_fraction >= multiplier:
+      quot, subrem = divmod(remainder * multiplier, rate_denominator)
+      doubled_subrem = subrem * 2
+      
+      if doubled_subrem > rate_denominator:
+          quot += 1
+      elif doubled_subrem == rate_denominator:
+          # Exact tie: round to nearest even integer
+          if quot % 2 == 1:
+              quot += 1
+              
+      if quot >= multiplier:
           integer_part += 1
-          scaled_fraction -= multiplier
+          quot -= multiplier
           
-      formatted_rate = f"{integer_part}.{scaled_fraction:0{precision_scale}d}"
+      formatted_rate = f"{integer_part}.{quot:0{precision_scale}d}"
       return f"{directive_date} price {base_currency} {formatted_rate} {quote_currency}"
   ```
 
@@ -464,7 +473,7 @@ END;
   2. `projection_hash` (SQLite table state hash): Recorded on `mutation_payloads`. Deterministic SHA-256 computed by `compute_projection_hash(conn, ledger_id)`.
 * **Genesis State Anchors:**
   - `GENESIS_MANIFEST_HASH`: Canonical SHA-256 of empty ledger directory structure (all files empty or absent, computed by `compute_ledger_manifest_hash` on clean workspace = `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
-  - `GENESIS_PROJECTION_HASH`: Deterministic SHA-256 computed over schema migrations `0001` through `0011` with zero data rows across the static projection tables.
+  - `GENESIS_PROJECTION_HASH`: Deterministic SHA-256 computed over schema migrations `0001` through `0011` with zero data rows across the static projection tables. Canonical JSON value: `[["staged_transactions",["ledger_id","staged_transaction_id","source_record_id","status","proposed_date","payee","narration","reject_reason"],[]],["staged_postings",["ledger_id","staged_posting_id","staged_transaction_id","source_record_id","role","posting_index","account","minor_units","currency","minor_unit_scale"],[]],["categorization_rules",["ledger_id","rule_id","match_type","pattern","importing_account","target_account","priority","active"],[]],["price_history",["ledger_id","id","directive_date","base_currency","quote_currency","rate_numerator","rate_denominator","precision_scale","source"],[]],["compile_runs",["ledger_id","compile_run_id","beancount_version","compiler_version","input_hash","intended_output_hash","actual_output_hash","status"],[]]]`.
 * **Canonical `projection_hash` Algorithm:**
   ```python
   STATIC_PROJECTION_COLUMNS: dict[str, list[str]] = {
@@ -583,6 +592,33 @@ END;
     - `priority`: integer (required)
     - `active`: integer `0` or `1` (required; set to `0` on `DELETE`)
 
+* **Deterministic Plaintext Manifest Rendering Contracts:**
+  Only `COMPILE_LEDGER` and `PRICE_DIRECTIVE` perform filesystem mutations:
+  ```python
+  def render_compiled_ledger_manifest(staging_dir: Path, ledger_id: str, payload: dict[str, Any], staged_transactions: list[Any]) -> None:
+      """Render deterministic ledger.beancount manifest into staging directory."""
+      ledger_file = staging_dir / f"{ledger_id}.beancount"
+      lines = [f";; IronLedger Compiled Ledger: {ledger_id}", f";; Compile Run: {payload['compile_run_id']}", ""]
+      for tx in staged_transactions:
+          lines.append(f"{tx.proposed_date} * \"{tx.payee}\" \"{tx.narration}\"")
+          for p in tx.postings:
+              dec_val = p.minor_units / (10 ** p.minor_unit_scale)
+              lines.append(f"  {p.account}  {dec_val:.{p.minor_unit_scale}f} {p.currency}")
+          lines.append("")
+      ledger_file.write_text("\n".join(lines), encoding="utf-8")
+
+  def render_price_directive_manifest(staging_dir: Path, ledger_id: str, payload: dict[str, Any]) -> None:
+      """Append deterministic price directive into prices.beancount in staging directory."""
+      prices_file = staging_dir / "prices.beancount"
+      directive_line = format_beancount_price_directive(
+          payload["directive_date"], payload["base_currency"], payload["quote_currency"],
+          payload["rate_numerator"], payload["rate_denominator"], payload["precision_scale"]
+      )
+      current_content = prices_file.read_text(encoding="utf-8") if prices_file.exists() else ""
+      new_content = current_content + directive_line + "\n"
+      prices_file.write_text(new_content, encoding="utf-8")
+  ```
+
 * **Transactional Mutation Dispatch & Authoritative Outbox Commit Protocol:**
   ```python
   def apply_mutation_and_append(
@@ -596,7 +632,6 @@ END;
       payload_schema_version: int = 1,
       rules_applied: int = 0,
       rules_created: int = 0,
-      manifest_staging_fn: Callable[[Path], None] | None = None,
   ) -> tuple[MutationEvent, MutationPayload]:
       """Apply domain mutation and append mutation event + payload in a deterministic 2-phase commit."""
       # 1. Validate payload schema and tenant consistency
@@ -606,14 +641,22 @@ END;
               f"Payload ledger_id '{payload.get('ledger_id')}' does not match target ledger_id '{ledger_id}'"
           )
       
-      # 2. Stage filesystem mutations to isolated staging directory
+      # 2. Stage filesystem mutations to isolated staging directory if applicable
       temp_dir: Path | None = None
       sha256_before = compute_ledger_manifest_hash(beancount_root, ledger_id)
-      if manifest_staging_fn:
+      
+      if event_type in ("COMPILE_LEDGER", "PRICE_DIRECTIVE"):
           temp_dir = beancount_root / f".staging_{uuid4().hex}"
           temp_dir.mkdir(parents=True, exist_ok=True)
-          manifest_staging_fn(temp_dir)
-          # Flush and sync staging files
+          # Clone current manifest into staging directory
+          for f in beancount_root.glob("*.beancount"):
+              shutil.copy2(f, temp_dir / f.name)
+          if event_type == "COMPILE_LEDGER":
+              staged_txs = fetch_staged_transactions_for_compilation(conn, ledger_id, payload["compiled_tx_ids"])
+              render_compiled_ledger_manifest(temp_dir, ledger_id, payload, staged_txs)
+          elif event_type == "PRICE_DIRECTIVE":
+              render_price_directive_manifest(temp_dir, ledger_id, payload)
+          # Flush and fsync
           for f in temp_dir.rglob("*.beancount"):
               with open(f, "a+b") as fp:
                   fp.flush()
@@ -652,7 +695,6 @@ END;
           now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
           ts_utc = max(now_ts, last_ts)
           if ts_utc == last_ts:
-              # Advance microsecond to break tie
               dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00")) + timedelta(microseconds=1)
               ts_utc = dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
           
@@ -708,13 +750,12 @@ END;
               shutil.rmtree(temp_dir, ignore_errors=True)
           raise
       
-      # 11. Promote staged files to live directory with atomic rename & fsync
+      # 11. Promote staged files to live directory with complete state replacement
       if temp_dir and temp_dir.exists():
           try:
               promote_staged_manifest(temp_dir, beancount_root, ledger_id)
               shutil.rmtree(temp_dir, ignore_errors=True)
           except Exception as promo_err:
-              # Database is authoritative; reconciliation routine will complete promotion on restart
               raise ManifestPromotionError(f"Filesystem promotion failed for mutation {mutation_id}: {promo_err}") from promo_err
       
       return (
@@ -724,13 +765,11 @@ END;
       )
   ```
 
-* **Atomic Manifest Promotion Contract (`promote_staged_manifest`):**
-  1. For every generated `.beancount` file in `temp_dir`:
-     - Determine relative path to `temp_dir` and target path under `beancount_root`.
-     - Ensure parent directory exists under `beancount_root`.
-     - Execute `os.replace(src_file, target_file)` (atomic replacement on POSIX and NTFS).
-     - Flush and sync parent directory metadata.
-  2. Verify that live filesystem manifest hash equals `sha256_after`.
+* **Complete State Manifest Promotion Contract (`promote_staged_manifest`):**
+  1. For every `.beancount` file in `beancount_root` that is absent from `temp_dir`: unlink file (complete state replacement).
+  2. For every `.beancount` file in `temp_dir`: execute `os.replace(src, dst)` over target in `beancount_root`.
+  3. Flush and fsync directory metadata.
+  4. Verify that live manifest `compute_ledger_manifest_hash(beancount_root, ledger_id) == sha256_after`.
 
 * **Startup Manifest Reconciliation Protocol (`reconcile_manifest_on_startup`):**
   - Invoked during database session startup (`DatabaseSessionManager.get_connection`):
@@ -742,13 +781,14 @@ END;
        - Let $M_{\text{latest}}$ be the last event in sequence.
        - If $H_{\text{live}} == M_{\text{latest}}.\text{sha256\_after}$, filesystem is synchronized.
        - If $H_{\text{live}} != M_{\text{latest}}.\text{sha256\_after}$:
-         - Search the historical sequence for an event $M_k$ where $M_k.\text{sha256\_before} == H_{\text{live}}$.
-         - If found, sequentially re-emit plain text manifests from the payloads of $M_k \dots M_{\text{latest}}$, verifying that each step advances the hash to the recorded `sha256_after`.
+         - Search historical sequence for event $M_k$ where $M_k.\text{sha256\_before} == H_{\text{live}}$.
+         - If found, sequentially re-emit plain text manifests from the payloads of $M_k \dots M_{\text{latest}}$, verifying each step advances the hash to the recorded `sha256_after`.
          - If $H_{\text{live}}$ does not match any historical point in the chain, raise `ManifestDesyncError` (unauthorized out-of-band edit or corruption).
 
 * **Deterministic Replay Engine Algorithm:**
   1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
-  2. **Phase 1: Global Sequence & Merkle Chain Integrity Verification (Global $1 \dots \text{target\_seq}$):**
+  2. Query live database max sequence $S_{\text{max}} = \text{SELECT MAX(seq) FROM mutation\_events}$. If `target_sequence >` $S_{\text{max}}$, raise `ReplayBoundaryError`.
+  3. **Phase 1: Global Sequence & Merkle Chain Integrity Verification (Global $1 \dots \text{target\_seq}$):**
      - Query all `mutation_events` and `mutation_payloads` from `seq = 1` to `target_seq` ordered by `seq ASC`.
      - Assert `seq` sequence is strictly contiguous $1, 2, \dots, N$ with zero gaps.
      - Assert timestamps `ts_utc` are strictly non-decreasing monotonic.
@@ -756,7 +796,7 @@ END;
        - Validate `payload_sha256 == sha256(payload_json)`.
        - Recompute canonical `mutation_hash` from `canonical_dict` and assert equality with `event.mutation_hash`.
        - Assert `event.prev_mutation_hash` matches prior event's `mutation_hash` (or $0^{64}$ for `seq = 1`).
-  3. **Phase 2: Tenant-Scoped Dual-Fingerprint Replay (Projection + Filesystem):**
+  4. **Phase 2: Tenant-Scoped Dual-Fingerprint Replay (Projection + Filesystem):**
      - Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
      - Create an ephemeral temporary directory for Beancount plaintext manifest playback.
      - Assert initial in-memory `compute_projection_hash(mem_conn, target_ledger_id) == GENESIS_PROJECTION_HASH`.
@@ -767,11 +807,11 @@ END;
          - Execute `dispatch_event_mutation(mem_conn, target_ledger_id, payload.event_type, json.loads(payload.payload_json))`.
          - Validate resulting in-memory `compute_projection_hash(mem_conn, target_ledger_id) == payload.projection_hash_after`.
          - If event has filesystem emissions (`COMPILE_LEDGER` or `PRICE_DIRECTIVE`):
-           - Render Beancount plaintext directives into ephemeral directory.
+           - Render Beancount plaintext directives into ephemeral directory using `render_compiled_ledger_manifest` / `render_price_directive_manifest`.
            - Validate resulting ephemeral manifest hash equals `event.sha256_after`.
        - If `event.ledger_id != target_ledger_id`:
          - Skip projection mutation (tenant isolation).
-  4. Return verified in-memory projection database and point-in-time trial balance.
+  5. Return verified in-memory projection database and point-in-time trial balance.
 
 ### Task 8.5: Scoped Capability Tokens & RBAC Policy Enforcement
 * **Location:** `src/ironledger/auth/capabilities.py`, `src/ironledger/auth/policy.py`
@@ -795,8 +835,9 @@ END;
   | `POST /api/v1/compile/{id}/execute` | `compile:execute` | `COMPILER` | Path parameter `{id}` |
   | `POST /api/v1/auth/tokens` | `*` (Admin) | `ADMIN` | Global or body `ledger_id` |
   | `POST /api/v1/ledgers` | `*` (Admin) | `ADMIN` | Global admin scope required |
-* **Token Security & Tenant Validation:**
+* **Token Security, Issuance Validation & Tenant Policy:**
   - Bearer tokens generated via `secrets.token_hex(32)` (`il_cap_<hex64>`).
+  - `create_capability_token(conn, role, ledger_id, requested_scopes)`: validates that `requested_scopes` are a subset of `ROLE_CEILINGS[role]` before inserting row into `capability_tokens`.
   - `PolicyEnforcer.authorize(token, required_scope, target_ledger_id)`:
     1. Look up token by SHA-256 hash.
     2. Fail closed if `revoked_at` is NOT NULL.
@@ -808,11 +849,12 @@ END;
 
 ### Task 8.6: Acceptance Regression Suite & Phase 8 Exit Evidence
 * **Location:** `tests/test_valuation.py`, `tests/test_lineage.py`, `tests/test_multi_ledger.py`, `tests/test_replay.py`, `tests/test_capabilities.py`, `tests/test_phase8_exit_contract.py`
-* **Static Analysis Import Guard:** AST scanner in `tests/test_phase8_exit_contract.py` implements a complete AST visitor checking all Python source files in `src/ironledger/**/*.py`:
-  - Flags `ast.Import` where `alias.name == "beancount"` or starts with `"beancount."`.
-  - Flags `ast.ImportFrom` where `node.module == "beancount"` or starts with `"beancount."`.
-  - Flags `ast.Call` where `func` is `__import__`, `importlib.import_module`, `builtins.__import__`, or dynamic `getattr(..., "import_module")` targeting `"beancount"`.
-  - The AST test includes positive and negative test fixtures verifying scanner self-integrity.
+* **Static Analysis Import Guard:** AST scanner in `tests/test_phase8_exit_contract.py` implements a symbol-tracking AST visitor checking all Python source files in `src/ironledger/**/*.py`:
+  - Tracks alias bindings across `import x as y`, `from x import y as z`.
+  - Flags direct and aliased imports of `beancount` or submodules `beancount.*`.
+  - Flags direct and aliased invocations of `importlib.import_module`, `__import__`, or `builtins.__import__` targeting `beancount`.
+  - Flags dynamic `getattr(mod, "import_module")("beancount")`.
+  - AST scanner test includes positive and negative test fixtures verifying scanner detection fidelity.
 * **Exit Evidence Artifact:** `docs/meta/phases/ironledger-phase-8-evidence.md`.
 
 ---
@@ -822,7 +864,7 @@ END;
 1. **Valuation Suite (`tests/test_valuation.py`):**
    - Verify integer rational price conversion with 0 floating-point drift across mixed decimal precisions (USD 2-dec, BTC 8-dec, AAPL 4-dec).
    - Verify bounded preceding price resolution, stale price rejection, identity same-currency conversion, and inverse quote resolution.
-   - Verify Beancount price directive string template output with zero runtime Beancount imports and pure integer decimal formatting.
+   - Verify Beancount price directive string template output with zero runtime Beancount imports and pure integer Banker's rounding.
 2. **Lineage Suite (`tests/test_lineage.py`):**
    - Verify bi-directional recursive CTE DAG traversals within tenant boundaries (posting $\to$ evidence hash, and evidence hash $\to$ postings).
    - Verify self-edge rejection and unbounded cycle prevention rejection and transactional atomicity on edge registration.
@@ -834,6 +876,6 @@ END;
    - Verify genesis state anchor verification, global sequence contiguity, Merkle chain verification, and dual-fingerprint payload replay into ephemeral in-memory database and manifest directory validating `projection_hash_before`/`after` and `sha256_before`/`after`.
    - Verify zero side-effects on live database files.
 5. **RBAC Suite (`tests/test_capabilities.py`):**
-   - Verify token creation, constant-time hash verification, role ceiling enforcement, expiration/revocation gating, and global vs tenant-scoped validation.
+   - Verify token creation with issuance-time ceiling checks, constant-time hash verification, role ceiling enforcement, expiration/revocation gating, and global vs tenant-scoped validation.
 6. **Phase 8 Exit Contract (`tests/test_phase8_exit_contract.py`):**
    - Run end-to-end integration scenario combining multi-asset pricing, lineage tracing, multi-tenant isolation, replay, and RBAC enforcement.
