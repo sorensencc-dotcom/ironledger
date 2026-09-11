@@ -8,9 +8,9 @@ Execute Phase 8: Multi-Asset Valuation, Ledger Lineage & Audit Replay (C:\dev\Ir
 - **Implementation Plan:** Completed and committed to docs/superpowers/plans/2026-09-10-phase-8-implementation-plan.md.
 
 ## Subsystem Tasks
-1. **Task 8.1:** Multi-Asset Valuation Engine & Price Directives Cache (0008_price_history.sql, src/ironledger/valuation/, tests/test_valuation.py) — **COMPLETED** (51 tests passing, 0 float drift, AST verified)
-2. **Task 8.2:** Ledger Lineage Explorer & Bi-Directional Provenance DAG (009_ledger_lineage.sql, src/ironledger/lineage/, tests/test_lineage.py) — **READY**
-3. **Task 8.3:** Multi-Ledger Topology & Isolated Staging Queues (010_multi_ledger_rbac.sql Part 1, src/ironledger/ledger/, tests/test_multi_ledger.py)
+1. **Task 8.1:** Multi-Asset Valuation Engine & Price Directives Cache (0008_price_history.sql, src/ironledger/valuation/, tests/test_valuation.py) — **COMPLETED** (54 tests passing, 0 float drift, AST verified)
+2. **Task 8.2:** Ledger Lineage Explorer & Bi-Directional Provenance DAG (009_ledger_lineage.sql, src/ironledger/lineage/, tests/test_lineage.py) — **COMPLETED** (13 tests passing, CTE bi-directional traversal, insertion-time cycle detection)
+3. **Task 8.3:** Multi-Ledger Topology & Isolated Staging Queues (010_multi_ledger_rbac.sql Part 1, src/ironledger/ledger/, tests/test_multi_ledger.py) — **READY**
 4. **Task 8.4:** Deterministic Audit Replay & Outbox Point-in-Time Engine (011_mutation_payloads.sql, src/ironledger/replay/, src/ironledger/manifests.py, tests/test_replay.py)
 5. **Task 8.5:** Scoped Capability Tokens & RBAC Policy Enforcement (010_multi_ledger_rbac.sql Part 2, src/ironledger/auth/, tests/test_capabilities.py)
 6. **Task 8.6:** Acceptance Regression Suite & Phase 8 Exit Evidence (tests/test_phase8_exit_contract.py, docs/meta/phases/ironledger-phase-8-evidence.md)
@@ -24,8 +24,8 @@ Execute Phase 8: Multi-Asset Valuation, Ledger Lineage & Audit Replay (C:\dev\Ir
 - Crash-atomic promotion with .promotion_journal.json state machine (PRE_COMMIT -> COMMITTED_PRE_SWAP -> SWAPPED -> FINALIZED).
 
 ## Next Action for Next Session
-Start execution of **Task 8.2: Ledger Lineage Explorer & Bi-Directional Provenance DAG**:
-1. Create src/ironledger/db/schema/0009_ledger_lineage.sql.
-2. Implement tests/test_lineage.py (TDD failing tests).
-3. Implement src/ironledger/lineage/ (models.py, dag.py, explorer.py).
-4. Verify with pytest tests/test_lineage.py -v and commit.
+Start execution of **Task 8.3: Multi-Ledger Topology & Isolated Staging Queues**:
+1. Create src/ironledger/db/schema/0010_multi_ledger_rbac.sql (Part 1).
+2. Implement tests/test_multi_ledger.py (TDD failing tests).
+3. Implement src/ironledger/ledger/ (models.py, topology.py, staging.py, consolidation.py).
+4. Verify with pytest tests/test_multi_ledger.py -v and commit.
