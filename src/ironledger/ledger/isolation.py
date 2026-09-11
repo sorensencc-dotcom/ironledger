@@ -101,16 +101,35 @@ def resolve_tenant_ledger_path(
 
     Requirements:
     - Confinement to beancount_root.
-    - Reject directory traversal (../, absolute paths).
-    - Reject symlinks in the resolved path.
+    - Reject directory traversal (../, absolute paths, internal traversal components).
+    - Reject symlinks in root or the resolved path hierarchy.
     """
-    root = Path(beancount_root).resolve()
+    raw_root = Path(beancount_root)
 
-    # Construct relative path components only
+    # 1. Symlink check on root hierarchy prior to canonical resolution
+    curr_root = raw_root
+    while True:
+        if curr_root.is_symlink() or os.path.islink(curr_root):
+            raise BoundaryBreachError(f"Symlinks are strictly prohibited in root directory: {curr_root}")
+        if curr_root.parent == curr_root:
+            break
+        curr_root = curr_root.parent
+
+    root = raw_root.resolve()
+
+    # Double check resolved root hierarchy for symlinks
+    curr_root = root
+    while True:
+        if curr_root.is_symlink() or os.path.islink(curr_root):
+            raise BoundaryBreachError(f"Symlinks are strictly prohibited in root directory: {curr_root}")
+        if curr_root.parent == curr_root:
+            break
+        curr_root = curr_root.parent
+
+    # 2. Construct relative path components and reject absolute/traversal components
     tenant_component = Path(tenant_id)
     ledger_component = Path(ledger_id)
 
-    # Reject absolute components or paths starting with root separators / drive letters
     if (
         tenant_component.is_absolute()
         or ledger_component.is_absolute()
@@ -121,9 +140,15 @@ def resolve_tenant_ledger_path(
     ):
         raise BoundaryBreachError("Absolute paths are not allowed for tenant/ledger IDs")
 
+    for part in tenant_component.parts + ledger_component.parts:
+        if part in ("..", ".", ""):
+            raise BoundaryBreachError(
+                f"Directory traversal component '{part}' is strictly prohibited in tenant/ledger IDs"
+            )
+
     raw_target = root / tenant_component / ledger_component
 
-    # Confinement: candidate must be under root
+    # 3. Confinement check
     resolved = raw_target.resolve()
     try:
         resolved.relative_to(root)
@@ -132,7 +157,7 @@ def resolve_tenant_ledger_path(
             f"Path traversal detected: {resolved} escapes root {root}"
         )
 
-    # Symlink checks: reject if any component is a symlink
+    # 4. Symlink checks along target hierarchy
     current = raw_target
     while True:
         if current.is_symlink() or os.path.islink(current):
@@ -150,6 +175,7 @@ def resolve_tenant_ledger_path(
         current = current.parent
 
     return resolved
+
 
 
 class CapabilityToken:

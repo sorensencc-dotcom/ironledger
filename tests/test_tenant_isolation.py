@@ -106,6 +106,15 @@ def test_resolve_tenant_ledger_path_rejects_traversal(tmp_path):
         resolve_tenant_ledger_path(root, "..", "ledger1")
 
 
+def test_resolve_tenant_ledger_path_rejects_internal_traversal(tmp_path):
+    root = tmp_path / "beancount_root"
+    root.mkdir(exist_ok=True)
+    with pytest.raises(BoundaryBreachError):
+        resolve_tenant_ledger_path(root, "tenantA/../tenantB", "ledger1")
+    with pytest.raises(BoundaryBreachError):
+        resolve_tenant_ledger_path(root, "tenantA", "ledger1/../ledger2")
+
+
 def test_resolve_tenant_ledger_path_rejects_symlink(tmp_path):
     root = tmp_path / "root"
     root.mkdir()
@@ -123,6 +132,20 @@ def test_resolve_tenant_ledger_path_rejects_symlink(tmp_path):
         # Fallback when symlink creation is not permitted on host platform
         with pytest.raises(BoundaryBreachError):
             resolve_tenant_ledger_path(root, "tenantA/../../escape", "anything")
+
+
+def test_resolve_tenant_ledger_path_rejects_symlink_root(tmp_path):
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    symlink_root = tmp_path / "symlink_root"
+    try:
+        symlink_root.symlink_to(real_root)
+        with pytest.raises(BoundaryBreachError):
+            resolve_tenant_ledger_path(symlink_root, "tenantA", "ledger1")
+    except (OSError, NotImplementedError):
+        # Symlink creation not supported in unprivileged Windows mode
+        pass
+
 
 
 def test_verify_ledger_boundary_scope_match():
