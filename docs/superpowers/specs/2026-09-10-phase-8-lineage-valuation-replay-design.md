@@ -7,6 +7,8 @@
 **Date:** 2026-09-10  
 **Version:** 1.0.0 (Hardened Canonical Specification)  
 **Change Identifier:** `IL-SPEC-PHASE-8-v1.0`  
+**Decision Record:** `IL-DECISION-PHASE-8-SPEC`  
+**Governance Authority:** Tier 1 Architecture Board  
 **Status:** Approved Design Specification  
 
 ---
@@ -20,7 +22,7 @@ Phase 8 expands IronLedger from single-currency transaction recording into a mul
 1. **Exact Rational Integer Arithmetic:** Multi-asset and commodity conversions operate exclusively on integer minor units and rational fraction ratios $(N / D)$ with strict mathematical sign symmetry and zero IEEE 754 floating-point drift.
 2. **Bi-Directional Provenance Lineage:** Every compiled posting references its staged transaction, source record, and raw evidence SHA-256 blob through a tenant-isolated acyclic directed graph (DAG) stored in SQLite with atomic transactional registration, strict self-edge rejection (`source != target`), and unbounded insertion-time cycle detection.
 3. **Deterministic Point-in-Time Replay:** The mutation ledger chain ($H_0 \to H_k$) replays schema-versioned canonical event mutation payloads into an ephemeral in-memory projection database to reconstruct exact historical state snapshots at any sequence number without mutating live files.
-4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries and composite foreign keys enforce strict isolation across staging buffers, price histories, compile journals, mutation ledgers, lineage nodes/edges, review rules, and compilation mutex lockfiles (`.ironledger/.compile.<ledger_id>.lock`).
+4. **Tenant & Entity Domain Isolation:** Explicit `ledger_id` column boundaries and foreign keys enforce strict isolation across staging buffers, price histories, compile journals, mutation ledgers, lineage nodes/edges, review rules, and compilation mutex lockfiles (`.ironledger/.compile.<ledger_id>.lock`).
 5. **Zero Runtime `import beancount`:** All Beancount commodity and price directives are generated via deterministic string template emission, guarded by AST static analysis and import prohibition tests.
 6. **Scoped Capability RBAC:** Granular cryptographic capability tokens authorize actions with fail-closed default-deny enforcement across CLI, web, and programmatic interfaces.
 
@@ -61,7 +63,7 @@ CREATE TABLE IF NOT EXISTS price_history (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_price_history_lookup 
-ON price_history(ledger_id, base_currency, quote_currency, directive_date DESC);
+ON price_history(ledger_id, base_currency, quote_currency, directive_date DESC, id DESC);
 ```
 
 ### Migration `0009_ledger_lineage.sql` (Task 8.2)
@@ -106,7 +108,7 @@ CREATE TABLE IF NOT EXISTS ledgers (
 
 INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default', 'Default Ledger', 'USD');
 
--- Guarded migration extensions for existing tables executed once via governed migration runner
+-- Scoped ledger_id column additions for existing tables executed once via governed migration runner
 ALTER TABLE source_documents ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE source_records ADD COLUMN ledger_id TEXT DEFAULT 'default';
 ALTER TABLE staged_transactions ADD COLUMN ledger_id TEXT DEFAULT 'default';
@@ -166,8 +168,8 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
 * **Identity Conversion:** If `base_currency == quote_currency`, conversion immediately returns source minor units unchanged (1:1).
 * **Ratio Normalization:** Fractions are reduced via `math.gcd(rate_numerator, rate_denominator)` before conversion.
 * **Deterministic Price Resolution Order:**
-  1. Direct lookup: `WHERE ledger_id = :l AND base_currency = :b AND quote_currency = :q AND directive_date <= :d ORDER BY directive_date DESC LIMIT 1`.
-  2. Inverse lookup fallback: `WHERE ledger_id = :l AND base_currency = :q AND quote_currency = :b AND directive_date <= :d ORDER BY directive_date DESC LIMIT 1`, inverted as `(rate_denominator, rate_numerator)`.
+  1. Direct lookup: `WHERE ledger_id = :l AND base_currency = :b AND quote_currency = :q AND directive_date <= :d ORDER BY directive_date DESC, id DESC LIMIT 1`.
+  2. Inverse lookup fallback: `WHERE ledger_id = :l AND base_currency = :q AND quote_currency = :b AND directive_date <= :d ORDER BY directive_date DESC, id DESC LIMIT 1`, inverted as `(rate_denominator, rate_numerator)`.
   3. Staleness boundary: If `(requested_date - directive_date).days > max_staleness_days`, raise `StalePriceDirectiveError`. If no directive exists, raise `MissingPriceDirectiveError`.
 * **Zero-Import Directives:** Template-based emission with parameterized precision:
   ```python
@@ -210,20 +212,42 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
   2. `projection_hash` (SQLite table state hash): Recorded on `mutation_payloads`. Deterministic SHA-256 computed by `compute_projection_hash(conn, ledger_id)`.
 * **Canonical `projection_hash` Algorithm:**
   ```python
+  STATIC_PROJECTION_COLUMNS: dict[str, list[str]] = {
+      "staged_transactions": [
+          "staged_transaction_id", "source_record_id", "source_document_id",
+          "entry_date", "payee", "narration", "status", "assigned_account", "rule_id", "ledger_id"
+      ],
+      "staged_postings": [
+          "staged_posting_id", "staged_transaction_id", "source_record_id",
+          "role", "posting_index", "account", "minor_units", "currency", "minor_unit_scale", "ledger_id"
+      ],
+      "review_rules": [
+          "rule_id", "name", "match_pattern", "account", "priority", "is_active", "ledger_id"
+      ],
+      "price_history": [
+          "id", "directive_date", "base_currency", "quote_currency",
+          "rate_numerator", "rate_denominator", "precision_scale", "source", "ledger_id"
+      ],
+      "compile_runs": [
+          "compile_run_id", "beancount_version", "compiler_version",
+          "input_hash", "intended_output_hash", "actual_output_hash", "status", "ledger_id"
+      ],
+  }
+
+  TABLE_ORDER_CLAUSES: dict[str, str] = {
+      "staged_transactions": "staged_transaction_id ASC",
+      "staged_postings": "staged_transaction_id ASC, posting_index ASC, staged_posting_id ASC",
+      "review_rules": "rule_id ASC",
+      "price_history": "base_currency ASC, quote_currency ASC, directive_date ASC, id ASC",
+      "compile_runs": "compile_run_id ASC",
+  }
+
   def compute_projection_hash(conn: sqlite3.Connection, ledger_id: str) -> str:
       """Compute canonical SHA-256 hash over tenant projection state ordered by primary keys."""
-      table_keys = {
-          "staged_transactions": "staged_transaction_id ASC",
-          "staged_postings": "staged_transaction_id ASC, posting_index ASC",
-          "review_rules": "rule_id ASC",
-          "price_history": "base_currency ASC, quote_currency ASC, directive_date ASC",
-          "compile_runs": "compile_run_id ASC",
-      }
       payload = []
-      for table, order_clause in table_keys.items():
-          cur = conn.execute(f"PRAGMA table_info({table})")
-          cols = [c[1] for c in cur.fetchall()]
+      for table, cols in STATIC_PROJECTION_COLUMNS.items():
           col_str = ", ".join(cols)
+          order_clause = TABLE_ORDER_CLAUSES[table]
           cur = conn.execute(
               f"SELECT {col_str} FROM {table} WHERE ledger_id = ? ORDER BY {order_clause}",
               (ledger_id,),
@@ -242,105 +266,58 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
       return hashlib.sha256(encoded).hexdigest()
   ```
 * **Payload Event Schemas (`payload_schema_version = 1`):**
+  - All payloads conform to standard JSON Schema draft-07. Required top-level discriminator: `schema_version` (integer `>= 1`), `ledger_id` (string), and event-specific properties:
   - `STAGE_TRANSACTION`:
-    ```json
-    {
-      "schema_version": 1,
-      "ledger_id": "default",
-      "staged_transaction_id": "stx_123",
-      "source_record_id": "rec_456",
-      "source_document_id": "doc_789",
-      "entry_date": "2026-09-10",
-      "payee": "Merchant",
-      "narration": "Supplies",
-      "status": "PENDING",
-      "postings": [
-        {
-          "staged_posting_id": "sp_1",
-          "source_record_id": "rec_456",
-          "role": "imported",
-          "posting_index": 0,
-          "account": "Assets:Bank:Checking",
-          "minor_units": -5000,
-          "currency": "USD",
-          "minor_unit_scale": 2
-        },
-        {
-          "staged_posting_id": "sp_2",
-          "source_record_id": "rec_456",
-          "role": "contra",
-          "posting_index": 1,
-          "account": "Expenses:Supplies",
-          "minor_units": 5000,
-          "currency": "USD",
-          "minor_unit_scale": 2
-        }
-      ]
-    }
-    ```
+    - `staged_transaction_id`: string (required)
+    - `source_record_id`: string (required)
+    - `source_document_id`: string (required)
+    - `entry_date`: string format `YYYY-MM-DD` (required)
+    - `payee`: string (required)
+    - `narration`: string (required)
+    - `status`: enum `["PENDING", "APPROVED", "REJECTED"]` (required)
+    - `postings`: array of posting objects (minItems 2, required):
+      - `staged_posting_id`: string (required)
+      - `source_record_id`: string (required)
+      - `role`: enum `["imported", "contra"]` (required)
+      - `posting_index`: integer `>= 0` (required)
+      - `account`: string (required)
+      - `minor_units`: integer (required)
+      - `currency`: string (required)
+      - `minor_unit_scale`: integer `>= 0` (required)
   - `REVIEW_DECISION`:
-    ```json
-    {
-      "schema_version": 1,
-      "ledger_id": "default",
-      "staged_transaction_id": "stx_123",
-      "prior_status": "PENDING",
-      "new_status": "APPROVED",
-      "assigned_account": "Expenses:Supplies",
-      "rule_id": "rule_abc"
-    }
-    ```
+    - `staged_transaction_id`: string (required)
+    - `prior_status`: enum `["PENDING", "APPROVED", "REJECTED"]` (required)
+    - `new_status`: enum `["PENDING", "APPROVED", "REJECTED"]` (required)
+    - `assigned_account`: string or null (required)
+    - `rule_id`: string or null (required)
   - `COMPILE_LEDGER`:
-    ```json
-    {
-      "schema_version": 1,
-      "ledger_id": "default",
-      "compile_run_id": "run_999",
-      "beancount_version": "3.2.3",
-      "compiler_version": "1.0.0",
-      "input_hash": "sha256:...",
-      "intended_output_hash": "sha256:...",
-      "actual_output_hash": "sha256:...",
-      "compiled_tx_ids": ["stx_123"]
-    }
-    ```
+    - `compile_run_id`: string (required)
+    - `beancount_version`: string (required)
+    - `compiler_version`: string (required)
+    - `input_hash`: string length 64 hex (required)
+    - `intended_output_hash`: string length 64 hex (required)
+    - `actual_output_hash`: string length 64 hex (required)
+    - `compiled_tx_ids`: array of string (required)
   - `PRICE_DIRECTIVE`:
-    ```json
-    {
-      "schema_version": 1,
-      "ledger_id": "default",
-      "directive_date": "2026-09-10",
-      "base_currency": "AAPL",
-      "quote_currency": "USD",
-      "rate_numerator": 22550,
-      "rate_denominator": 100,
-      "precision_scale": 4,
-      "source": "MANUAL"
-    }
-    ```
+    - `directive_date`: string format `YYYY-MM-DD` (required)
+    - `base_currency`: string (required)
+    - `quote_currency`: string (required)
+    - `rate_numerator`: integer `> 0` (required)
+    - `rate_denominator`: integer `> 0` (required)
+    - `precision_scale`: integer `0..18` (required)
+    - `source`: enum `["MANUAL", "POLLED_FEED", "EXCHANGE_API"]` (required)
   - `RULE_UPDATE`:
-    ```json
-    {
-      "schema_version": 1,
-      "ledger_id": "default",
-      "rule_id": "rule_abc",
-      "action": "CREATE",
-      "name": "Apple Supplies",
-      "match_pattern": "APPLE.COM",
-      "account": "Expenses:Software",
-      "priority": 10,
-      "is_active": 1
-    }
-    ```
-* **Deterministic Replay Execution:**
-  1. Resolve `target_sequence`: If `target_timestamp` is provided, select $\max(\text{seq})$ where `ts_utc <= target_timestamp`.
-  2. Verify hash chain from sequence 1 to `target_sequence`.
-  3. Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
-  4. Stream `mutation_payloads` and execute schema-versioned deterministic event handlers.
-  5. Validate final projection fingerprint against `projection_hash_after` and return the point-in-time balance snapshot.
-* **Atomic Append Contract:**
+    - `rule_id`: string (required)
+    - `action`: enum `["CREATE", "UPDATE", "DELETE"]` (required)
+    - `name`: string (required)
+    - `match_pattern`: string (required)
+    - `account`: string (required)
+    - `priority`: integer (required)
+    - `is_active`: integer `0` or `1` (required)
+
+* **Transactional Mutation Dispatch & Atomic Append Contract:**
   ```python
-  def append_mutation_event(
+  def apply_mutation_and_append(
       conn: sqlite3.Connection,
       ledger_id: str,
       operator_session: str,
@@ -350,16 +327,88 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
       payload_schema_version: int = 1,
       rules_applied: int = 0,
       rules_created: int = 0,
+      sha256_before: str = "0" * 64,
+      sha256_after: str = "0" * 64,
   ) -> tuple[MutationEvent, MutationPayload]:
+      """Apply domain mutation and append mutation event + payload in a single atomic transaction."""
+      # 1. Validate payload schema
+      validate_payload_schema(event_type, payload, payload_schema_version)
+      
+      # 2. Compute projection hash before
+      projection_hash_before = compute_projection_hash(conn, ledger_id)
+      
+      # 3. Dispatch and execute domain table mutations inside transaction
+      dispatch_event_mutation(conn, ledger_id, event_type, payload)
+      
+      # 4. Compute projection hash after
+      projection_hash_after = compute_projection_hash(conn, ledger_id)
+      
+      # 5. Allocate monotonic sequence and fetch previous hash
+      cur = conn.execute("SELECT COALESCE(MAX(seq), 0) FROM mutation_events")
+      seq = cur.fetchone()[0] + 1
+      
+      if seq == 1:
+          prev_mutation_hash = "0" * 64
+      else:
+          cur = conn.execute("SELECT mutation_hash FROM mutation_events WHERE seq = ?", (seq - 1,))
+          prev_mutation_hash = cur.fetchone()[0]
+          
+      mutation_id = f"mut_{uuid4().hex}"
+      ts_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+      
+      # 6. Canonical JSON hash computation
+      canonical_dict = {
+          "action": action,
+          "event_type": event_type,
+          "ledger_id": ledger_id,
+          "mutation_id": mutation_id,
+          "operator_session": operator_session,
+          "payload": payload,
+          "payload_schema_version": payload_schema_version,
+          "prev_mutation_hash": prev_mutation_hash,
+          "projection_hash_after": projection_hash_after,
+          "projection_hash_before": projection_hash_before,
+          "rules_applied": rules_applied,
+          "rules_created": rules_created,
+          "seq": seq,
+          "sha256_after": sha256_after,
+          "sha256_before": sha256_before,
+          "ts_utc": ts_utc,
+      }
+      mutation_hash = hashlib.sha256(
+          json.dumps(canonical_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+      ).hexdigest()
+      
+      # 7. Insert into mutation_events and mutation_payloads
+      conn.execute(
+          "INSERT INTO mutation_events (seq, mutation_id, ledger_id, ts_utc, operator_session, action, "
+          "staged_count, rules_applied, rules_created, sha256_before, sha256_after, prev_mutation_hash, mutation_hash) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          (seq, mutation_id, ledger_id, ts_utc, operator_session, action, 0, rules_applied, rules_created,
+           sha256_before, sha256_after, prev_mutation_hash, mutation_hash)
+      )
+      conn.execute(
+          "INSERT INTO mutation_payloads (seq, mutation_id, ledger_id, payload_schema_version, event_type, "
+          "payload_json, projection_hash_before, projection_hash_after, created_at) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          (seq, mutation_id, ledger_id, payload_schema_version, event_type,
+           json.dumps(payload, sort_keys=True, separators=(",", ":")),
+           projection_hash_before, projection_hash_after, ts_utc)
+      )
+      
+      return (
+          MutationEvent(seq=seq, mutation_id=mutation_id, ledger_id=ledger_id, ts_utc=ts_utc,
+                        operator_session=operator_session, action=action, mutation_hash=mutation_hash, ...),
+          MutationPayload(seq=seq, mutation_id=mutation_id, ledger_id=ledger_id, event_type=event_type, ...)
+      )
   ```
-  Executed inside a single atomic SQLite transaction:
-  1. `projection_hash_before = compute_projection_hash(conn, ledger_id)`
-  2. Determine monotonic `seq = MAX(seq) + 1` (or 1 if genesis)
-  3. `prev_mutation_hash` from `seq - 1` (or `"0" * 64` if genesis)
-  4. `mutation_id = f"mut_{uuid4().hex}"`
-  5. Compute `projection_hash_after = compute_projection_hash(conn, ledger_id)`
-  6. Compute canonical UTF-8 JSON `mutation_hash`
-  7. Insert into `mutation_events` and `mutation_payloads` synchronously.
+
+* **Deterministic Replay Engine:**
+  1. Resolve `target_sequence`: If `target_timestamp` is provided, select `MAX(seq)` where `ts_utc <= target_timestamp` ordered strictly by `seq ASC`.
+  2. Verify hash chain from sequence 1 to `target_sequence`.
+  3. Spin up an in-memory SQLite projection database (`:memory:`), load schema `0001` through `0011`.
+  4. Stream `mutation_payloads` and execute `dispatch_event_mutation` for each event, validating `projection_hash_before` and `projection_hash_after` at every step.
+  5. Return verified in-memory projection database and point-in-time trial balance.
 
 ### Task 8.5: Scoped Capability Tokens & RBAC Policy Enforcement
 * **Location:** `src/ironledger/auth/capabilities.py`, `src/ironledger/auth/policy.py`
@@ -369,15 +418,16 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
   | `READER` | `["ledger:read", "audit:replay"]` |
   | `OPERATOR` | `["ledger:read", "staging:write", "review:decide", "audit:replay"]` |
   | `COMPILER` | `["ledger:read", "compile:execute", "audit:replay"]` |
-  | `ADMIN` | `["*"]` (or all individual scopes) |
+  | `ADMIN` | `["*"]` (Matches all scopes across all operations) |
 * **Token Security & Validation:**
   - Bearer tokens generated via `secrets.token_hex(32)` (`il_cap_<hex64>`).
   - `PolicyEnforcer.authorize(token, required_scope, target_ledger_id)`:
     1. Look up token by SHA-256 hash.
-    2. Check `revoked_at` is NULL.
-    3. Check `expires_at` is NULL or in future (UTC ISO-8601).
-    4. Check ledger scope: `token.is_global == 1` OR `token.ledger_id == target_ledger_id`.
-    5. Check role ceiling and specific capability scope.
+    2. Fail closed if `revoked_at` is NOT NULL.
+    3. Fail closed if `expires_at` is NOT NULL and `expires_at <= current_utc_iso`.
+    4. Check ledger scope: `token.is_global == 1` (Admin) OR `token.ledger_id == target_ledger_id`.
+    5. Check role ceiling: verify that granted scopes in `capabilities_json` do not exceed the role's maximum allowed scopes.
+    6. Check `required_scope` in `token.capabilities` or `token.capabilities == ["*"]`.
 * **Centralized Policy Enforcement:** Invoked across CLI commands, MCP tools, and web endpoints.
 
 ### Task 8.6: Acceptance Regression Suite & Phase 8 Exit Evidence
@@ -395,7 +445,7 @@ CREATE INDEX IF NOT EXISTS idx_mutation_payloads_ledger ON mutation_payloads(led
    - Verify Beancount price directive string template output with zero runtime Beancount imports and configurable scale precision.
 2. **Lineage Suite (`tests/test_lineage.py`):**
    - Verify bi-directional recursive CTE DAG traversals within tenant boundaries (posting $\to$ evidence hash, and evidence hash $\to$ postings).
-   - Verify self-edge and unbounded cycle prevention rejection and transactional atomicity on edge registration.
+   - Verify self-edge rejection and unbounded cycle prevention rejection and transactional atomicity on edge registration.
 3. **Multi-Ledger Suite (`tests/test_multi_ledger.py`):**
    - Verify complete isolation of staging queues, lineage nodes, review rules, and concurrent compilation locks across multiple `ledger_id`s.
    - Verify multi-entity consolidated balance aggregation.
