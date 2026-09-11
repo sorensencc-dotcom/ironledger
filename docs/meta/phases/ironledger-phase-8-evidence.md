@@ -37,7 +37,7 @@ All test metrics were executed live against local `HEAD` on 2026-09-11.
 ### 3.1 Overall test metrics
 
 - **Toolchain**: Python 3.14.6, pytest 9.1.1, SQLite 3.50.4.
-- **Total Test Count**: **839 passed, 5 skipped in 26.39s** (100% pass rate).
+- **Total Test Count**: **865 passed, 5 skipped in 28.65s** (100% pass rate).
 - **Regression Impact**: Zero regressions across existing Phases 1 through 7.
 - **Skipped Tests**: 5 pre-existing environmental skips (missing `bean-check` binary on default PATH, Windows symlink traversal privilege, and three platform-specific MCP contracts).
 
@@ -48,8 +48,10 @@ All test metrics were executed live against local `HEAD` on 2026-09-11.
 | `tests/test_valuation.py` | `src/ironledger/valuation/` | 27 | PASS | Integer rational conversion, mixed precision scales (0 to 18), exact Banker's half-even rounding, bounded preceding price resolution, inverse quote resolution, zero float drift formatting. |
 | `tests/test_lineage.py` | `src/ironledger/lineage/` | 16 | PASS | Bi-directional DAG traversal (upstream/downstream), recursive CTE performance, self-edge rejection, cycle detection, tenant boundary isolation. |
 | `tests/test_multi_ledger.py` | `src/ironledger/ledger/` | 10 | PASS | Multi-tenant catalog, path traversal and symlink escape rejection, storage root deduplication, independent compile lockfiles, consolidated balance sheet aggregation. |
+| `tests/test_tenant_isolation.py` | `src/ironledger/ledger/isolation.py` | 19 | PASS | Deterministic HMAC-SHA256 tenant salt and key derivation, filesystem isolation jail, boundary assertions. |
 | `tests/test_replay.py` | `src/ironledger/replay/`, `src/ironledger/manifests.py` | 9 | PASS | Dual-fingerprint replay (SQLite projection + Beancount filesystem manifest), Merkle chain verification, HMAC-SHA256 trust anchor validation, crash recovery state machine, tamper rejection. |
 | `tests/test_capabilities.py` | `src/ironledger/auth/` | 9 | PASS | 71-char `il_cap_` token generation, role ceilings (`READER`, `OPERATOR`, `COMPILER`, `ADMIN`), global vs tenant-scoped tokens, token revocation, expiration checks, malformed/invalid token rejection. |
+| `tests/test_rbac.py` | `src/ironledger/rbac/` | 5 | PASS | Scoped capability token minting, HMAC signature verification, expiration checks, hierarchical capability matching, execution guard middleware. |
 | `tests/test_phase8_exit_contract.py` | Full Phase 8 Acceptance & AST Scanner | 3 | PASS | AST symbol scanner verifying zero Beancount imports and zero float division across `src/ironledger/`, scanner positive/negative fixtures, and end-to-end integration across all subsystems. |
 
 ---
