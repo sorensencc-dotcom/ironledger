@@ -1,0 +1,280 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "ui_kits/website/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Playfair Display|Libre Baskerville|Barlow Condensed))/i]",
+        "message": "Font not provided by the design system. Available: Playfair Display, Libre Baskerville, Barlow Condensed."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ArchivePage'] > JSXAttribute > JSXIdentifier[name!=/^(?:onNavigate|key|ref|className|style|children)$/]",
+        "message": "<ArchivePage> doesn't accept that prop. Declared props: onNavigate."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ContentSection'] > JSXAttribute > JSXIdentifier[name!=/^(?:onNavigate|key|ref|className|style|children)$/]",
+        "message": "<ContentSection> doesn't accept that prop. Declared props: onNavigate."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Hero'] > JSXAttribute > JSXIdentifier[name!=/^(?:onCTAClick|key|ref|className|style|children)$/]",
+        "message": "<Hero> doesn't accept that prop. Declared props: onCTAClick."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Nav'] > JSXAttribute > JSXIdentifier[name!=/^(?:currentPage|onNavigate|key|ref|className|style|children)$/]",
+        "message": "<Nav> doesn't accept that prop. Declared props: currentPage, onNavigate."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Nav'] > JSXAttribute[name.name='currentPage'] > Literal[value!=/^(?:main|archive)$/]",
+        "message": "<Nav> currentPage must be one of 'main' | 'archive'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='SectionLabel'] > JSXAttribute > JSXIdentifier[name!=/^(?:children|key|ref|className|style|children)$/]",
+        "message": "<SectionLabel> doesn't accept that prop. Declared props: children."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {
+      "ArchivePage": {
+        "replaces": []
+      },
+      "ContentSection": {
+        "replaces": []
+      },
+      "Hero": {
+        "replaces": []
+      },
+      "Nav": {
+        "replaces": []
+      },
+      "SectionLabel": {
+        "replaces": []
+      }
+    },
+    "tokens": [
+      "--ash",
+      "--black",
+      "--bone",
+      "--brass",
+      "--color-accent-bg-tint",
+      "--color-bg-card",
+      "--color-bg-card-hover",
+      "--color-bg-primary",
+      "--color-bg-raised",
+      "--color-bg-secondary",
+      "--color-border-accent",
+      "--color-border-default",
+      "--color-border-focus",
+      "--color-border-hover",
+      "--color-border-section",
+      "--color-fg-accent",
+      "--color-fg-body",
+      "--color-fg-brand",
+      "--color-fg-muted",
+      "--color-fg-primary",
+      "--color-overlay-fade",
+      "--color-status-live",
+      "--color-status-progress",
+      "--color-status-soon",
+      "--color-tag-corrected",
+      "--color-tag-high",
+      "--color-tag-medium",
+      "--color-tag-new",
+      "--duration-base",
+      "--duration-fast",
+      "--duration-slow",
+      "--ease-base",
+      "--ease-in-out",
+      "--ember",
+      "--font-body",
+      "--font-display",
+      "--font-ui",
+      "--forge",
+      "--iron",
+      "--leading-body",
+      "--leading-display",
+      "--leading-head",
+      "--leading-label",
+      "--leading-quote",
+      "--leading-tight",
+      "--max-width",
+      "--nav-padding",
+      "--nav-padding-mobile",
+      "--paper",
+      "--radius",
+      "--rust",
+      "--section-padding",
+      "--section-padding-mobile",
+      "--shadow",
+      "--space-1",
+      "--space-10",
+      "--space-12",
+      "--space-16",
+      "--space-2",
+      "--space-20",
+      "--space-24",
+      "--space-28",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-8",
+      "--text-body",
+      "--text-body-sm",
+      "--text-caption",
+      "--text-h1",
+      "--text-h2",
+      "--text-h3",
+      "--text-h4",
+      "--text-h5",
+      "--text-hero",
+      "--text-label",
+      "--text-label-sm",
+      "--text-lead",
+      "--text-ui-lg",
+      "--text-ui-md",
+      "--text-ui-sm",
+      "--text-ui-xs",
+      "--tracking-med",
+      "--tracking-tight",
+      "--tracking-ui",
+      "--tracking-wide",
+      "--white"
+    ],
+    "tokenKinds": {
+      "--black": "color",
+      "--forge": "color",
+      "--iron": "color",
+      "--rust": "color",
+      "--ember": "color",
+      "--brass": "color",
+      "--ash": "color",
+      "--bone": "color",
+      "--paper": "color",
+      "--white": "color",
+      "--color-bg-primary": "color",
+      "--color-bg-secondary": "color",
+      "--color-bg-raised": "color",
+      "--color-bg-card": "color",
+      "--color-bg-card-hover": "color",
+      "--color-fg-primary": "color",
+      "--color-fg-body": "color",
+      "--color-fg-muted": "color",
+      "--color-fg-accent": "color",
+      "--color-fg-brand": "color",
+      "--color-border-default": "color",
+      "--color-border-section": "color",
+      "--color-border-hover": "color",
+      "--color-border-focus": "color",
+      "--color-border-accent": "color",
+      "--color-accent-bg-tint": "color",
+      "--color-overlay-fade": "color",
+      "--color-status-live": "color",
+      "--color-status-progress": "color",
+      "--color-status-soon": "color",
+      "--color-tag-high": "color",
+      "--color-tag-medium": "color",
+      "--color-tag-new": "color",
+      "--color-tag-corrected": "color",
+      "--font-display": "font",
+      "--font-body": "font",
+      "--font-ui": "font",
+      "--text-hero": "font",
+      "--text-h1": "font",
+      "--text-h2": "font",
+      "--text-h3": "font",
+      "--text-h4": "font",
+      "--text-h5": "font",
+      "--text-lead": "font",
+      "--text-body": "font",
+      "--text-body-sm": "font",
+      "--text-caption": "font",
+      "--text-label": "font",
+      "--text-label-sm": "font",
+      "--text-ui-lg": "font",
+      "--text-ui-md": "font",
+      "--text-ui-sm": "font",
+      "--text-ui-xs": "font",
+      "--tracking-wide": "font",
+      "--tracking-med": "font",
+      "--tracking-ui": "font",
+      "--tracking-tight": "font",
+      "--leading-display": "font",
+      "--leading-tight": "font",
+      "--leading-head": "font",
+      "--leading-body": "font",
+      "--leading-quote": "font",
+      "--leading-label": "font",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-8": "spacing",
+      "--space-10": "spacing",
+      "--space-12": "spacing",
+      "--space-16": "spacing",
+      "--space-20": "spacing",
+      "--space-24": "spacing",
+      "--space-28": "spacing",
+      "--max-width": "spacing",
+      "--section-padding": "spacing",
+      "--section-padding-mobile": "spacing",
+      "--nav-padding": "spacing",
+      "--nav-padding-mobile": "spacing",
+      "--radius": "radius",
+      "--shadow": "shadow",
+      "--duration-fast": "other",
+      "--duration-base": "other",
+      "--duration-slow": "other",
+      "--ease-base": "other",
+      "--ease-in-out": "other"
+    },
+    "fontFamilies": [
+      "Barlow Condensed",
+      "Libre Baskerville",
+      "Playfair Display"
+    ]
+  }
+}

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/cast-iron-charlie-design-system-019de132-e506-71df-a7ae-fb03115c075e/colors_and_type.css">
+<script src="_ds/cast-iron-charlie-design-system-019de132-e506-71df-a7ae-fb03115c075e/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#0d0a08;position:relative}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;opacity:.35;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E")}
+.wrap{padding:64px 44px 100px;display:flex;flex-direction:column;gap:56px;max-width:1160px;margin:0 auto;position:relative}
+.scr-lbl{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:#8B3A1A;margin:0 0 12px 2px}
+.hdg{font-family:'Playfair Display',serif;font-weight:900;font-size:22px;color:#faf6f0;letter-spacing:.02em;margin:0 0 6px}
+.grad-rule{height:1px;background:linear-gradient(to right,transparent,rgba(139,58,26,.4),transparent)}
+.ghost{position:absolute;font-family:'Playfair Display',serif;font-weight:900;color:rgba(139,58,26,.06);pointer-events:none;line-height:1;z-index:0}
+</style>
+</helmet>
+
+<div class="wrap" style="--gain:#5a9e6f;--gain-bright:#8fc79e;--gain-tint:rgba(90,158,111,.1);--loss:#b8412f;--loss-bright:#e2765f;--loss-tint:rgba(184,65,47,.12)">
+
+<div>
+  <div class="section-label" style="font-size:10px !important;margin-bottom:14px">Design Direction · Six Core Screens</div>
+  <h1 style="font-family:'Playfair Display',serif;font-weight:900;font-size:44px;color:#faf6f0;letter-spacing:.01em;margin:0 0 8px;line-height:1.1">IronLedger, <span style="font-style:italic;color:#B8922A">restyled</span></h1>
+  <div style="font-family:'Libre Baskerville',serif;font-size:15px;color:#9a9088;max-width:520px;line-height:1.7;margin-bottom:24px">A local-first ledger given the weight of an archive — verdigris and rust standing in for gain and loss, serif type carrying the record.</div>
+  <div class="grad-rule"></div>
+</div>
+
+<!-- SCREEN: Staging Inbox -->
+<div>
+<div class="scr-lbl">Staging Inbox — Transaction Inspector</div>
+<div style="background:#1a1410;border:1px solid rgba(154,144,136,.2);box-shadow:0 4px 14px rgba(0,0,0,.3);position:relative;overflow:hidden">
+  <div class="ghost" style="top:-6px;right:14px;font-size:100px">INBOX</div>
+  <div style="position:absolute;top:-60px;right:-40px;width:260px;height:260px;background:radial-gradient(circle,rgba(90,158,111,.28),transparent 70%);filter:blur(30px);pointer-events:none;z-index:0"></div>
+  <div style="display:flex;align-items:center;gap:14px;padding:14px 24px;background:#241c16;border-bottom:1px solid rgba(139,58,26,.2);position:relative;z-index:1">
+    <span style="font-family:'Playfair Display',serif;font-weight:900;font-style:italic;font-size:19px;color:#B8922A">IronLedger</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;color:#9a9088;letter-spacing:.15em">v0.7.0</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10px;letter-spacing:.2em;color:#C4501A;background:rgba(196,80,26,.1);border:1px solid rgba(196,80,26,.4);padding:5px 10px;text-transform:uppercase;white-space:nowrap;flex-shrink:0">Safe Mode</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:10px;letter-spacing:.15em;color:var(--loss-bright);background:var(--loss-tint);border:1px solid rgba(184,65,47,.4);padding:5px 10px;text-transform:uppercase;white-space:nowrap;flex-shrink:0">Projection Desync</span>
+    <div style="flex:1"></div>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:var(--gain-bright);border-bottom:1px solid var(--gain);padding-bottom:2px;text-transform:uppercase">Bank Sync</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:#0a0806;background:#C4501A;padding:8px 20px;text-transform:uppercase">Compile</span>
+  </div>
+  <div style="display:flex;position:relative;z-index:1">
+    <div style="width:210px;border-right:1px solid rgba(154,144,136,.12);padding:22px 0">
+      <div class="section-label" style="padding:0 20px 16px;font-size:10px !important">Navigation</div>
+      <div style="padding:11px 20px;border-left:3px solid #C4501A;background:rgba(139,58,26,.06)"><span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#faf6f0">Staging Inbox <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;color:#C4501A">— 1</span></span></div>
+      <div style="padding:11px 20px 11px 23px"><span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#9a9088">Rule Engine <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px">— 3</span></span></div>
+      <div style="padding:11px 20px 11px 23px"><span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#9a9088">Balances &amp; Chart</span></div>
+      <div style="padding:11px 20px 11px 23px"><span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#9a9088">Meta-Ledger Audit</span></div>
+    </div>
+    <div style="flex:1;padding:22px;border-right:1px solid rgba(154,144,136,.12)">
+      <div class="section-label" style="margin-bottom:16px;font-size:10px !important">Pending Review</div>
+      <div style="display:grid;grid-template-columns:100px 1.4fr 1.2fr 100px 60px;padding:16px 4px;border-bottom:1px solid rgba(139,58,26,.2);align-items:baseline">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:#9a9088">2026-09-10</div>
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#faf6f0">AWS Cloud Services</div>
+        <div style="font-family:'Libre Baskerville',serif;font-style:italic;font-size:12px;color:#C4501A">Expenses:Tech:Hosting</div>
+        <div style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--loss-bright)">-125.50</div>
+        <div style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--gain-bright)">100%</div>
+      </div>
+      <div style="display:grid;grid-template-columns:100px 1.4fr 1.2fr 100px 60px;padding:16px 4px;border-bottom:1px solid rgba(139,58,26,.2);align-items:baseline">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:#9a9088">2026-09-08</div>
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#faf6f0">Blue Bottle Coffee</div>
+        <div style="font-family:'Libre Baskerville',serif;font-style:italic;font-size:12px;color:#C4501A">Expenses:Food:Coffee</div>
+        <div style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--loss-bright)">-45.00</div>
+        <div style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--gain-bright)">95%</div>
+      </div>
+      <div style="display:grid;grid-template-columns:100px 1.4fr 1.2fr 100px 60px;padding:16px 4px;align-items:baseline">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:#9a9088">2026-09-05</div>
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#faf6f0">Client Invoice #114</div>
+        <div style="font-family:'Libre Baskerville',serif;font-style:italic;font-size:12px;color:#5a9e6f">Income:Consulting</div>
+        <div style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--gain-bright)">+2,400.00</div>
+        <div style="text-align:right;font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--gain-bright)">88%</div>
+      </div>
+    </div>
+    <div style="width:340px;padding:22px">
+      <div class="section-label" style="margin-bottom:16px;font-size:10px !important">Inspector</div>
+      <div style="border-left:3px solid var(--gain);background:rgba(90,158,111,.06);padding:12px 16px;margin-bottom:16px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.2em;color:#9a9088;text-transform:uppercase">Drift Status</div>
+        <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:17px;color:var(--gain-bright)">Healthy</div>
+      </div>
+      <div style="font-family:'Libre Baskerville',serif;font-style:italic;font-size:13px;line-height:1.7;color:#e8e0d4">"AWS Cloud Services — Monthly Hosting &amp; Compute Infrastructure"</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="grad-rule"></div>
+
+<!-- SCREENS: Safe Mode + Command Palette, paired -->
+<div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1;min-width:340px">
+<div class="scr-lbl">Safe Mode Dry-Run Simulation</div>
+<div style="background:#1a1410;border:1px solid rgba(154,144,136,.2);box-shadow:0 4px 14px rgba(0,0,0,.3);position:relative;overflow:hidden">
+  <div class="ghost" style="bottom:-14px;right:10px;font-size:70px">SAFE</div>
+  <div style="position:absolute;top:-50px;right:-30px;width:200px;height:200px;background:radial-gradient(circle,rgba(90,158,111,.28),transparent 70%);filter:blur(28px);pointer-events:none;z-index:0"></div>
+  <div style="padding:22px 26px;border-bottom:1px solid rgba(139,58,26,.2);position:relative;z-index:1">
+    <div class="section-label" style="margin-bottom:8px;font-size:10px !important">Dry-Run Simulation</div>
+    <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:22px;color:#faf6f0">Safe Mode</div>
+  </div>
+  <div style="display:flex;gap:24px;padding:20px 26px">
+    <div style="border-left:3px solid #C4501A;background:rgba(139,58,26,.06);padding:10px 16px;flex:1">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:#9a9088;text-transform:uppercase">Entries</div>
+      <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:24px;color:#faf6f0">1</div>
+    </div>
+    <div style="border-left:3px solid #C4501A;background:rgba(139,58,26,.06);padding:10px 16px;flex:1">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:#9a9088;text-transform:uppercase">Postings</div>
+      <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:24px;color:#faf6f0">2</div>
+    </div>
+    <div style="border-left:3px solid var(--gain);background:rgba(90,158,111,.06);padding:10px 16px;flex:1">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:var(--gain-bright);text-transform:uppercase">Disk Mutations</div>
+      <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:24px;color:var(--gain-bright)">0 Bytes</div>
+    </div>
+  </div>
+  <div style="padding:0 26px 22px">
+    <div class="rule" style="margin-bottom:14px"></div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.2em;color:#9a9088;margin-bottom:10px;text-transform:uppercase">Diff Preview</div>
+    <div style="background:#0a0806;border:1px solid rgba(154,144,136,.15);padding:14px 16px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.8">
+      <div style="color:var(--loss-bright)">--- a/txns/2026.beancount</div>
+      <div style="color:var(--gain-bright)">+++ b/txns/2026.beancount</div>
+      <div style="background:var(--gain-tint);color:var(--gain-bright);border-left:2px solid var(--gain);padding-left:6px">+ 2026-09-10 * "AWS Cloud Services"</div>
+      <div style="background:var(--gain-tint);color:var(--gain-bright);border-left:2px solid var(--gain);padding-left:6px">+&nbsp;&nbsp;Expenses:Tech:Hosting&nbsp;125.50 USD</div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:flex-end;padding:16px 26px;border-top:1px solid rgba(154,144,136,.12);position:relative;z-index:1">
+    <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:.2em;color:#e8e0d4;border-bottom:1px solid rgba(232,224,212,.4);padding-bottom:3px;text-transform:uppercase">Dismiss</span>
+  </div>
+</div>
+</div>
+
+<div style="flex:1;min-width:320px">
+<div class="scr-lbl">Command Palette</div>
+<div style="background:#1a1410;border:1px solid rgba(154,144,136,.2);box-shadow:0 4px 14px rgba(0,0,0,.3);position:relative;overflow:hidden">
+  <div style="position:absolute;top:-40px;left:-30px;width:180px;height:180px;background:radial-gradient(circle,rgba(196,80,26,.22),transparent 70%);filter:blur(26px);pointer-events:none;z-index:0"></div>
+  <div style="display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid rgba(154,144,136,.12);position:relative;z-index:1">
+    <span style="font-family:'Playfair Display',serif;font-style:italic;font-size:15px;color:#e8e0d4;flex:1">Type a command or search action…</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;color:#9a9088;letter-spacing:.15em">ESC</span>
+  </div>
+  <div style="padding:13px 22px;border-left:3px solid #C4501A;background:rgba(139,58,26,.06);display:flex;justify-content:space-between">
+    <span style="font-family:'Playfair Display',serif;font-weight:700;font-size:14px;color:#faf6f0">Open User Guide &amp; Documentation</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:var(--brass);text-transform:uppercase">Docs</span>
+  </div>
+  <div style="padding:13px 22px;display:flex;justify-content:space-between">
+    <span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#e8e0d4">Go to Staging Inbox</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:#9a9088;text-transform:uppercase">Navigation</span>
+  </div>
+  <div style="padding:13px 22px;display:flex;justify-content:space-between">
+    <span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#e8e0d4">Run Safe Mode Dry-Run Simulation</span>
+    <span style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:#C4501A;text-transform:uppercase">Actions</span>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="grad-rule"></div>
+
+<!-- SCREEN: Meta-Ledger Audit -->
+<div>
+<div class="scr-lbl">Meta-Ledger &amp; Audit Trail</div>
+<div style="background:#1a1410;border:1px solid rgba(154,144,136,.2);box-shadow:0 4px 14px rgba(0,0,0,.3);padding:26px;max-width:1000px;position:relative;overflow:hidden">
+  <div style="position:absolute;top:-10px;right:10px;font-family:'Playfair Display',serif;font-weight:900;font-size:110px;color:rgba(139,58,26,.05);pointer-events:none">AUDIT</div>
+  <div style="position:absolute;top:-50px;right:-30px;width:220px;height:220px;background:radial-gradient(circle,rgba(184,65,47,.22),transparent 70%);filter:blur(28px);pointer-events:none;z-index:0"></div>
+  <div style="position:relative;z-index:1">
+  <div class="section-label" style="margin-bottom:8px;font-size:10px !important">Ledger Integrity</div>
+  <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:24px;color:#faf6f0;margin-bottom:4px">Meta-Ledger &amp; Audit Trail</div>
+  <div style="font-family:'Libre Baskerville',serif;font-style:italic;font-size:13px;color:#9a9088;margin-bottom:20px">Append-only, cryptographically hash-chained.</div>
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;border-left:3px solid var(--gain);background:rgba(90,158,111,.05);padding:12px 16px">
+      <span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#faf6f0">review approve <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:#9a9088">stg_sf_001</span></span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10px;color:var(--gain-bright);letter-spacing:.15em">OK</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;border-left:3px solid var(--loss);background:rgba(184,65,47,.06);padding:12px 16px">
+      <span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#faf6f0">mcp balances <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:#9a9088">balances</span></span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10px;color:var(--loss-bright);letter-spacing:.15em">ERROR</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;border-left:3px solid var(--loss);background:rgba(184,65,47,.06);padding:12px 16px">
+      <span style="font-family:'Libre Baskerville',serif;font-size:14px;color:#faf6f0">project <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:#9a9088">denied: safe mode is on</span></span>
+      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:10px;color:var(--loss-bright);letter-spacing:.15em">DENIED</span>
+    </div>
+  </div>
+  </div>
+</div>
+</div>
+
+<div class="grad-rule"></div>
+
+<!-- SCREEN: Balances & Chart -->
+<div>
+<div class="scr-lbl">Account Balances &amp; Chart</div>
+<div style="background:#1a1410;border:1px solid rgba(154,144,136,.2);box-shadow:0 4px 14px rgba(0,0,0,.3);padding:26px;max-width:1000px;position:relative;overflow:hidden">
+  <div class="ghost" style="top:-14px;right:16px;font-size:110px">LEDGER</div>
+  <div style="position:absolute;top:-50px;right:-30px;width:240px;height:240px;background:radial-gradient(circle,rgba(90,158,111,.28),transparent 70%);filter:blur(30px);pointer-events:none;z-index:0"></div>
+  <div style="position:relative;z-index:1">
+  <div class="section-label" style="margin-bottom:8px;font-size:10px !important">Live Positions</div>
+  <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:24px;color:#faf6f0;margin-bottom:20px">Account Balances &amp; Chart</div>
+  <div style="display:flex;gap:20px;margin-bottom:24px">
+    <div style="border-left:3px solid var(--gain);background:rgba(90,158,111,.05);padding:14px 18px;flex:1">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:#9a9088;text-transform:uppercase">Net Worth</div>
+      <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:26px;color:#faf6f0">$45,760.35</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--gain-bright)">▲ 3.4% this month</div>
+    </div>
+    <div style="border-left:3px solid var(--loss);background:rgba(184,65,47,.05);padding:14px 18px;flex:1">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:9px;letter-spacing:.2em;color:#9a9088;text-transform:uppercase">Liabilities</div>
+      <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:26px;color:#faf6f0">$1,240.15</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--loss-bright)">▼ 6.8% this month</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 130px 100px;gap:10px 0;font-family:'Libre Baskerville',serif;font-size:13px;align-items:center;border-top:1px solid rgba(139,58,26,.2);padding-top:14px">
+    <div style="color:#e8e0d4">Assets:Bank:ChaseChecking</div><div style="text-align:right;color:#faf6f0">$14,220.50</div><div style="text-align:right;color:var(--gain-bright)">▲ 4.2%</div>
+    <div style="color:#e8e0d4">Assets:Bank:Savings</div><div style="text-align:right;color:#faf6f0">$32,800.00</div><div style="text-align:right;color:var(--gain-bright)">▲ 1.1%</div>
+    <div style="color:#e8e0d4">Liabilities:CreditCard</div><div style="text-align:right;color:#faf6f0">-$1,240.15</div><div style="text-align:right;color:var(--loss-bright)">▼ 6.8%</div>
+  </div>
+  </div>
+</div>
+</div>
+
+<div class="grad-rule"></div>
+
+<!-- SCREEN: Docs -->
+<div>
+<div class="scr-lbl">User Guide &amp; Documentation</div>
+<div style="background:#1a1410;border:1px solid rgba(154,144,136,.2);box-shadow:0 4px 14px rgba(0,0,0,.3);padding:30px;max-width:1000px;position:relative;overflow:hidden">
+  <div style="position:absolute;top:-20px;right:0;font-family:'Playfair Display',serif;font-weight:900;font-size:130px;color:rgba(139,58,26,.05)">GUIDE</div>
+  <div style="position:absolute;top:-50px;right:-30px;width:240px;height:240px;background:radial-gradient(circle,rgba(184,146,42,.2),transparent 70%);filter:blur(30px);pointer-events:none;z-index:0"></div>
+  <div style="position:relative;z-index:1">
+  <div class="section-label" style="margin-bottom:10px;font-size:10px !important">Enterprise Operator Guide · v0.1.0</div>
+  <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:32px;color:#faf6f0;margin-bottom:12px">IronLedger Operator Guide &amp; Reference</div>
+  <div style="font-family:'Libre Baskerville',serif;font-style:italic;font-size:15px;color:#e8e0d4;line-height:1.8;max-width:640px;margin-bottom:20px">IronLedger is a local-first, single-operator financial operating system. Plaintext Beancount is the sole accounting authority.</div>
+  <div class="rule" style="margin-bottom:20px"></div>
+  <div style="display:flex;gap:16px;align-items:baseline">
+    <div style="width:26px;height:26px;border-radius:50%;background:#B8922A;color:#0a0806;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none">1</div>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-weight:700;font-size:16px;color:#faf6f0">Ingest Bank Statement Files</div>
+      <div style="font-family:ui-monospace,monospace;font-size:11px;color:#9a9088;margin-top:6px">python -m ironledger.cli import inbox/checking_export.ofx --confirm</div>
+    </div>
+  </div>
+  </div>
+</div>
+</div>
+
+</div>
+</x-dc>
+</body>
+</html>
