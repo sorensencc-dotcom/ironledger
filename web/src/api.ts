@@ -24,6 +24,8 @@ import type {
   FederationTenant,
   FederationClusterNode,
   FederatedOutboxEvent,
+  FailoverStatus,
+  KeyRotationResult,
 } from './types';
 
 
@@ -386,5 +388,67 @@ export const api = {
     if (!res.ok) throw new Error(`Failed to fetch federated events: ${res.statusText}`);
     return res.json();
   },
+
+  // Failover & Key Rotation (Phase 12)
+  async getFailoverStatus(clusterId: string = 'primary-cluster'): Promise<FailoverStatus> {
+    const res = await fetch(`${API_BASE}/failover/status?cluster_id=${encodeURIComponent(clusterId)}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch failover status: ${res.statusText}`);
+    return res.json();
+  },
+
+  async recordFailoverHeartbeat(payload: {
+    cluster_id: string;
+    node_id: string;
+    role?: string;
+    wal_offset_bytes?: number;
+    salt1?: number;
+    salt2?: number;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/failover/heartbeat`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to record heartbeat: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async promoteFailoverLeader(payload: {
+    cluster_id: string;
+    candidate_node_id: string;
+    expected_term: number;
+    lease_ttl_seconds?: number;
+  }): Promise<any> {
+    const res = await fetch(`${API_BASE}/failover/promote`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to promote leader: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async rotateTenantKey(payload: {
+    tenant_id: string;
+    new_kek_key_id: string;
+  }): Promise<KeyRotationResult> {
+    const res = await fetch(`${API_BASE}/security/rotate-key`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to rotate tenant key: ${res.statusText}`);
+    }
+    return res.json();
+  },
 };
+
 

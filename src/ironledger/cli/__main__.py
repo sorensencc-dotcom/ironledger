@@ -282,11 +282,36 @@ def _build_parser() -> argparse.ArgumentParser:
     fed_outbox_list.add_argument("--tenant-id", default=None, help="filter by tenant identifier")
     fed_outbox_list.add_argument("--limit", type=int, default=50, help="maximum events to list")
 
-    fed_outbox_disp = fed_outbox_sub.add_parser("dispatch", help="claim and dispatch outbox events")
-    fed_outbox_disp.add_argument("--worker-id", default="cli_worker", help="worker identifier")
-    fed_outbox_disp.add_argument("--batch-size", type=int, default=50, help="batch size")
+    fed_outbox_disp = fed_outbox_sub.add_parser("dispatch", help="dispatch pending federated outbox events")
+    fed_outbox_disp.add_argument("--worker-id", default="cli-worker", help="worker identifier for lease fencing")
+    fed_outbox_disp.add_argument("--batch-size", type=int, default=50, help="maximum events to process in batch")
+
+
+    # failover command tree
+    fail_p = sub.add_parser("failover", help="high-availability primary election and cluster failover")
+    fail_p.add_argument("--db", default=argparse.SUPPRESS, help="path to SQLite ledger index")
+    fail_sub = fail_p.add_subparsers(dest="failover_command", required=True)
+
+    fail_stat = fail_sub.add_parser("status", help="show cluster failover and quorum status")
+    fail_stat.add_argument("--cluster-id", default="default", help="cluster identifier")
+
+    fail_prom = fail_sub.add_parser("promote", help="promote node to cluster PRIMARY")
+    fail_prom.add_argument("--cluster-id", required=True, help="cluster identifier")
+    fail_prom.add_argument("--candidate-node-id", required=True, help="node identifier to promote")
+    fail_prom.add_argument("--lease-seconds", type=int, default=15, help="lease duration in seconds")
+
+    # security command tree
+    sec_p = sub.add_parser("security", help="tenant key rotation and cryptographic vault management")
+    sec_p.add_argument("--db", default=argparse.SUPPRESS, help="path to SQLite ledger index")
+    sec_sub = sec_p.add_subparsers(dest="security_command", required=True)
+
+    sec_rot = sec_sub.add_parser("rotate-key", help="rotate tenant KEK and re-wrap stored secrets")
+    sec_rot.add_argument("--tenant-id", required=True, help="tenant identifier")
+    sec_rot.add_argument("--new-kek-key-id", required=True, help="new KEK identifier")
+    sec_rot.add_argument("--rotated-by", default="operator", help="operator or service name")
 
     return parser
+
 
 
 
@@ -384,7 +409,44 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_anomaly(args)
     if args.command == "federation":
         return _cmd_federation(args)
+    if args.command == "failover":
+        return _cmd_failover(args)
+    if args.command == "security":
+        return _cmd_security(args)
     parser.error(f"unknown command {args.command!r}")
+    return 2
+
+
+def _cmd_failover(args) -> int:
+    from ironledger.cli.commands.failover import (
+        run_failover_promote,
+        run_failover_status,
+    )
+
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    if args.failover_command == "status":
+        return run_failover_status(db_path=db_path, cluster_id=args.cluster_id)
+    elif args.failover_command == "promote":
+        return run_failover_promote(
+            db_path=db_path,
+            cluster_id=args.cluster_id,
+            candidate_node_id=args.candidate_node_id,
+            lease_seconds=args.lease_seconds,
+        )
+    return 2
+
+
+def _cmd_security(args) -> int:
+    from ironledger.cli.commands.failover import run_security_rotate_key
+
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    if args.security_command == "rotate-key":
+        return run_security_rotate_key(
+            db_path=db_path,
+            tenant_id=args.tenant_id,
+            new_kek_key_id=args.new_kek_key_id,
+            rotated_by=args.rotated_by,
+        )
     return 2
 
 
@@ -413,6 +475,7 @@ def _cmd_federation(args) -> int:
                 batch_size=args.batch_size,
             )
     return 2
+
 
 
 

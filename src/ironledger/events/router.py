@@ -174,3 +174,33 @@ class EventRouter:
             payload=payload,
         )
         return cls.publish(conn, event)
+
+    @classmethod
+    def emit_system_alert(
+        cls,
+        conn: sqlite3.Connection,
+        ledger_id: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+        severity: str = "WARN",
+        tenant_id: str = "default",
+    ) -> str:
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        payload = {
+            "message": message,
+            "details": details or {},
+        }
+        event_id = compute_event_id("SYSTEM_ALERT", tenant_id, ledger_id, now_utc, payload)
+        event = FederatedEvent(
+            event_id=event_id,
+            event_type="SYSTEM_ALERT",
+            occurred_at=now_utc,
+            recorded_at=now_utc,
+            tenant_id=tenant_id,
+            ledger_id=ledger_id,
+            source="system",
+            severity=severity,
+            payload=payload,
+        )
+        return cls.publish(conn, event)
+

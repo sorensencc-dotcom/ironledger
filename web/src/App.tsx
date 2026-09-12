@@ -10,6 +10,7 @@ import { ConnectorsView } from './components/ConnectorsView';
 import { WebhooksPanel } from './components/WebhooksPanel';
 import { MetricsView } from './components/MetricsView';
 import { FederationView } from './components/FederationView';
+import { FailoverView } from './components/FailoverView';
 import { api } from './api';
 
 import type {
@@ -372,6 +373,15 @@ export default function App() {
             />
           </div>
         )}
+
+        {activeView === 'failover' && (
+          <div className="flex-1 p-6 overflow-y-auto">
+            <FailoverView
+              onNotify={(msg, type) => setNotification({ msg, type: type === 'error' ? 'error' : 'success' })}
+            />
+          </div>
+        )}
+
 
 
         {activeView === 'rules' && (

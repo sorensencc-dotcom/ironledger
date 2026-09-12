@@ -71,7 +71,7 @@
         <span class="font-bold text-sm tracking-wide text-slate-100 flex items-center gap-2">
           IronLedger
           <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono">
-            v0.11.0 &bull; Phase 11 Federated Fabric
+            v0.12.0 &bull; Phase 12 High-Availability Failover Fabric
           </span>
         </span>
       </div>
@@ -402,6 +402,18 @@
                   <td class="p-2.5">Atomically resolve detected anomaly flag</td>
                 </tr>
                 <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger failover status</td>
+                  <td class="p-2.5">Inspect cluster quorum, primary node lease, and heartbeat status</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger failover promote</td>
+                  <td class="p-2.5">Promote candidate replica to primary with monotonic term advance</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger security rotate-key</td>
+                  <td class="p-2.5">Atomically rotate tenant KEK and re-wrap all webhook/connector secrets</td>
+                </tr>
+                <tr>
                   <td class="p-2.5 text-indigo-300 font-bold">ironledger federation nodes list</td>
                   <td class="p-2.5">List peer cluster nodes and topology status</td>
                 </tr>
@@ -475,6 +487,27 @@
           </p>
         </div>
 
+        <div id="exp-failover" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Monotonic Fenced Leader Election</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Cluster primaries operate under lease-fenced terms recorded in <code class="font-mono text-indigo-300">cluster_leader_leases</code>. Transitions strictly increment monotonic integer terms and issue randomized UUID fence tokens, guarding against split-brain dual primary writes.
+          </p>
+        </div>
+
+        <div id="exp-wal-replication" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Cross-Region WAL Replication & Divergence Detection</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            SQLite WAL frames are bundled with header salts and SHA-256 payload checksums in <code class="font-mono text-indigo-300">replication_wal_checkpoints</code>. Stream synchronization verifies replica integrity and triggers <code class="font-mono text-indigo-300">DivergenceDetectedError</code> upon salt or hash mismatches.
+          </p>
+        </div>
+
+        <div id="exp-kek-rotation" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Zero-Downtime Tenant KEK Rotation</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Per-tenant Key Encryption Keys (KEKs) rotate dynamically without plaintext storage exposure. Webhook secrets and connector credentials re-encrypt under fresh initialization vectors and authentication tags within an atomic SQLite transaction.
+          </p>
+        </div>
+
         <div id="exp-fencing" class="space-y-3">
           <h3 class="text-base font-semibold text-white">Fenced Worker Lease Architecture</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
@@ -492,7 +525,7 @@
 
       <!-- Footer -->
       <footer class="pt-8 border-t border-slate-800 text-xs font-mono text-slate-500 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>IronLedger Enterprise Financial OS &bull; Phase 11 Ratified</div>
+        <div>IronLedger Enterprise Financial OS &bull; Phase 12 Ratified</div>
         <div class="flex items-center gap-4">
           <a href="/" class="text-indigo-400 hover:underline">Workbench App</a>
           <a href="/api/docs" class="text-indigo-400 hover:underline">FastAPI Swagger</a>

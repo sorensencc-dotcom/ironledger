@@ -261,5 +261,48 @@ export type GovernanceToastCategory =
   | 'SUCCESS_GOVERNANCE_ACTION'
   | 'ERROR_GOVERNANCE_ACTION'
   | 'CIRCUIT_BREAKER_OPEN'
-  | 'DLQ_REDRIVE_COMPLETE';
+  | 'DLQ_REDRIVE_COMPLETE'
+  | 'FAILOVER_LEADER_PROMOTED'
+  | 'TENANT_KEY_ROTATED';
+
+export interface LeaderLeaseInfo {
+  cluster_id: string;
+  leader_node_id: string;
+  term: number;
+  lease_fence_token: string;
+  acquired_at_utc: string;
+  lease_expires_at_utc: string;
+  is_active: boolean;
+}
+
+export interface ClusterNodeStatus {
+  node_id: string;
+  cluster_id: string;
+  endpoint_url: string;
+  role: 'PRIMARY' | 'REPLICA' | 'WITNESS';
+  is_primary: boolean;
+  last_heartbeat_utc: string | null;
+  is_alive: boolean;
+  lag_bytes?: number;
+  salt1?: number;
+  salt2?: number;
+}
+
+export interface FailoverStatus {
+  cluster_id: string;
+  primary_node_id: string | null;
+  term: number;
+  lease_fence_token: string | null;
+  is_healthy: boolean;
+  nodes: ClusterNodeStatus[];
+}
+
+export interface KeyRotationResult {
+  success: boolean;
+  tenant_id: string;
+  new_kek_key_id: string;
+  webhooks_reencrypted: number;
+  credentials_reencrypted: number;
+  audit_event_id: string;
+}
 

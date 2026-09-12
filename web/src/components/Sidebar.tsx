@@ -1,5 +1,4 @@
-import React from 'react';
-import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3, Network } from 'lucide-react';
+import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3, Network, ShieldAlert } from 'lucide-react';
 
 export type ActiveView =
   | 'staging'
@@ -10,7 +9,9 @@ export type ActiveView =
   | 'webhooks'
   | 'metrics'
   | 'federation'
+  | 'failover'
   | 'settings';
+
 
 interface SidebarProps {
   activeView: ActiveView;
@@ -51,6 +52,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'federation' as ActiveView,
       label: 'Federation & Events',
       icon: Network,
+    },
+    {
+      id: 'failover' as ActiveView,
+      label: 'Failover & Cluster HA',
+      icon: ShieldAlert,
     },
     {
       id: 'metrics' as ActiveView,

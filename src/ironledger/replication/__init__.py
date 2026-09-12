@@ -1,13 +1,11 @@
-"""High-availability WAL frame inspection and replication protocols."""
+"""SQLite WAL frame replication, checksum inspection, and cross-region fabric."""
 
 from __future__ import annotations
 
+from ironledger.replication.fabric import WalBundle, WalReplicationFabric
+from ironledger.replication.sync import DivergenceDetectedError, ReplicationSynchronizer
 from ironledger.replication.wal_parser import (
     ReplicationPosition,
-    WAL_FRAME_HEADER_SIZE,
-    WAL_HEADER_SIZE,
-    WAL_MAGIC_BE,
-    WAL_MAGIC_LE,
     WalFormatError,
     WalFrame,
     WalHeader,
@@ -16,14 +14,15 @@ from ironledger.replication.wal_parser import (
 )
 
 __all__ = [
+    "DivergenceDetectedError",
     "ReplicationPosition",
-    "WAL_FRAME_HEADER_SIZE",
-    "WAL_HEADER_SIZE",
-    "WAL_MAGIC_BE",
-    "WAL_MAGIC_LE",
+    "ReplicationSynchronizer",
+    "WalBundle",
     "WalFormatError",
     "WalFrame",
     "WalHeader",
+    "WalReplicationFabric",
     "parse_wal_frames",
     "parse_wal_header",
 ]
+
