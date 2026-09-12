@@ -52,34 +52,34 @@ export const TopHUD: React.FC<TopHUDProps> = ({
   const latency = freshness?.latency_seconds ?? 999;
   let freshnessColor = 'bg-loss-tint text-loss-bright border-loss/40 animate-pulse';
   let freshnessDot = 'bg-loss-bright';
-  let freshnessLabel = `Projection: Desync (${latency >= 999 ? 'No sync' : `${latency.toFixed(1)}s`})`;
+  let freshnessLabel = latency >= 999 ? 'PROJECTION: DESYNC' : `PROJECTION: ${latency.toFixed(1)}s`;
 
   if (latency < 5) {
     freshnessColor = 'bg-gain-tint text-gain-bright border-gain/40';
     freshnessDot = 'bg-gain-bright';
-    freshnessLabel = `Projection: Synced (${latency.toFixed(1)}s)`;
+    freshnessLabel = `PROJECTION: ${latency.toFixed(1)}s`;
   } else if (latency <= 30) {
     freshnessColor = 'bg-brass/10 text-brass border-brass/40';
     freshnessDot = 'bg-brass';
-    freshnessLabel = `Projection: Stale (${latency.toFixed(1)}s)`;
+    freshnessLabel = `PROJECTION: STALE (${latency.toFixed(1)}s)`;
   }
 
   // SimpleFIN Aggregator Ingestion Status Indicator
   const syncState = syncStatus?.state ?? 'UNCONFIGURED';
   let syncColor = 'bg-brass/10 text-brass border-brass/40';
   let syncDot = 'bg-brass';
-  let syncLabel = 'SimpleFIN: Unconfigured';
+  let syncLabel = 'SIMPLEFIN: OFF';
   let syncTooltip = 'No SimpleFIN credentials stored. Run: ironledger sync auth claim';
 
   if (syncState === 'HEALTHY') {
     syncColor = 'bg-gain-tint text-gain-bright border-gain/40';
     syncDot = 'bg-gain-bright';
-    syncLabel = 'SimpleFIN: Healthy';
+    syncLabel = 'SIMPLEFIN: OK';
     syncTooltip = `SimpleFIN Bridge Connected | Pending in DB: ${syncStatus?.pending_count ?? 0}`;
   } else if (syncState === 'DEGRADED') {
     syncColor = 'bg-loss-tint text-loss-bright border-loss/40 animate-pulse';
     syncDot = 'bg-loss-bright';
-    syncLabel = 'SimpleFIN: Degraded';
+    syncLabel = 'SIMPLEFIN: ERR';
     syncTooltip = syncStatus?.last_error_code
       ? `SimpleFIN Degraded: ${syncStatus.last_error_code}`
       : 'SimpleFIN connection error or SSRF warning detected';
@@ -92,16 +92,14 @@ export const TopHUD: React.FC<TopHUDProps> = ({
   return (
     <header className="h-14 border-b border-[rgba(139,58,26,0.25)] bg-[#1a1410] px-4 flex items-center justify-between z-20 shrink-0 select-none gap-3 shadow-md">
       {/* Brand & Primary Navigation */}
-      <div className="flex items-center space-x-4 shrink-0">
-        <div className="flex items-center space-x-2.5">
-          <div className="flex items-center gap-2">
-            <h1 className="font-display font-black italic text-lg tracking-wide text-brass flex items-center gap-2 whitespace-nowrap">
-              IronLedger
-              <span className="text-[10px] px-1.5 py-0.5 bg-black/40 text-ash border border-border font-ui font-semibold tracking-widest uppercase not-italic">
-                v0.11.0
-              </span>
-            </h1>
-          </div>
+      <div className="flex items-center space-x-3 shrink-0">
+        <div className="flex items-center space-x-2">
+          <h1 className="font-display font-black italic text-lg tracking-wide text-brass flex items-center gap-2 whitespace-nowrap">
+            IronLedger
+            <span className="text-[10px] px-1.5 py-0.5 bg-black/40 text-ash border border-border font-ui font-semibold tracking-widest uppercase not-italic">
+              v0.11.0
+            </span>
+          </h1>
         </div>
 
         {/* Quick View Navigation Tabs */}
@@ -140,10 +138,10 @@ export const TopHUD: React.FC<TopHUDProps> = ({
       </div>
 
       {/* Center Status HUDs */}
-      <div className="flex-1 min-w-0 flex items-center justify-start xl:justify-center gap-2 font-ui text-[11px] tracking-wider uppercase overflow-x-auto py-1 px-1 scrollbar-none">
-        {/* Health & Readiness Probes */}
+      <div className="flex-1 min-w-0 flex items-center justify-center gap-2 font-ui text-[11px] tracking-wider uppercase overflow-x-auto py-1 px-1 scrollbar-none">
+        {/* Health & Readiness Probes (Compact on large, hidden on small) */}
         <div
-          className={`px-2 py-1 border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+          className={`px-2 py-1 border hidden lg:inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
             isHealthy && isReady
               ? 'bg-gain-tint text-gain-bright border-gain/40'
               : 'bg-loss-tint text-loss-bright border-loss/40 animate-pulse'
@@ -156,16 +154,16 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
         {/* Envelope Encryption HUD */}
         <div
-          className="px-2 py-1 border border-border bg-black/40 text-bone flex items-center gap-1.5 whitespace-nowrap shrink-0"
+          className="px-2 py-1 border border-border bg-black/40 text-bone hidden xl:inline-flex items-center gap-1.5 whitespace-nowrap shrink-0"
           title="Envelope encryption: AES-256-GCM DEKs wrapped with local KEK"
         >
           <Key className="w-3.5 h-3.5 text-brass shrink-0" />
           <span>ENVELOPE: ACTIVE</span>
         </div>
 
-        {/* Safe Mode Guard Banner with Explicit Permissions */}
+        {/* Safe Mode Guard Banner */}
         <div
-          className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
+          className={`px-2.5 py-1 border inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
             isSafe
               ? 'bg-[rgba(196,80,26,0.1)] text-ember border-[rgba(196,80,26,0.4)]'
               : 'bg-gain-tint text-gain-bright border-gain/40'
@@ -178,7 +176,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
         {/* SimpleFIN Aggregator Ingestion Status Pill */}
         <div
-          className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${syncColor}`}
+          className={`px-2.5 py-1 border inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${syncColor}`}
           title={syncTooltip}
         >
           <span className={`w-1.5 h-1.5 shrink-0 ${syncDot}`} />
@@ -191,14 +189,14 @@ export const TopHUD: React.FC<TopHUDProps> = ({
         </div>
 
         {/* Projection Freshness Pill */}
-        <div className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${freshnessColor}`}>
+        <div className={`px-2.5 py-1 border inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${freshnessColor}`}>
           <span className={`w-1.5 h-1.5 shrink-0 ${freshnessDot}`} />
           <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${latency > 5 ? 'animate-spin' : ''}`} />
           <span>{freshnessLabel}</span>
         </div>
 
         {/* Session Token HUD */}
-        <div className="px-2.5 py-1 border border-border bg-black/30 text-ash flex items-center gap-1.5 whitespace-nowrap shrink-0 font-mono text-[10px]">
+        <div className="px-2.5 py-1 border border-border bg-black/30 text-ash hidden 2xl:inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 font-mono text-[10px]">
           <Cpu className="w-3.5 h-3.5 text-rust shrink-0" />
           <span>D-0 LOCALHOST</span>
         </div>
@@ -210,7 +208,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           href="/docs/index.html"
           target="_blank"
           rel="noreferrer"
-          className="px-2.5 py-1 bg-black/40 hover:bg-card-hover text-ash hover:text-white border border-border flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          className="px-2.5 py-1 bg-black/40 hover:bg-card-hover text-ash hover:text-white border border-border hidden sm:inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
           title="User Guide & Documentation"
         >
           <HelpCircle className="w-3.5 h-3.5 text-brass" />
@@ -219,7 +217,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
         <button
           onClick={onOpenCommandPalette}
-          className="px-2.5 py-1 bg-black/40 hover:bg-card-hover text-ash hover:text-white border border-border flex items-center gap-1.5 transition-colors whitespace-nowrap font-mono text-[11px]"
+          className="px-2.5 py-1 bg-black/40 hover:bg-card-hover text-ash hover:text-white border border-border hidden md:inline-flex items-center gap-1.5 transition-colors whitespace-nowrap font-mono text-[11px]"
           title="Command Palette (Ctrl+K)"
         >
           <Terminal className="w-3.5 h-3.5 text-ash" />
@@ -229,7 +227,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
         <button
           onClick={onTriggerSync}
           disabled={isSyncing}
-          className="px-3 py-1 bg-black/40 hover:bg-gain-tint text-gain-bright border border-gain/40 flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
+          className="px-3 py-1 bg-black/40 hover:bg-gain-tint text-gain-bright border border-gain/40 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
           title="Poll SimpleFIN Bank Feeds (/api/sync/poll)"
         >
           <Landmark className={`w-3.5 h-3.5 text-gain-bright ${isSyncing ? 'animate-spin' : ''}`} />
@@ -238,7 +236,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
         <button
           onClick={onOpenSimulation}
-          className="px-3 py-1 bg-black/40 hover:bg-brass/10 text-brass border border-brass/40 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          className="px-3 py-1 bg-black/40 hover:bg-brass/10 text-brass border border-brass/40 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
         >
           <Play className="w-3.5 h-3.5 text-brass" />
           <span>Simulate</span>
@@ -247,7 +245,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
         <button
           onClick={onTriggerCompile}
           disabled={isCompiling}
-          className="px-4 py-1 bg-ember hover:bg-ember/90 text-black font-extrabold flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50 whitespace-nowrap"
+          className="px-4 py-1 bg-ember hover:bg-ember/90 text-black font-extrabold inline-flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50 whitespace-nowrap"
         >
           {isCompiling ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
           <span>Compile</span>
