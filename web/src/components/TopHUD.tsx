@@ -140,7 +140,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
       </div>
 
       {/* Center Status HUDs */}
-      <div className="flex items-center space-x-2 font-ui text-[11px] tracking-wider uppercase overflow-x-auto py-1">
+      <div className="flex-1 min-w-0 flex items-center justify-start xl:justify-center gap-2 font-ui text-[11px] tracking-wider uppercase overflow-x-auto py-1 px-1 scrollbar-none">
         {/* Health & Readiness Probes */}
         <div
           className={`px-2 py-1 border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
@@ -150,7 +150,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           }`}
           title={`Healthz: ${health?.status || 'unknown'} | Readyz: ${readiness?.status || 'unknown'}`}
         >
-          <Server className="w-3.5 h-3.5 text-gain-bright" />
+          <Server className="w-3.5 h-3.5 text-gain-bright shrink-0" />
           <span>{isHealthy && isReady ? 'PROBES: OK' : 'PROBES: DEGRADED'}</span>
         </div>
 
@@ -159,7 +159,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           className="px-2 py-1 border border-border bg-black/40 text-bone flex items-center gap-1.5 whitespace-nowrap shrink-0"
           title="Envelope encryption: AES-256-GCM DEKs wrapped with local KEK"
         >
-          <Key className="w-3.5 h-3.5 text-brass" />
+          <Key className="w-3.5 h-3.5 text-brass shrink-0" />
           <span>ENVELOPE: ACTIVE</span>
         </div>
 
@@ -173,9 +173,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           title={isSafe ? 'Safe Mode Active: Live compiles require confirmation token' : 'Safe Mode Unlocked: Operator full live write access'}
         >
           {isSafe ? <ShieldAlert className="w-3.5 h-3.5 text-ember shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-gain-bright shrink-0" />}
-          <div className="flex items-center gap-1.5">
-            <span className="font-bold">{isSafe ? 'SAFE MODE' : 'UNLOCKED'}</span>
-          </div>
+          <span className="font-bold">{isSafe ? 'SAFE MODE' : 'UNLOCKED'}</span>
         </div>
 
         {/* SimpleFIN Aggregator Ingestion Status Pill */}
@@ -183,7 +181,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${syncColor}`}
           title={syncTooltip}
         >
-          <span className={`w-1.5 h-1.5 ${syncDot}`} />
+          <span className={`w-1.5 h-1.5 shrink-0 ${syncDot}`} />
           {syncState === 'DEGRADED' ? (
             <AlertTriangle className="w-3.5 h-3.5 text-loss-bright shrink-0" />
           ) : (
@@ -194,14 +192,14 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
         {/* Projection Freshness Pill */}
         <div className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${freshnessColor}`}>
-          <span className={`w-1.5 h-1.5 ${freshnessDot}`} />
-          <RefreshCw className={`w-3.5 h-3.5 ${latency > 5 ? 'animate-spin' : ''}`} />
+          <span className={`w-1.5 h-1.5 shrink-0 ${freshnessDot}`} />
+          <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${latency > 5 ? 'animate-spin' : ''}`} />
           <span>{freshnessLabel}</span>
         </div>
 
         {/* Session Token HUD */}
         <div className="px-2.5 py-1 border border-border bg-black/30 text-ash flex items-center gap-1.5 whitespace-nowrap shrink-0 font-mono text-[10px]">
-          <Cpu className="w-3.5 h-3.5 text-rust" />
+          <Cpu className="w-3.5 h-3.5 text-rust shrink-0" />
           <span>D-0 LOCALHOST</span>
         </div>
       </div>
