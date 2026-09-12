@@ -26,6 +26,8 @@ import type {
   FederatedOutboxEvent,
   FailoverStatus,
   KeyRotationResult,
+  SankeyFlowRow,
+  HoldingRecord,
 } from './types';
 
 
@@ -446,6 +448,29 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || err.detail || `Failed to rotate tenant key: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // Analytics & Visualizations
+  async getSankeyData(period: string): Promise<SankeyFlowRow[]> {
+    const res = await fetch(`${API_BASE}/analytics/sankey?period=${encodeURIComponent(period)}`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to fetch sankey data: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async getPortfolioData(): Promise<HoldingRecord[]> {
+    const res = await fetch(`${API_BASE}/analytics/portfolio`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to fetch portfolio data: ${res.statusText}`);
     }
     return res.json();
   },

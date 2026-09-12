@@ -11,6 +11,8 @@ import { WebhooksPanel } from './components/WebhooksPanel';
 import { MetricsView } from './components/MetricsView';
 import { FederationView } from './components/FederationView';
 import { FailoverView } from './components/FailoverView';
+import { CashFlowSankey } from './components/analytics/CashFlowSankey';
+import { HoldingsView } from './components/portfolio/HoldingsView';
 import { api } from './api';
 
 import type {
@@ -22,9 +24,11 @@ import type {
   ConnectorSyncRun,
   FreshnessStatus,
   HealthStatus,
+  HoldingRecord,
   MutationEvent,
   Rule,
   SafeModeStatus,
+  SankeyFlowRow,
   StagedTransaction,
   SyncStatus,
   SyncTimelineEvent,
@@ -60,6 +64,12 @@ export default function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [readiness, setReadiness] = useState<HealthStatus | null>(null);
   const [rawMetrics, setRawMetrics] = useState<string>('');
+
+  // Analytics & Portfolio State
+  const [sankeyFlows, setSankeyFlows] = useState<SankeyFlowRow[]>([]);
+  const [portfolioHoldings, setPortfolioHoldings] = useState<HoldingRecord[]>([]);
+  const [sankeyPeriod, setSankeyPeriod] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   const [safeMode, setSafeMode] = useState<SafeModeStatus | null>(null);
   const [freshness, setFreshness] = useState<FreshnessStatus | null>(null);
@@ -127,6 +137,18 @@ export default function App() {
     return () => clearInterval(interval);
   }, [statusFilter]);
 
+  const fetchSankeyForPeriod = async (period: string) => {
+    setLoadingAnalytics(true);
+    try {
+      const flows = await api.getSankeyData(period);
+      setSankeyFlows(flows);
+    } catch (err) {
+      console.error('Failed to load sankey data:', err);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
   // Load view-specific data
   const loadViewData = async () => {
     setLoadingViewData(true);
@@ -134,6 +156,11 @@ export default function App() {
       if (activeView === 'balances') {
         const b = await api.getBalances();
         setBalances(b);
+      } else if (activeView === 'analytics') {
+        await fetchSankeyForPeriod(sankeyPeriod);
+      } else if (activeView === 'portfolio') {
+        const p = await api.getPortfolioData();
+        setPortfolioHoldings(p);
       } else if (activeView === 'audit') {
         const [a, m] = await Promise.all([api.getAudit(), api.getMutations()]);
         setAuditLog(a);
@@ -423,6 +450,68 @@ export default function App() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {activeView === 'analytics' && (
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-100">Cash Flow &amp; Sankey Visualizer</h2>
+                <p className="text-xs text-slate-500">Directed cash flows from income roots through operating buffer to expenses and investments</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-slate-400">Period:</label>
+                <input
+                  type="month"
+                  value={sankeyPeriod}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSankeyPeriod(val);
+                    if (val && val.length === 7) {
+                      fetchSankeyForPeriod(val);
+                    }
+                  }}
+                  className="bg-slate-900 border border-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={() => fetchSankeyForPeriod(sankeyPeriod)}
+                  disabled={loadingAnalytics}
+                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors disabled:opacity-50"
+                >
+                  {loadingAnalytics ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-center p-4 bg-slate-900/40 rounded-lg border border-slate-800">
+              {sankeyFlows.length === 0 ? (
+                <div className="py-12 text-center text-xs text-slate-500">
+                  No cash flows recorded for period <span className="font-bold text-slate-400">{sankeyPeriod}</span>.
+                </div>
+              ) : (
+                <CashFlowSankey flows={sankeyFlows} width={880} height={420} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeView === 'portfolio' && (
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h2 className="text-base font-bold text-slate-100">Multi-Asset Portfolio &amp; Holdings</h2>
+                <p className="text-xs text-slate-500">Consolidated cost basis vs. mark-to-market rational exchange rates</p>
+              </div>
+              <button
+                onClick={() => api.getPortfolioData().then(setPortfolioHoldings).catch(console.error)}
+                className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+              >
+                Refresh Holdings
+              </button>
+            </div>
+
+            <HoldingsView holdings={portfolioHoldings} />
           </div>
         )}
 

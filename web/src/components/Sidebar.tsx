@@ -1,9 +1,11 @@
-import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3, Network, ShieldAlert } from 'lucide-react';
+import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3, Network, ShieldAlert, TrendingUp, PieChart } from 'lucide-react';
 
 export type ActiveView =
   | 'staging'
   | 'rules'
   | 'balances'
+  | 'analytics'
+  | 'portfolio'
   | 'audit'
   | 'connectors'
   | 'webhooks'
@@ -62,6 +64,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'metrics' as ActiveView,
       label: 'Telemetry & Metrics',
       icon: BarChart3,
+    },
+    {
+      id: 'analytics' as ActiveView,
+      label: 'Cash Flow (Sankey)',
+      icon: TrendingUp,
+    },
+    {
+      id: 'portfolio' as ActiveView,
+      label: 'Portfolio Holdings',
+      icon: PieChart,
     },
     {
       id: 'rules' as ActiveView,

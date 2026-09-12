@@ -8,7 +8,10 @@ from ironledger.db.connection import connect
 from ironledger.project.errors import ProjectError
 from ironledger.project.query import assert_fresh, balances, projection_status, search
 
-TOOL_NAMES = ('search', 'balances', 'projection_status')
+CORE_TOOL_NAMES = ('search', 'balances', 'projection_status')
+ANALYTICS_TOOL_NAMES = ('get_cash_flow_sankey', 'get_portfolio_holdings')
+TOOL_NAMES = CORE_TOOL_NAMES
+ALL_TOOL_NAMES = CORE_TOOL_NAMES + ANALYTICS_TOOL_NAMES
 
 def _audit_tool(
     db: str | None,
@@ -34,8 +37,8 @@ def _audit_tool(
     finally:
         conn.close()
 
-def list_tools():
-    return [
+def list_tools(include_analytics: bool = False):
+    core = [
         {
             'name': 'search',
             'description': 'Full-text search across ledger entries and postings.',
@@ -69,10 +72,40 @@ def list_tools():
             },
         },
     ]
+    if not include_analytics:
+        return core
+
+    analytics_tools = [
+        {
+            'name': 'get_cash_flow_sankey',
+            'description': 'Return directed cash-flow streams for Sankey visualization and cash analysis.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'period': {
+                        'type': 'string',
+                        'description': 'Month formatted as YYYY-MM (e.g. 2026-08)',
+                    },
+                },
+                'required': ['period'],
+                'additionalProperties': False,
+            },
+        },
+        {
+            'name': 'get_portfolio_holdings',
+            'description': 'Return consolidated multi-asset portfolio holdings, rational valuations, and unrealized P&L.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {},
+                'additionalProperties': False,
+            },
+        },
+    ]
+    return core + analytics_tools
 
 def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
     args = arguments if arguments is not None else {}
-    if name not in TOOL_NAMES:
+    if name not in ALL_TOOL_NAMES:
         try:
             _audit_tool(db, action='mcp tools/call', target=str(name), result='error')
         except Exception:
@@ -91,7 +124,7 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
             return {'isError': True, 'content': [{'type': 'text', 'text': 'Audit failure: ' + str(exc)}]}
         return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps(status_data, indent=2, sort_keys=True)}]}
 
-    action_name = 'mcp search' if name == 'search' else 'mcp balances'
+    action_name = f'mcp {name}'
     try:
         conn = assert_fresh(ledger_dir, projection_dir, db=db)
     except ProjectError as exc:
@@ -135,6 +168,57 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
                 return {'isError': True, 'content': [{'type': 'text', 'text': 'Audit logging failed'}]}
             bals = [dataclasses.asdict(b) for b in bals_raw]
             return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps({'balances': bals}, indent=2, sort_keys=True)}]}
+        elif name == 'get_cash_flow_sankey':
+            period = args.get('period', '')
+            if not isinstance(period, str) or len(period) != 7:
+                _audit_tool(db, action='mcp get_cash_flow_sankey', target='get_cash_flow_sankey', result='error', input_hash=input_hash)
+                return {'isError': True, 'content': [{'type': 'text', 'text': 'period must be a YYYY-MM string'}]}
+            # Query db for v_sankey_cash_flows
+            db_conn = connect(str(db)) if db else conn
+            try:
+                cur = db_conn.cursor()
+                cur.execute(
+                    "SELECT source_node, target_node, amount_minor_units FROM v_sankey_cash_flows WHERE period_month = ?",
+                    (period,),
+                )
+                flows = [
+                    {'source_node': str(r[0]), 'target_node': str(r[1]), 'amount_minor_units': int(r[2])}
+                    for r in cur.fetchall()
+                ]
+                _audit_tool(db, action='mcp get_cash_flow_sankey', target='get_cash_flow_sankey', result='ok', input_hash=input_hash)
+                return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps({'flows': flows}, indent=2, sort_keys=True)}]}
+            except Exception as e:
+                _audit_tool(db, action='mcp get_cash_flow_sankey', target='get_cash_flow_sankey', result='error', input_hash=input_hash)
+                return {'isError': True, 'content': [{'type': 'text', 'text': f'Query error: {e}'}]}
+            finally:
+                if db and db_conn != conn:
+                    db_conn.close()
+        elif name == 'get_portfolio_holdings':
+            db_conn = connect(str(db)) if db else conn
+            try:
+                cur = db_conn.cursor()
+                cur.execute(
+                    "SELECT commodity, total_units, total_cost_basis_minor_units, base_currency, market_value_minor_units, unrealized_gain_minor_units FROM v_portfolio_holdings"
+                )
+                holdings = [
+                    {
+                        'commodity': str(r[0]),
+                        'total_units': int(r[1]) if r[1] is not None else 0,
+                        'total_cost_basis_minor_units': int(r[2]) if r[2] is not None else 0,
+                        'base_currency': str(r[3]),
+                        'market_value_minor_units': int(r[4]) if r[4] is not None else 0,
+                        'unrealized_gain_minor_units': int(r[5]) if r[5] is not None else 0,
+                    }
+                    for r in cur.fetchall()
+                ]
+                _audit_tool(db, action='mcp get_portfolio_holdings', target='get_portfolio_holdings', result='ok', input_hash=input_hash)
+                return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps({'holdings': holdings}, indent=2, sort_keys=True)}]}
+            except Exception as e:
+                _audit_tool(db, action='mcp get_portfolio_holdings', target='get_portfolio_holdings', result='error', input_hash=input_hash)
+                return {'isError': True, 'content': [{'type': 'text', 'text': f'Query error: {e}'}]}
+            finally:
+                if db and db_conn != conn:
+                    db_conn.close()
     except ProjectError as exc:
         try:
             _audit_tool(db, action=action_name, target=str(name), result='error', input_hash=input_hash)

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Play, RefreshCw, Shield, Layers, Inbox, BookOpen, HelpCircle, Landmark } from 'lucide-react';
+import { Search, Play, RefreshCw, Shield, Layers, Inbox, BookOpen, HelpCircle, Landmark, TrendingUp, PieChart } from 'lucide-react';
 import type { ActiveView } from './Sidebar';
 
 interface CommandPaletteProps {
@@ -40,6 +40,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       icon: Inbox,
       run: () => {
         onSelectView('staging');
+        onClose();
+      },
+    },
+    {
+      id: 'goto-analytics',
+      title: 'View Cash Flow (Sankey)',
+      category: 'Navigation',
+      icon: TrendingUp,
+      run: () => {
+        onSelectView('analytics');
+        onClose();
+      },
+    },
+    {
+      id: 'goto-portfolio',
+      title: 'Inspect Investment Portfolio',
+      category: 'Navigation',
+      icon: PieChart,
+      run: () => {
+        onSelectView('portfolio');
         onClose();
       },
     },

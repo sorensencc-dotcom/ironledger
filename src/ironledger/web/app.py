@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from ironledger.db.connection import connect
 from ironledger.observability.middleware import MetricsMiddleware
 from ironledger.web.errors import GovernanceException, governance_exception_handler
-from ironledger.web.routers import compile, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, webhooks
+from ironledger.web.routers import analytics, compile, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, webhooks
 
 __all__ = ["create_app"]
 
@@ -80,6 +80,7 @@ def create_app(
     app.include_router(webhooks.router)
     app.include_router(federation.router)
     app.include_router(failover.router)
+    app.include_router(analytics.router)
 
 
     # Mount static assets if build directory exists

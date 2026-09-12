@@ -174,6 +174,30 @@ export interface TriggerSyncResult {
   message: string;
 }
 
+export interface KeyRotationResult {
+  tenant_id: string;
+  previous_key_version: number;
+  new_key_version: number;
+  rotated_at_utc: string;
+  rewrapped_secrets_count: number;
+  vault_digest: string;
+}
+
+export interface SankeyFlowRow {
+  source_node: string;
+  target_node: string;
+  amount_minor_units: number;
+}
+
+export interface HoldingRecord {
+  commodity: string;
+  total_units: number;
+  total_cost_basis_minor_units: number;
+  market_value_minor_units: number;
+  unrealized_gain_minor_units: number;
+  base_currency: string;
+}
+
 export interface WebhookSubscription {
   ledger_id: string;
   subscription_id: string;

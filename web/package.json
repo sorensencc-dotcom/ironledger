@@ -11,12 +11,16 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "d3": "^7.9.0",
+    "d3-sankey": "^0.12.3",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.5"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/d3-sankey": "^0.12.5",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -29,4 +33,3 @@
     "vitest": "^2.1.8"
   }
 }
-
