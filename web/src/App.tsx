@@ -358,6 +358,8 @@ export default function App() {
     <div className="h-screen w-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden font-sans">
       {/* Top HUD */}
       <TopHUD
+        activeView={activeView}
+        onSelectView={setActiveView}
         safeMode={safeMode}
         freshness={freshness}
         syncStatus={syncStatus}

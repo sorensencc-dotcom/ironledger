@@ -9,12 +9,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
 from ironledger.db.connection import connect
 from ironledger.observability.middleware import MetricsMiddleware
 from ironledger.web.errors import GovernanceException, governance_exception_handler
 from ironledger.web.routers import analytics, compile, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, webhooks
 
 __all__ = ["create_app"]
+
+
+class NoCacheHtmlMiddleware(BaseHTTPMiddleware):
+    """Ensure HTML entrypoints are never cached stale by web browsers."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path.endswith(".html"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
 
 def create_app(
@@ -32,6 +49,7 @@ def create_app(
 
     app.add_exception_handler(GovernanceException, governance_exception_handler)
     app.add_middleware(MetricsMiddleware)
+    app.add_middleware(NoCacheHtmlMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[

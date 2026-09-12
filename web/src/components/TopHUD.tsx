@@ -13,8 +13,11 @@ import {
   Server,
 } from 'lucide-react';
 import type { FreshnessStatus, HealthStatus, SafeModeStatus, SyncStatus } from '../types';
+import type { ActiveView } from './Sidebar';
 
 interface TopHUDProps {
+  activeView: ActiveView;
+  onSelectView: (view: ActiveView) => void;
   safeMode: SafeModeStatus | null;
   freshness: FreshnessStatus | null;
   syncStatus: SyncStatus | null;
@@ -29,6 +32,8 @@ interface TopHUDProps {
 }
 
 export const TopHUD: React.FC<TopHUDProps> = ({
+  activeView,
+  onSelectView,
   safeMode,
   freshness,
   syncStatus,
@@ -86,19 +91,55 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
   return (
     <header className="h-14 border-b border-slate-700 bg-slate-900 px-4 flex items-center justify-between z-20 shrink-0 select-none gap-3">
-      {/* Brand */}
-      <div className="flex items-center space-x-2.5 shrink-0">
-        <div className="flex items-center justify-center w-8 h-8 rounded bg-indigo-600 text-white font-mono font-bold text-sm shadow-md shadow-indigo-500/20">
-          IL
+      {/* Brand & Primary Navigation */}
+      <div className="flex items-center space-x-4 shrink-0">
+        <div className="flex items-center space-x-2.5">
+          <div className="flex items-center justify-center w-8 h-8 rounded bg-indigo-600 text-white font-mono font-bold text-sm shadow-md shadow-indigo-500/20">
+            IL
+          </div>
+          <div className="flex items-center gap-2">
+            <h1 className="font-semibold text-sm tracking-wide text-slate-100 flex items-center gap-2 whitespace-nowrap">
+              IronLedger
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/80 font-mono font-normal">
+                v0.11.0
+              </span>
+            </h1>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <h1 className="font-semibold text-sm tracking-wide text-slate-100 flex items-center gap-2 whitespace-nowrap">
-            IronLedger
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/80 font-mono font-normal">
-              v0.10.0
-            </span>
-          </h1>
-        </div>
+
+        {/* Quick View Navigation Tabs */}
+        <nav className="flex items-center bg-slate-950/70 p-0.5 rounded-md border border-slate-800 text-xs font-medium font-sans">
+          <button
+            onClick={() => onSelectView('staging')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeView === 'staging'
+                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+            }`}
+          >
+            Staging
+          </button>
+          <button
+            onClick={() => onSelectView('portfolio')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeView === 'portfolio'
+                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+            }`}
+          >
+            Holdings &amp; Watchlist
+          </button>
+          <button
+            onClick={() => onSelectView('analytics')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeView === 'analytics'
+                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+            }`}
+          >
+            Cash Flow
+          </button>
+        </nav>
       </div>
 
       {/* Center Status HUDs */}
