@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from ironledger.db.connection import connect
-from ironledger.web.routers import compile, projection, rules, staging, sync, system
+from ironledger.web.routers import compile, health, projection, rules, staging, sync, system
 
 __all__ = ["create_app"]
 
@@ -68,6 +68,7 @@ def create_app(
     app.state.get_projection_db = get_projection_db
 
     # Include routers
+    app.include_router(health.router)
     app.include_router(staging.router)
     app.include_router(rules.router)
     app.include_router(projection.router)

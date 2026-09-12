@@ -1,53 +1,57 @@
-# -----------------------------------------------------------------------------
-# Stage 1: Build the React 19 Operator Workbench UI
-# -----------------------------------------------------------------------------
-FROM node:22-alpine AS ui-builder
-WORKDIR /app/web
+# IronLedger Multi-Stage Non-Root Distroless/Slim Production Image
+# Syntax: docker/dockerfile:1
 
-# Install web dependencies
-COPY web/package.json web/package-lock.json* ./
-RUN npm install
+# Stage 1: Build & Dependency Wheel Cache
+FROM python:3.12-slim-bookworm AS builder
 
-# Build static assets
-COPY web/ ./
-RUN npm run build
+WORKDIR /build
 
-# -----------------------------------------------------------------------------
-# Stage 2: Runtime image with Python and Beancount dependencies
-# -----------------------------------------------------------------------------
-FROM python:3.12-slim AS runner
-WORKDIR /app
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python requirements
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir \
-    fastapi==0.115.0 \
-    uvicorn==0.52.4 \
-    ofxtools==1.1.1 \
-    beancount==3.2.3 \
-    keyring \
-    psutil
+COPY src/ ./src/
 
-# Copy application source
-COPY src/ /app/src/
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip wheel --no-cache-dir --wheel-dir /build/wheels -e .
 
-# Copy built frontend from ui-builder
-COPY --from=ui-builder /app/web/dist /app/web/dist
+# Stage 2: Minimal Distroless / Hardened Runtime
+FROM python:3.12-slim-bookworm AS runtime
 
-# Expose default port
+LABEL org.opencontainers.image.title="IronLedger Enterprise Node"
+LABEL org.opencontainers.image.description="Local-first Enterprise Financial Ingestion & Accounting Engine"
+LABEL org.opencontainers.image.vendor="IronLedger Infrastructure"
+LABEL org.opencontainers.image.licenses="MIT"
+
+WORKDIR /app
+
+# Hardened Non-Root Service Identity (UID 10001, GID 10001)
+RUN groupadd -g 10001 ironledger \
+    && useradd -u 10001 -g ironledger -s /bin/false -M -d /app ironledger \
+    && mkdir -p /app/data /app/.ironledger /app/config \
+    && chown -R ironledger:ironledger /app
+
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache-dir /wheels/*.whl \
+    && rm -rf /wheels
+
+COPY --chown=ironledger:ironledger src/ /app/src/
+COPY --chown=ironledger:ironledger deploy/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+USER 10001:10001
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    IRONLEDGER_DB_PATH=/app/data/ironledger.db \
+    IRONLEDGER_PROJECTION_DB_PATH=/app/data/projection.db \
+    IRONLEDGER_CONFIG_DIR=/app/config
+
 EXPOSE 8000
 
-# Volume mount point for data persistence
-VOLUME ["/data"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')" || exit 1
 
-# Default entrypoint runs ironledger web pointing to persistent /data directory
-CMD ["python", "-m", "ironledger.cli", "web", "--db", "/data/ironledger.db", "--projection-db", "/data/projection.db", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["uvicorn", "ironledger.web.app:create_app", "--host", "0.0.0.0", "--port", "8000", "--factory"]
