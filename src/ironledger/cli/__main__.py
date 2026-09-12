@@ -232,7 +232,43 @@ def _build_parser() -> argparse.ArgumentParser:
     sync_accounts = sync_sub.add_parser("accounts", help="Account mapping")
     sync_accounts_sub = sync_accounts.add_subparsers(dest="sync_accounts_command")
     sync_accounts_sub.add_parser("list", help="List account mappings")
+
+    # compliance command tree
+    comp_p = sub.add_parser("compliance", help="compliance audit archive bundles (SOC2, ISO27001, SOX)")
+    comp_p.add_argument("--db", default=argparse.SUPPRESS, help="path to SQLite ledger index")
+    comp_sub = comp_p.add_subparsers(dest="compliance_command", required=True)
+    comp_gen = comp_sub.add_parser("generate", help="generate a sealed compliance audit bundle")
+    comp_gen.add_argument("--ledger-id", required=True, help="ledger identifier")
+    comp_gen.add_argument("--framework", required=True, choices=["SOC2_TYPE2", "ISO27001", "SOX", "CUSTOM"], help="compliance framework")
+    comp_gen.add_argument("--start", required=True, help="period start UTC timestamp (ISO-8601)")
+    comp_gen.add_argument("--end", required=True, help="period end UTC timestamp (ISO-8601)")
+    comp_gen.add_argument("--output-dir", default=None, help="directory to write sealed archive file")
+
+    comp_ver = comp_sub.add_parser("verify", help="cryptographically verify a sealed compliance archive")
+    comp_ver.add_argument("--archive", required=True, help="path to .tar archive file")
+    comp_ver.add_argument("--expected-root", default=None, help="expected Merkle root hex")
+    comp_ver.add_argument("--expected-sha", default=None, help="expected archive SHA-256")
+
+    # anomaly command tree
+    anom_p = sub.add_parser("anomaly", help="pure rational anomaly and fraud detection")
+    anom_p.add_argument("--db", default=argparse.SUPPRESS, help="path to SQLite ledger index")
+    anom_sub = anom_p.add_subparsers(dest="anomaly_command", required=True)
+    anom_scan = anom_sub.add_parser("scan", help="scan staged transactions for anomalies")
+    anom_scan.add_argument("--ledger-id", required=True, help="ledger identifier")
+
+    anom_list = anom_sub.add_parser("list", help="list anomaly flags")
+    anom_list.add_argument("--ledger-id", required=True, help="ledger identifier")
+    anom_list.add_argument("--status", default=None, help="filter by resolution status (OPEN, RESOLVED, DISMISSED, etc.)")
+
+    anom_res = anom_sub.add_parser("resolve", help="atomically resolve an anomaly flag")
+    anom_res.add_argument("--ledger-id", required=True, help="ledger identifier")
+    anom_res.add_argument("--flag-id", required=True, help="flag identifier")
+    anom_res.add_argument("--status", required=True, choices=["CONFIRMED_FRAUD", "RESOLVED_VALID", "DISMISSED"], help="resolution status")
+    anom_res.add_argument("--actor", default="operator", help="actor name")
+    anom_res.add_argument("--reason", default="", help="resolution reason")
+
     return parser
+
 
 
 def _require_db(args) -> bool:
@@ -322,8 +358,55 @@ def main(argv: list[str] | None = None) -> int:
                     break
             return _EXIT_USAGE
         return _cmd_sync(args)
+    if args.command == "compliance":
+        return _cmd_compliance(args)
+    if args.command == "anomaly":
+        return _cmd_anomaly(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
+
+
+def _cmd_compliance(args) -> int:
+    from ironledger.cli.commands.compliance import run_compliance_generate, run_compliance_verify
+
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    if args.compliance_command == "generate":
+        return run_compliance_generate(
+            db_path=db_path,
+            ledger_id=args.ledger_id,
+            framework=args.framework,
+            period_start_utc=args.start,
+            period_end_utc=args.end,
+            output_dir=args.output_dir,
+        )
+    elif args.compliance_command == "verify":
+        return run_compliance_verify(
+            archive_path=args.archive,
+            expected_root=args.expected_root,
+            expected_sha=args.expected_sha,
+        )
+    return 2
+
+
+def _cmd_anomaly(args) -> int:
+    from ironledger.cli.commands.anomaly import run_anomaly_list, run_anomaly_resolve, run_anomaly_scan
+
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    if args.anomaly_command == "scan":
+        return run_anomaly_scan(db_path=db_path, ledger_id=args.ledger_id)
+    elif args.anomaly_command == "list":
+        return run_anomaly_list(db_path=db_path, ledger_id=args.ledger_id, status=args.status)
+    elif args.anomaly_command == "resolve":
+        return run_anomaly_resolve(
+            db_path=db_path,
+            ledger_id=args.ledger_id,
+            flag_id=args.flag_id,
+            status=args.status,
+            actor=args.actor,
+            reason=args.reason,
+        )
+    return 2
+
 
 
 def _cmd_web(args) -> int:

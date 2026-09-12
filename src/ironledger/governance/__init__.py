@@ -51,7 +51,24 @@ from ironledger.governance.safemode import (
     verify_step_up_token,
 )
 
+from ironledger.governance.anomaly import (
+    AnomalyEngineError,
+    AnomalyFinding,
+    NormalizedTransaction,
+    VALID_RESOLUTIONS,
+    VALID_RULE_TYPES,
+    compute_flag_id,
+    detect_duplicate_charges,
+    detect_rational_outliers,
+    detect_unusual_payees,
+    detect_velocity_spikes,
+    resolve_anomaly_flag,
+    scan_and_persist_anomalies,
+)
+
 __all__ = [
+    "AnomalyEngineError",
+    "AnomalyFinding",
     "ChecksumMismatch",
     "DEFAULT_TTL_SECONDS",
     "ForeignKeyViolationError",
@@ -64,10 +81,13 @@ __all__ = [
     "MutationEvent",
     "MutationVerificationError",
     "MutationVerificationResult",
+    "NormalizedTransaction",
     "ProjectionFreshnessResult",
     "RuleDriftMetrics",
     "RuleHealthTier",
     "SafeModeAuthorizationError",
+    "VALID_RESOLUTIONS",
+    "VALID_RULE_TYPES",
     "append_mutation_event",
     "applied_migrations",
     "audit_all_rules_drift",
@@ -75,9 +95,14 @@ __all__ = [
     "canonical_mutation_bytes",
     "check_projection_db_freshness",
     "compute_canonical_ledger_manifest_hash",
+    "compute_flag_id",
     "compute_mutation_hash",
     "create_step_up_token",
     "current_version",
+    "detect_duplicate_charges",
+    "detect_rational_outliers",
+    "detect_unusual_payees",
+    "detect_velocity_spikes",
     "discover_migrations",
     "evaluate_projection_freshness",
     "evaluate_rule_drift",
@@ -86,9 +111,12 @@ __all__ = [
     "migrate",
     "migrate_governed",
     "require_governed_authorization",
+    "resolve_anomaly_flag",
     "safe_mode_enabled",
+    "scan_and_persist_anomalies",
     "verify_mutation_chain",
     "verify_schema_checksums",
     "verify_step_up_token",
 ]
+
 
