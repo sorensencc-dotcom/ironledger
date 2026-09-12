@@ -144,10 +144,58 @@ CREATE TABLE IF NOT EXISTS anomaly_flags (
 
 ---
 
-## 4. Rollout safety gates
+## 4. Governance error taxonomy & frontend mapping
 
-1. **Gate 1 (Health & Readiness Probes):** `/healthz` and `/readyz` return HTTP `200 OK` with database connection verified and migrations current.
+### 4.1 Error envelope mapping table
+
+| Error Code | HTTP Status | Operator Meaning | Frontend Action |
+|---|---|---|---|
+| `GOVERNANCE_CIRCUIT_OPEN` | 409 | Provider circuit breaker is in OPEN state | Show breaker pill (OPEN), disable trigger |
+| `GOVERNANCE_DLQ_REDRIVE_DENIED` | 403 / 400 | Redrive blocked (poison message limit $>10$) | Show governance toast (error) |
+| `GOVERNANCE_VALIDATION_ERROR` | 400 / 422 | Bad operator input or SSRF violation | Highlight invalid input form fields |
+| `GOVERNANCE_REPLAY_WINDOW_EXCEEDED` | 409 | Anti-replay timestamp exceeded 30s window | Display replay warning notification |
+| `GOVERNANCE_STATE_CONFLICT` | 409 | Concurrent mutation or active sync lock | Prompt operator to retry after release |
+| `GOVERNANCE_ENVELOPE_INVALID` | 500 | KEK/DEK integrity or tag verification failure | Flag credential vault status as EXPIRED |
+| `GOVERNANCE_LEASE_CONFLICT` | 409 | Delivery worker lease held by another process | Defer redrive until lease expiry |
+
+### 4.2 Replay protection parameters
+
+- **Replay Validity Window:** 30 seconds.
+- **Nonce Registry Retention:** 90 seconds.
+- **Replay Denial Code:** `GOVERNANCE_REPLAY_WINDOW_EXCEEDED`.
+
+---
+
+## 5. Connector federation pre-model (Phase 11 foundation)
+
+To establish seamless continuity into Phase 11 federation:
+1. **Provider Identity**: External bank providers maintain global identifiers (`PLAID`, `SIMPLEFIN`, `OFX`, `REST_JSON`) with immutable protocol declarations.
+2. **Connector Lineage**: All staged documents reference parent provider run IDs, preserving cryptographic lineage from bank acquisition to Beancount compilation.
+3. **Governance Scope**: Tenant ledgers isolate connector execution; cross-ledger credentials or run executions are forbidden by foreign-key relational constraints.
+4. **Envelope Key Scope**: Each ledger uses isolated KEK references with distinct DEK encryption payloads.
+5. **Circuit Breaker Inheritance**: Global provider health informs default backoff, while per-ledger circuit breaker instances track tenant-specific failure isolation.
+
+---
+
+## 6. Frontend governance toast categories
+
+The Operator Workbench UI implements five standardized toast categories:
+- `SUCCESS_GOVERNANCE_ACTION`: Emitted on successful compiles, sync completions, and rule mutations.
+- `ERROR_GOVERNANCE_ACTION`: Emitted on validation errors, network failures, or auth rejections.
+- `CIRCUIT_BREAKER_OPEN`: Emitted when an action targets a connector whose circuit breaker has tripped.
+- `DLQ_REDRIVE_COMPLETE`: Emitted when a dead-letter delivery is successfully re-enqueued.
+- `ENVELOPE_ROTATION_REQUIRED`: Emitted when active credentials exceed 30 days without DEK rotation.
+
+---
+
+## 7. Rollout safety gates & verification evidence
+
+```
+[Gate 1: Health Probes] ──► [Gate 2: Breaker Stability] ──► [Gate 3: Envelope Freshness] ──► [Gate 4: Clean DLQ] ──► [Gate 5: Monotonic Audit Log]
+```
+
+1. **Gate 1 (Health & Readiness Probes):** Both `/healthz` and `/readyz` return HTTP `200 OK` with verified database query execution.
 2. **Gate 2 (Circuit Breaker Stability):** Metrics show zero circuit breaker oscillation over a 15-minute observation window.
-3. **Gate 3 (Envelope Key Freshness):** Active connector credentials have a DEK rotation age of $< 30$ days.
+3. **Gate 3 (Envelope Key Freshness):** Active connector credentials report DEK rotation age $< 30$ days.
 4. **Gate 4 (Clean Dead-Letter Queue):** Zero unresolved deliveries in `webhook_delivery_dlq`.
-5. **Gate 5 (Monotonic Governance Audit Log):** Sequence numbers in `governance_audit_events` form an unbroken monotonic sequence.
+5. **Gate 5 (Monotonic Governance Audit Log):** Sequence numbers in `governance_audit_events` and `mutation_events` form an unbroken monotonic sequence.

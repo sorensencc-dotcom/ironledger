@@ -1,0 +1,28 @@
+{
+  "version": "v0.10.0",
+  "milestone": "Phase 10 — Enterprise Production Hardening, Compliance Auditing & Operational Governance",
+  "release_date_utc": "2026-09-11T23:01:00Z",
+  "commit_sha": "ffaae3b",
+  "components": {
+    "backend_version": "v0.10.0",
+    "frontend_version": "v0.10.0",
+    "container_version": "v0.10.0",
+    "governance_api_version": "v1.0.0",
+    "schema_version": 13,
+    "last_migration": "0013_compliance_and_governance.sql"
+  },
+  "invariants": {
+    "zero_runtime_beancount_import": true,
+    "pure_integer_rational_arithmetic": true,
+    "envelope_encryption_aes_256_gcm": true,
+    "append_only_audit_and_outbox": true,
+    "fenced_worker_leases": true,
+    "anti_replay_idempotency": true,
+    "ssrf_egress_protection": true
+  },
+  "evidence": {
+    "markdown": "docs/meta/phases/ironledger-phase-10-evidence.md",
+    "json": "evidence/phase-10-evidence.json",
+    "specification": "docs/meta/specs/ironledger-phase-10-spec.md"
+  }
+}

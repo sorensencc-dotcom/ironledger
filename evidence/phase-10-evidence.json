@@ -1,0 +1,42 @@
+{
+  "phase": "10",
+  "version": "v0.10.0",
+  "timestamp_utc": "2026-09-11T23:01:00Z",
+  "commit_sha": "ffaae3b",
+  "branch": "main",
+  "governed_repo": "C:\\dev\\IronLedger",
+  "gates": {
+    "gate_1_health_probes": "PASSED",
+    "gate_2_breaker_stability": "PASSED",
+    "gate_3_envelope_freshness": "PASSED",
+    "gate_4_clean_dlq": "PASSED",
+    "gate_5_monotonic_audit_log": "PASSED"
+  },
+  "test_metrics": {
+    "total_tests": 910,
+    "passed": 905,
+    "failed": 0,
+    "skipped": 5,
+    "pass_rate_pct": 100.0,
+    "duration_seconds": 30.08
+  },
+  "ast_invariants": {
+    "zero_beancount_import": true,
+    "zero_float_division_in_financial_logic": true
+  },
+  "schema": {
+    "migration": "0013_compliance_and_governance.sql",
+    "version": 13,
+    "strict_tables_verified": true,
+    "foreign_keys_enforced": true
+  },
+  "frontend_build": {
+    "status": "PASSED",
+    "engine": "vite v6.4.3 + tsc 5.7.2",
+    "artifacts": [
+      { "path": "dist/index.html", "size_bytes": 820 },
+      { "path": "dist/assets/index-CTuEJvkQ.css", "size_bytes": 23490 },
+      { "path": "dist/assets/index-CUvjkiF2.js", "size_bytes": 316790 }
+    ]
+  }
+}
