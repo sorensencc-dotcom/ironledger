@@ -80,6 +80,24 @@ def test_analytics_api_endpoints(tmp_path: Path):
     assert res.status_code == 200
     assert isinstance(res.json(), list)
 
+    # Test /api/analytics/watchlist endpoint
+    res = client.get("/api/analytics/watchlist")
+    assert res.status_code == 200
+    wdata = res.json()
+    assert "items" in wdata
+    assert "recent_audit" in wdata
+
+    # Test /api/analytics/watchlist/add endpoint
+    res = client.post("/api/analytics/watchlist/add", json={"symbol": "NVDA", "quote_currency": "USD", "manual_quote": "120.00"})
+    assert res.status_code == 200
+    assert res.json()["symbol"] == "NVDA"
+
+    # Test /api/analytics/prices/sync endpoint
+    res = client.post("/api/analytics/prices/sync", json={"symbols": ["NVDA"]})
+    assert res.status_code == 200
+    sdata = res.json()
+    assert "status" in sdata
+
 
 def test_mcp_trigger_price_sync(tmp_path):
     ledger_dir, projection_dir, db_path = setup_analytics_db(tmp_path)
@@ -93,3 +111,4 @@ def test_mcp_trigger_price_sync(tmp_path):
     assert res["isError"] is False
     data = json.loads(res["content"][0]["text"])
     assert data["status"] == "failed"
+

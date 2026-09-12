@@ -28,6 +28,8 @@ import type {
   KeyRotationResult,
   SankeyFlowRow,
   HoldingRecord,
+  WatchlistData,
+  PriceSyncResult,
 } from './types';
 
 
@@ -474,6 +476,44 @@ export const api = {
     }
     return res.json();
   },
+
+  async getWatchlistData(): Promise<WatchlistData> {
+    const res = await fetch(`${API_BASE}/analytics/watchlist`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to fetch watchlist: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async triggerPriceSync(symbols?: string[], quoteCurrency?: string): Promise<PriceSyncResult> {
+    const res = await fetch(`${API_BASE}/analytics/prices/sync`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(symbols ? { symbols, quote_currency: quoteCurrency || 'USD' } : {}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to sync prices: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async addWatchlistSymbol(symbol: string, quoteCurrency: string = 'USD', manualQuote?: string): Promise<{ status: string; symbol: string; quote_currency: string }> {
+    const res = await fetch(`${API_BASE}/analytics/watchlist/add`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ symbol, quote_currency: quoteCurrency, manual_quote: manualQuote }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to add symbol: ${res.statusText}`);
+    }
+    return res.json();
+  },
 };
+
 
 

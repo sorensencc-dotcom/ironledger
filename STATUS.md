@@ -3,10 +3,10 @@
 ## Active Goal
 Scheduled Price Polling Daemon & Interactive Operator Workbench Inspection (`C:\dev\IronLedger`).
 
-## Milestone Status: Price Polling Automation & Operator Workbench Live
-- **Preceding Baseline:** Governed Multi-Provider Price Feed Daemon, Dual-Persistence Engine & FastMCP integration.
-- **Regression Invariant:** 966 passed, 4 skipped (100% pass rate in 44.60s).
-- **Current Milestone:** Scheduled Price Polling Daemon configured (`config/prices.json`, `scripts/poll-prices.ps1`, `scripts/setup-scheduled-tasks.ps1`), CLI `prices poll` integration, and local Operator Workbench (`python -m ironledger.cli web --port 8080`) actively serving live analytics.
+## Milestone Status: Price Polling Automation, Watchlist GUI & Operator Workbench Live
+- **Preceding Baseline:** Governed Multi-Provider Price Feed Daemon & Scheduled Polling Pipeline.
+- **Regression Invariant:** 966 passed, 4 skipped (100% pass rate in 41.46s).
+- **Current Milestone:** Scheduled Price Polling Daemon configured, CLI `prices poll` integration, and local Operator Workbench (`python -m ironledger.cli web --port 8080`) actively serving live analytics with interactive Watchlist GUI & on-demand price synchronization.
 
 ## Completed Work
 1. **Watchlist Configuration & Polling Automation (`config/prices.json`, `scripts/`)**:
@@ -16,12 +16,19 @@ Scheduled Price Polling Daemon & Interactive Operator Workbench Inspection (`C:\
    - `scripts/poll-prices.ps1`: Automated price feed scraper execution script.
    - `scripts/poll-simplefin.ps1`: Automated SimpleFIN bank transaction sync script.
    - `scripts/setup-scheduled-tasks.ps1`: Windows Task Scheduler registration script managing hourly price sync and daily bank sync.
-2. **Migration Engine Hardening (`src/ironledger/governance/migrations.py`)**:
-   - Configured safe SQLite foreign key toggling outside transactions during DDL migrations with `PRAGMA foreign_key_check` validation.
-3. **Interactive Operator Inspection (`python -m ironledger.cli web --port 8080`)**:
-   - Started Operator Workbench backend daemon on `http://127.0.0.1:8080/`.
-   - Verified `/healthz`, `/readyz`, `/api/analytics/sankey`, and `/api/analytics/portfolio` REST endpoints.
-   - Verified SPA root web client mounting and D3 visualizer assets.
+2. **Watchlist GUI & Feed Resolution Management (`web/src/`)**:
+   - `WatchlistPanel.tsx`: Dedicated React component displaying all watchlist target pairs, exact rational fractions $(N/D)$, effective decimal rates, quote timestamps, provider badges, and live resolution status badges (`SUCCESS`, `RECIPROCAL`, `CIRCUIT_OPEN`).
+   - Integrated on-demand "Sync Watchlist" trigger button with spinner animation and live notification feedback.
+   - Built inline "Add Symbol" form with custom base symbol, quote currency, and optional fallback rates updating `config/prices.json`.
+   - Exposed `price_feed_audit` telemetry drawer rendering real-time resolution latencies and execution logs.
+3. **Analytics REST Endpoints (`src/ironledger/web/routers/analytics.py`)**:
+   - `GET /api/analytics/watchlist`: Returns configured watchlist symbols merged with latest `price_history` and `price_feed_audit` records.
+   - `POST /api/analytics/prices/sync`: Triggers on-demand `PriceScraperDaemon` synchronization.
+   - `POST /api/analytics/watchlist/add`: Appends new watchlist target pairs to `config/prices.json`.
+4. **Interactive Operator Inspection (`python -m ironledger.cli web --port 8080`)**:
+   - Web service actively running on `http://127.0.0.1:8080/`.
+   - Verified `/healthz`, `/readyz`, `/api/analytics/sankey`, `/api/analytics/portfolio`, and `/api/analytics/watchlist`.
+   - Verified SPA root web client mounting with compiled production assets.
 
 ## Core Architectural Invariants Maintained
 - **Plaintext Ground Truth:** Plaintext Beancount files (`ledger/prices.beancount`) remain the sole financial authority.

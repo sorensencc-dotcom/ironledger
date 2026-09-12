@@ -13,6 +13,7 @@ import { FederationView } from './components/FederationView';
 import { FailoverView } from './components/FailoverView';
 import { CashFlowSankey } from './components/analytics/CashFlowSankey';
 import { HoldingsView } from './components/portfolio/HoldingsView';
+import { WatchlistPanel } from './components/portfolio/WatchlistPanel';
 import { api } from './api';
 
 import type {
@@ -32,6 +33,7 @@ import type {
   StagedTransaction,
   SyncStatus,
   SyncTimelineEvent,
+  WatchlistData,
   WebhookDelivery,
   WebhookDLQEntry,
   WebhookSubscription,
@@ -68,6 +70,8 @@ export default function App() {
   // Analytics & Portfolio State
   const [sankeyFlows, setSankeyFlows] = useState<SankeyFlowRow[]>([]);
   const [portfolioHoldings, setPortfolioHoldings] = useState<HoldingRecord[]>([]);
+  const [watchlistData, setWatchlistData] = useState<WatchlistData | null>(null);
+  const [loadingWatchlist, setLoadingWatchlist] = useState(false);
   const [sankeyPeriod, setSankeyPeriod] = useState<string>(new Date().toISOString().slice(0, 7));
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
@@ -149,6 +153,42 @@ export default function App() {
     }
   };
 
+  const fetchWatchlist = async () => {
+    setLoadingWatchlist(true);
+    try {
+      const data = await api.getWatchlistData();
+      setWatchlistData(data);
+    } catch (err) {
+      console.error('Failed to load watchlist data:', err);
+    } finally {
+      setLoadingWatchlist(false);
+    }
+  };
+
+  const handlePriceSync = async () => {
+    try {
+      const res = await api.triggerPriceSync();
+      await Promise.all([
+        fetchWatchlist(),
+        api.getPortfolioData().then(setPortfolioHoldings).catch(console.error),
+      ]);
+      showNotification(`Price sync completed: ${res.synced_count} synced, ${res.failed_count} failed`);
+    } catch (err: any) {
+      showNotification(err.message || 'Price sync failed', 'error');
+    }
+  };
+
+  const handleAddWatchlistSymbol = async (symbol: string, quoteCurrency: string, manualQuote?: string) => {
+    try {
+      await api.addWatchlistSymbol(symbol, quoteCurrency, manualQuote);
+      showNotification(`Added ${symbol}/${quoteCurrency} to watchlist`);
+      await handlePriceSync();
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to add symbol', 'error');
+      throw err;
+    }
+  };
+
   // Load view-specific data
   const loadViewData = async () => {
     setLoadingViewData(true);
@@ -159,8 +199,12 @@ export default function App() {
       } else if (activeView === 'analytics') {
         await fetchSankeyForPeriod(sankeyPeriod);
       } else if (activeView === 'portfolio') {
-        const p = await api.getPortfolioData();
+        const [p, w] = await Promise.all([
+          api.getPortfolioData().catch(() => []),
+          api.getWatchlistData().catch(() => null),
+        ]);
         setPortfolioHoldings(p);
+        setWatchlistData(w);
       } else if (activeView === 'audit') {
         const [a, m] = await Promise.all([api.getAudit(), api.getMutations()]);
         setAuditLog(a);
@@ -497,21 +541,33 @@ export default function App() {
         )}
 
         {activeView === 'portfolio' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
+          <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
-                <h2 className="text-base font-bold text-slate-100">Multi-Asset Portfolio &amp; Holdings</h2>
-                <p className="text-xs text-slate-500">Consolidated cost basis vs. mark-to-market rational exchange rates</p>
+                <h2 className="text-base font-bold text-slate-100">Multi-Asset Portfolio &amp; Watchlist</h2>
+                <p className="text-xs text-slate-500">Real-time valuation, exact rational quotes &amp; automated feed scraping</p>
               </div>
-              <button
-                onClick={() => api.getPortfolioData().then(setPortfolioHoldings).catch(console.error)}
-                className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-              >
-                Refresh Holdings
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    api.getPortfolioData().then(setPortfolioHoldings).catch(console.error);
+                    fetchWatchlist();
+                  }}
+                  className="px-2.5 py-1.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                >
+                  Refresh All
+                </button>
+              </div>
             </div>
 
             <HoldingsView holdings={portfolioHoldings} />
+
+            <WatchlistPanel
+              data={watchlistData}
+              loading={loadingWatchlist}
+              onSync={handlePriceSync}
+              onAddSymbol={handleAddWatchlistSymbol}
+            />
           </div>
         )}
 

@@ -330,3 +330,42 @@ export interface KeyRotationResult {
   audit_event_id: string;
 }
 
+export interface WatchlistItem {
+  symbol: string;
+  quote_currency: string;
+  rate_numerator: number | null;
+  rate_denominator: number | null;
+  price_display: string | null;
+  directive_date: string | null;
+  last_provider: string;
+  last_status: string;
+  last_latency_ms: number;
+  updated_at: string | null;
+}
+
+export interface PriceAuditRecord {
+  symbol: string;
+  quote_currency: string;
+  provider_id: string;
+  status: string;
+  rate_numerator: number | null;
+  rate_denominator: number | null;
+  latency_ms: number;
+  error_message?: string | null;
+  created_at: string;
+}
+
+export interface WatchlistData {
+  quote_currency: string;
+  items: WatchlistItem[];
+  recent_audit: PriceAuditRecord[];
+}
+
+export interface PriceSyncResult {
+  status: 'success' | 'partial_failure' | 'failed';
+  synced_count: number;
+  failed_count: number;
+  failed_symbols: string[];
+}
+
+
