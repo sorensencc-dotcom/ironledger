@@ -283,3 +283,48 @@ def add_watchlist_symbol(
 
     return {"status": "success", "symbol": symbol, "quote_currency": quote}
 
+
+@router.delete("/watchlist/{symbol}")
+def remove_watchlist_symbol(
+    symbol: str,
+    request: Request,
+    quote_currency: str = "USD",
+) -> Dict[str, Any]:
+    """Remove a symbol from the configured watchlist in config/prices.json."""
+    import json
+    from pathlib import Path
+    sym = symbol.strip().upper()
+    quote = quote_currency.strip().upper()
+
+    config_dir = Path(getattr(request.app.state, "config_dir", "config"))
+    config_path = config_dir / "prices.json"
+
+    if not config_path.exists():
+        raise HTTPException(status_code=404, detail="prices.json configuration not found")
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read prices.json: {exc}")
+
+    watchlist = data.get("watchlist", [])
+    new_watchlist = [
+        w for w in watchlist
+        if not (
+            (isinstance(w, str) and w.upper() == sym) or
+            (isinstance(w, dict) and w.get("symbol", "").upper() == sym and w.get("quote_currency", "USD").upper() == quote)
+        )
+    ]
+    data["watchlist"] = new_watchlist
+
+    # Clean up manual quotes if present
+    if "manual_quotes" in data and f"{sym}/{quote}" in data["manual_quotes"]:
+        del data["manual_quotes"][f"{sym}/{quote}"]
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    return {"status": "success", "removed_symbol": sym, "quote_currency": quote}
+
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Plus, Activity, CheckCircle2, AlertTriangle, XCircle, ArrowUpDown } from 'lucide-react';
+import { RefreshCw, Plus, Activity, CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Trash2 } from 'lucide-react';
 import type { WatchlistData, WatchlistItem, PriceAuditRecord } from '../../types';
 
 interface WatchlistPanelProps {
@@ -7,6 +7,7 @@ interface WatchlistPanelProps {
   loading: boolean;
   onSync: () => Promise<void>;
   onAddSymbol: (symbol: string, quoteCurrency: string, manualQuote?: string) => Promise<void>;
+  onRemoveSymbol: (symbol: string, quoteCurrency: string) => Promise<void>;
 }
 
 export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
@@ -14,9 +15,11 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
   loading,
   onSync,
   onAddSymbol,
+  onRemoveSymbol,
 }) => {
   const [syncing, setSyncing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
   const [newSymbol, setNewSymbol] = useState('');
   const [newQuote, setNewQuote] = useState('USD');
   const [newManualQuote, setNewManualQuote] = useState('');
@@ -42,6 +45,15 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
       setIsAdding(false);
     } catch (err: any) {
       setAddingError(err.message || 'Failed to add symbol');
+    }
+  };
+
+  const handleRemove = async (symbol: string, quoteCurrency: string) => {
+    try {
+      setRemovingSymbol(`${symbol}-${quoteCurrency}`);
+      await onRemoveSymbol(symbol, quoteCurrency);
+    } finally {
+      setRemovingSymbol(null);
     }
   };
 
@@ -197,12 +209,13 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                 <th className="py-2 text-center">Status</th>
                 <th className="py-2 text-right">Latency</th>
                 <th className="py-2 text-right">As Of Date</th>
+                <th className="py-2 text-center w-12">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-900 text-zinc-300">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-zinc-500">
+                  <td colSpan={9} className="py-6 text-center text-zinc-500">
                     No watchlist symbols configured in config/prices.json.
                   </td>
                 </tr>
@@ -237,6 +250,16 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                     </td>
                     <td className="py-2.5 text-right text-zinc-500 text-[11px]">
                       {item.directive_date || (item.updated_at ? item.updated_at.slice(0, 10) : '—')}
+                    </td>
+                    <td className="py-2.5 text-center">
+                      <button
+                        onClick={() => handleRemove(item.symbol, item.quote_currency)}
+                        disabled={removingSymbol === `${item.symbol}-${item.quote_currency}`}
+                        title={`Remove ${item.symbol} from watchlist`}
+                        className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-850 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))

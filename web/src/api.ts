@@ -513,6 +513,18 @@ export const api = {
     }
     return res.json();
   },
+
+  async removeWatchlistSymbol(symbol: string, quoteCurrency: string = 'USD'): Promise<{ status: string; removed_symbol: string; quote_currency: string }> {
+    const res = await fetch(`${API_BASE}/analytics/watchlist/${encodeURIComponent(symbol)}?quote_currency=${encodeURIComponent(quoteCurrency)}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to remove symbol: ${res.statusText}`);
+    }
+    return res.json();
+  },
 };
 
 

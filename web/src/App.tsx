@@ -189,6 +189,20 @@ export default function App() {
     }
   };
 
+  const handleRemoveWatchlistSymbol = async (symbol: string, quoteCurrency: string) => {
+    try {
+      await api.removeWatchlistSymbol(symbol, quoteCurrency);
+      showNotification(`Removed ${symbol}/${quoteCurrency} from watchlist`);
+      await Promise.all([
+        fetchWatchlist(),
+        api.getPortfolioData().then(setPortfolioHoldings).catch(console.error),
+      ]);
+    } catch (err: any) {
+      showNotification(err.message || 'Failed to remove symbol', 'error');
+      throw err;
+    }
+  };
+
   // Load view-specific data
   const loadViewData = async () => {
     setLoadingViewData(true);
@@ -569,6 +583,7 @@ export default function App() {
               loading={loadingWatchlist}
               onSync={handlePriceSync}
               onAddSymbol={handleAddWatchlistSymbol}
+              onRemoveSymbol={handleRemoveWatchlistSymbol}
             />
           </div>
         )}
