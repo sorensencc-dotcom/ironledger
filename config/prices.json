@@ -18,11 +18,11 @@
       "quote_currency": "USD"
     },
     {
-      "symbol": "ETH",
+      "symbol": "EUR",
       "quote_currency": "USD"
     },
     {
-      "symbol": "EUR",
+      "symbol": "NFLX",
       "quote_currency": "USD"
     }
   ],
@@ -31,7 +31,6 @@
     "MSFT/USD": "420.00",
     "GOOGL/USD": "180.25",
     "BTC/USD": "60500.00",
-    "ETH/USD": "2450.00",
     "EUR/USD": "1.1025"
   },
   "polling_interval_minutes": 60,

@@ -1,12 +1,12 @@
 # IronLedger Project Status
 
 ## Active Goal
-Scheduled Price Polling Daemon & Interactive Operator Workbench Inspection (`C:\dev\IronLedger`).
+Operator Workbench Production Hardening: Multi-Asset Valuation, Watchlist Lock Guard, Automated Docs Build Pipeline, and Standardized Port 8000 (`C:\dev\IronLedger`).
 
-## Milestone Status: Price Polling Automation, Watchlist GUI & Operator Workbench Live
+## Milestone Status: Operator Workbench v0.12.0 Live on Port 8000
 - **Preceding Baseline:** Governed Multi-Provider Price Feed Daemon & Scheduled Polling Pipeline.
-- **Regression Invariant:** 966 passed, 4 skipped (100% pass rate in 41.46s).
-- **Current Milestone:** Scheduled Price Polling Daemon configured, CLI `prices poll` integration, and local Operator Workbench (`python -m ironledger.cli web --port 8080`) actively serving live analytics with interactive Watchlist GUI & on-demand price synchronization.
+- **Regression Invariant:** 966 passed, 4 skipped (100% pass rate in 36.01s).
+- **Current Milestone:** Local Operator Workbench (`python -m ironledger.cli web --port 8000`) actively serving live analytics with interactive Watchlist GUI, Lock Guard protection, on-demand price synchronization, and automated Diataxis documentation build pipeline.
 
 ## Completed Work
 1. **Watchlist Configuration & Polling Automation (`config/prices.json`, `scripts/`)**:
@@ -16,19 +16,29 @@ Scheduled Price Polling Daemon & Interactive Operator Workbench Inspection (`C:\
    - `scripts/poll-prices.ps1`: Automated price feed scraper execution script.
    - `scripts/poll-simplefin.ps1`: Automated SimpleFIN bank transaction sync script.
    - `scripts/setup-scheduled-tasks.ps1`: Windows Task Scheduler registration script managing hourly price sync and daily bank sync.
-2. **Watchlist GUI & Feed Resolution Management (`web/src/`)**:
+
+2. **Watchlist GUI, Lock Guard & Symbol Deletion (`web/src/`)**:
    - `WatchlistPanel.tsx`: Dedicated React component displaying all watchlist target pairs, exact rational fractions $(N/D)$, effective decimal rates, quote timestamps, provider badges, and live resolution status badges (`SUCCESS`, `RECIPROCAL`, `CIRCUIT_OPEN`).
+   - **Lock Guard (Protected Mode):** Added safe-by-default Lock toggle preventing accidental symbol additions or deletions. Unlocking enables Edit Mode with visual indicators.
+   - **Symbol Deletion:** Added delete actions per symbol row and wired `DELETE /api/analytics/watchlist/{symbol}` endpoint updating `config/prices.json`.
    - Integrated on-demand "Sync Watchlist" trigger button with spinner animation and live notification feedback.
-   - Built inline "Add Symbol" form with custom base symbol, quote currency, and optional fallback rates updating `config/prices.json`.
+   - Built inline "Add Symbol" form with custom base symbol, quote currency, and optional fallback rates.
    - Exposed `price_feed_audit` telemetry drawer rendering real-time resolution latencies and execution logs.
-3. **Analytics REST Endpoints (`src/ironledger/web/routers/analytics.py`)**:
-   - `GET /api/analytics/watchlist`: Returns configured watchlist symbols merged with latest `price_history` and `price_feed_audit` records.
-   - `POST /api/analytics/prices/sync`: Triggers on-demand `PriceScraperDaemon` synchronization.
-   - `POST /api/analytics/watchlist/add`: Appends new watchlist target pairs to `config/prices.json`.
-4. **Interactive Operator Inspection (`python -m ironledger.cli web --port 8080`)**:
-   - Web service actively running on `http://127.0.0.1:8080/`.
-   - Verified `/healthz`, `/readyz`, `/api/analytics/sankey`, `/api/analytics/portfolio`, and `/api/analytics/watchlist`.
-   - Verified SPA root web client mounting with compiled production assets.
+
+3. **Navigation & Cache Invalidation Hardening (`web/src/components/`, `src/ironledger/web/`)**:
+   - `TopHUD.tsx`: Added quick navigation pills for `Staging`, `Holdings & Watchlist`, and `Cash Flow`.
+   - `Sidebar.tsx`: Elevated `Portfolio & Watchlist` navigation under *Ledger & Valuation*.
+   - `app.py`: Registered `NoCacheHtmlMiddleware` emitting `Cache-Control: no-cache, no-store, must-revalidate` on all HTML routes so browser cache never serves stale SPA bundles.
+
+4. **Automated Documentation Build Pipeline (`scripts/build-docs.py`, `web/package.json`)**:
+   - Created `scripts/build-docs.py` generating canonical Diataxis HTML documentation (`web/public/docs/index.html`).
+   - Chained documentation build into `web/package.json` (`npm run build:docs && tsc && vite build`) so documentation is automatically validated and refreshed on every Vite build.
+   - Live docs accessible at `/docs/index.html` via the TopHUD Docs button.
+
+5. **Port 8000 Migration & Daemon Verification**:
+   - Terminated legacy orphaned `ironledger-workbench` Docker container on port 8000.
+   - Verified live server daemon running on `http://127.0.0.1:8000/`.
+   - Verified REST endpoints (`/healthz`, `/readyz`, `/docs/index.html`, `/api/analytics/sankey`, `/api/analytics/portfolio`, `/api/analytics/watchlist`, `/api/analytics/prices/sync`).
 
 ## Core Architectural Invariants Maintained
 - **Plaintext Ground Truth:** Plaintext Beancount files (`ledger/prices.beancount`) remain the sole financial authority.
@@ -41,3 +51,4 @@ Scheduled Price Polling Daemon & Interactive Operator Workbench Inspection (`C:\
 
 ## Next Action
 Continuous live monitoring and scheduled background execution.
+
