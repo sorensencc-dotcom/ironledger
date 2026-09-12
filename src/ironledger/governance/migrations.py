@@ -195,7 +195,7 @@ def migrate_governed(
             f"({migration.version}, '{migration.name}', '{migration.checksum}', '{applied_at}');"
         )
 
-        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.execute("PRAGMA foreign_keys = OFF;")
         script = f"BEGIN IMMEDIATE;\n{migration.sql}\n{bookkeeping}\n"
 
         try:
@@ -203,15 +203,19 @@ def migrate_governed(
             violations = conn.execute("PRAGMA foreign_key_check;").fetchall()
             if violations:
                 conn.rollback()
+                conn.execute("PRAGMA foreign_keys = ON;")
                 raise ForeignKeyViolationError(
                     f"foreign key check failed in migration {migration.version:04d}_{migration.name}: {violations}"
                 )
             conn.commit()
+            conn.execute("PRAGMA foreign_keys = ON;")
         except ForeignKeyViolationError:
+            conn.execute("PRAGMA foreign_keys = ON;")
             raise
         except sqlite3.IntegrityError as exc:
             if conn.in_transaction:
                 conn.rollback()
+            conn.execute("PRAGMA foreign_keys = ON;")
             if "foreign key" in str(exc).lower():
                 raise ForeignKeyViolationError(
                     f"foreign key check failed in migration {migration.version:04d}_{migration.name}: {exc}"
@@ -220,8 +224,12 @@ def migrate_governed(
         except Exception:
             if conn.in_transaction:
                 conn.rollback()
+            conn.execute("PRAGMA foreign_keys = ON;")
             raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON;")
 
+    conn.execute("PRAGMA foreign_keys = ON;")
     return current_version(conn)
 
 

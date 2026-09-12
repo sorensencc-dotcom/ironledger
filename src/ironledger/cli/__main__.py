@@ -310,6 +310,20 @@ def _build_parser() -> argparse.ArgumentParser:
     sec_rot.add_argument("--new-kek-key-id", required=True, help="new KEK identifier")
     sec_rot.add_argument("--rotated-by", default="operator", help="operator or service name")
 
+    # prices command tree
+    prices_parser = sub.add_parser("prices", help="commodity and currency price feed management")
+    prices_parser.add_argument("--db", default=argparse.SUPPRESS, help="path to the SQLite ledger index")
+    prices_parser.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the ledger directory")
+    prices_parser.add_argument("--config-dir", default="config", type=Path, help="path to the config directory")
+    prices_sub = prices_parser.add_subparsers(dest="prices_command", required=True)
+    prices_poll = prices_sub.add_parser("poll", help="poll price feeds and sync prices.beancount and price_history")
+    prices_poll.add_argument("--db", default=argparse.SUPPRESS, help="path to the SQLite ledger index")
+    prices_poll.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the ledger directory")
+    prices_poll.add_argument("--config-dir", default="config", type=Path, help="path to the config directory")
+    prices_poll.add_argument("--symbols", nargs="*", default=None, help="specific symbols to fetch (e.g. AAPL BTC)")
+    prices_poll.add_argument("--quote-currency", default="USD", help="quote currency (default: USD)")
+    prices_poll.add_argument("--json", action="store_true", help="output result as JSON")
+
     return parser
 
 
@@ -413,8 +427,63 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_failover(args)
     if args.command == "security":
         return _cmd_security(args)
+    if args.command == "prices":
+        return _cmd_prices(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
+
+
+def _cmd_prices(args) -> int:
+    import json
+    from pathlib import Path
+    from ironledger.prices.scraper_daemon import PriceScraperDaemon
+    from ironledger.prices.router import PriceCascadeRouter
+    from ironledger.prices.providers.manual import ManualProvider
+    from ironledger.governance.migrations import migrate_governed
+
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    conn = connect(db_path)
+    try:
+        migrate_governed(conn, db_path)
+    finally:
+        conn.close()
+
+    ledger_dir = Path(getattr(args, "ledger_dir", None) or Path(db_path).parent / "ledger")
+    prices_beancount = ledger_dir / "prices.beancount"
+    config_dir = Path(getattr(args, "config_dir", None) or "config")
+    config_path = config_dir / "prices.json"
+
+    manual_quotes = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg_data = json.load(f)
+                manual_quotes = cfg_data.get("manual_quotes", {})
+        except Exception:
+            pass
+
+    router = PriceCascadeRouter({"DEFAULT": [ManualProvider(static_quotes=manual_quotes)]})
+    daemon = PriceScraperDaemon(
+        db_path=Path(db_path),
+        prices_ledger_path=prices_beancount,
+        router=router,
+        ledger_id="default",
+    )
+
+    if args.prices_command == "poll":
+        symbols_arg = None
+        if args.symbols:
+            symbols_arg = [(s, args.quote_currency) for s in args.symbols]
+        res = daemon.sync_watchlist(symbols=symbols_arg, config_path=config_path if not symbols_arg else None)
+        if getattr(args, "json", False):
+            print(json.dumps(res, indent=2))
+        else:
+            print(f"Price sync status: {res.get('status')} (synced: {res.get('synced_count', 0)}, failed: {res.get('failed_count', 0)})")
+            if res.get("failed_symbols"):
+                for f in res["failed_symbols"]:
+                    print(f"  Warning: {f}", file=sys.stderr)
+        return _EXIT_OK if res.get("status") in ("success", "partial_failure") else _EXIT_ERROR
+    return _EXIT_USAGE
 
 
 def _cmd_failover(args) -> int:

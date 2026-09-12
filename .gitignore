@@ -12,6 +12,7 @@ dist/
 *.db-shm
 *.sqlite
 *.sqlite3
+*.lock
 
 # Secrets never enter the tree
 .env

@@ -45,6 +45,13 @@ def run_web(
     conn = connect(resolved_db)
     try:
         migrate_governed(conn, resolved_db)
+        views_dir = repo_root / "sql" / "views"
+        if not views_dir.is_dir():
+            views_dir = Path.cwd() / "sql" / "views"
+        if views_dir.is_dir():
+            for sql_file in sorted(views_dir.glob("*.sql")):
+                conn.executescript(sql_file.read_text(encoding="utf-8"))
+            conn.commit()
     finally:
         conn.close()
 

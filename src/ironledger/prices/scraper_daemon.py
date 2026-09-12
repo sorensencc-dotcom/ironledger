@@ -43,12 +43,40 @@ class PriceScraperDaemon:
     def __init__(self, db_path: Path, prices_ledger_path: Path, router: PriceCascadeRouter, ledger_id="default"):
         self.db_path, self.prices_ledger_path, self.router, self.ledger_id = Path(db_path), Path(prices_ledger_path), router, ledger_id
 
+    def load_config_watchlist(self, config_path: Path | None = None) -> list[tuple[str, str]]:
+        cfg_file = Path(config_path) if config_path else Path("config/prices.json")
+        if not cfg_file.exists():
+            return []
+        import json
+        try:
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            default_quote = str(data.get("quote_currency", "USD"))
+            items = data.get("watchlist", [])
+            targets: list[tuple[str, str]] = []
+            for item in items:
+                if isinstance(item, str):
+                    targets.append((str(item), default_quote))
+                elif isinstance(item, dict):
+                    sym = item.get("symbol")
+                    if sym:
+                        targets.append((str(sym), str(item.get("quote_currency", default_quote))))
+                elif isinstance(item, (list, tuple)) and len(item) == 2:
+                    targets.append((str(item[0]), str(item[1])))
+            return targets
+        except Exception:
+            return []
+
     def discover_active_commodities(self):
         with sqlite3.connect(self.db_path) as conn:
             return [(str(row[0]), "USD") for row in conn.execute("SELECT DISTINCT currency FROM ledger_postings WHERE account LIKE 'Assets:%Investments:%' OR account LIKE 'Assets:%Brokerage:%'")]
 
-    def sync_watchlist(self, symbols=None):
-        targets = symbols if symbols is not None else self.discover_active_commodities()
+    def sync_watchlist(self, symbols=None, config_path: Path | None = None):
+        if symbols is not None:
+            targets = symbols
+        else:
+            cfg_targets = self.load_config_watchlist(config_path)
+            targets = cfg_targets if cfg_targets else self.discover_active_commodities()
         collected, failed = [], []
         for base, quote in targets:
             try:

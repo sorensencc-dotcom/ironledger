@@ -1,0 +1,39 @@
+{
+  "quote_currency": "USD",
+  "watchlist": [
+    {
+      "symbol": "AAPL",
+      "quote_currency": "USD"
+    },
+    {
+      "symbol": "MSFT",
+      "quote_currency": "USD"
+    },
+    {
+      "symbol": "GOOGL",
+      "quote_currency": "USD"
+    },
+    {
+      "symbol": "BTC",
+      "quote_currency": "USD"
+    },
+    {
+      "symbol": "ETH",
+      "quote_currency": "USD"
+    },
+    {
+      "symbol": "EUR",
+      "quote_currency": "USD"
+    }
+  ],
+  "manual_quotes": {
+    "AAPL/USD": "225.50",
+    "MSFT/USD": "420.00",
+    "GOOGL/USD": "180.25",
+    "BTC/USD": "60500.00",
+    "ETH/USD": "2450.00",
+    "EUR/USD": "1.1025"
+  },
+  "polling_interval_minutes": 60,
+  "max_stale_days": 7
+}
