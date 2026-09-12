@@ -10,7 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from ironledger.db.connection import connect
-from ironledger.web.routers import compile, health, projection, rules, staging, sync, system
+from ironledger.observability.middleware import MetricsMiddleware
+from ironledger.web.routers import compile, health, metrics, projection, rules, staging, sync, system
 
 __all__ = ["create_app"]
 
@@ -32,6 +33,7 @@ def create_app(
         version="0.1.0",
     )
 
+    app.add_middleware(MetricsMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -69,6 +71,7 @@ def create_app(
 
     # Include routers
     app.include_router(health.router)
+    app.include_router(metrics.router)
     app.include_router(staging.router)
     app.include_router(rules.router)
     app.include_router(projection.router)
