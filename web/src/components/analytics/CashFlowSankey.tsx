@@ -68,12 +68,12 @@ export const CashFlowSankey: React.FC<{
       svg
         .append("g")
         .attr("fill", "none")
-        .attr("stroke-opacity", 0.4)
+        .attr("stroke-opacity", 0.35)
         .selectAll<SVGPathElement, SLink>("path")
         .data(links)
         .join("path")
         .attr("d", sankeyLinkHorizontal())
-        .attr("stroke", "#3b82f6")
+        .attr("stroke", "#8B3A1A")
         .attr("stroke-width", (d: SLink) => Math.max(1, d.width ?? 0));
 
       // Render node blocks
@@ -88,14 +88,14 @@ export const CashFlowSankey: React.FC<{
         .attr("width", (d: SNode) => (d.x1 ?? 0) - (d.x0 ?? 0))
         .attr("fill", (d: SNode) =>
           d.name.startsWith("Income")
-            ? "#10b981"
+            ? "#5a9e6f"
             : d.name.startsWith("Expenses")
-            ? "#ef4444"
+            ? "#b8412f"
             : d.name === "Operating:GrossFlow"
-            ? "#f59e0b"
-            : "#6366f1"
+            ? "#B8922A"
+            : "#C4501A"
         )
-        .attr("rx", 3);
+        .attr("rx", 0);
 
       // Node labels
       svg
@@ -111,7 +111,7 @@ export const CashFlowSankey: React.FC<{
         .attr("text-anchor", (d: SNode) =>
           (d.x0 ?? 0) < width / 2 ? "start" : "end"
         )
-        .attr("class", "text-[11px] font-mono fill-zinc-300")
+        .attr("class", "text-[11px] font-mono fill-[#e8dfd1]")
         .text((d: SNode) => {
           const shortName = d.name.split(":").pop() || d.name;
           const formattedVal = (d.value ?? 0).toLocaleString(undefined, {
@@ -130,7 +130,7 @@ export const CashFlowSankey: React.FC<{
       ref={svgRef}
       width={width}
       height={height}
-      className="overflow-visible bg-zinc-950 p-2 rounded-lg border border-zinc-800"
+      className="overflow-visible bg-[#1a1410] p-2 rounded-none border border-[#2c2420]"
     />
   );
 };

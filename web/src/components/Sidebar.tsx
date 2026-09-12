@@ -48,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Staging Inbox',
       icon: Inbox,
       badge: pendingCount > 0 ? pendingCount : null,
-      badgeColor: 'bg-indigo-600 text-white',
+      badgeColor: 'border border-ember/40 bg-ember/10 text-ember',
     },
     {
       id: 'portfolio' as ActiveView,
@@ -70,7 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Rule Engine',
       icon: BookOpen,
       badge: rulesCount > 0 ? rulesCount : null,
-      badgeColor: 'bg-slate-700 text-slate-300',
+      badgeColor: 'border border-border bg-black/40 text-ash',
     },
   ];
 
@@ -85,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Webhooks & DLQ',
       icon: Webhook,
       badge: dlqCount > 0 ? dlqCount : null,
-      badgeColor: 'bg-rose-600 text-white',
+      badgeColor: 'border border-loss/40 bg-loss-tint text-loss-bright',
     },
     {
       id: 'federation' as ActiveView,
@@ -110,9 +110,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const renderNavGroup = (title: string, items: typeof financialNav) => (
-    <div className="space-y-1 mb-4">
-      <div className="px-3 py-1.5 text-[10px] font-mono tracking-wider text-slate-500 uppercase">
-        {title}
+    <div className="space-y-1 mb-5">
+      <div className="px-3 py-1 font-ui text-[10px] tracking-[0.25em] text-rust uppercase flex items-center gap-2">
+        <span>{title}</span>
+        <span className="flex-1 max-w-[30px] h-[1px] bg-rust/40 inline-block" />
       </div>
       {items.map((item) => {
         const Icon = item.icon;
@@ -121,19 +122,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             key={item.id}
             onClick={() => onSelectView(item.id)}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition-colors ${
+            className={`w-full flex items-center justify-between px-3 py-2 text-xs font-serif transition-colors ${
               isActive
-                ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-600/30 font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                ? 'bg-[rgba(139,58,26,0.08)] text-white border-l-2 border-ember font-bold pl-2.5'
+                : 'text-ash hover:text-bone hover:bg-card-hover'
             }`}
           >
             <div className="flex items-center space-x-2.5">
-              <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-400' : 'text-slate-400'}`} />
-              <span>{item.label}</span>
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-ember' : 'text-ash'}`} />
+              <span className="text-[13px]">{item.label}</span>
             </div>
             {item.badge !== null && item.badge !== undefined && (
               <span
-                className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
+                className={`text-[10px] font-ui tracking-wider px-1.5 py-0.5 border font-bold ${
                   item.badgeColor
                 }`}
               >
@@ -147,15 +148,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <aside className="w-60 border-r border-slate-700 bg-slate-900/95 flex flex-col justify-between shrink-0 select-none h-[calc(100vh-3.5rem)]">
+    <aside className="w-60 border-r border-[rgba(154,144,136,0.12)] bg-[#140f0c] flex flex-col justify-between shrink-0 select-none h-[calc(100vh-3.5rem)]">
       <div className="p-3 overflow-y-auto flex-1 min-h-0">
-        {renderNavGroup('Ledger & Valuation', financialNav)}
+        {renderNavGroup('Navigation', financialNav)}
         {renderNavGroup('Platform & Cluster', platformNav)}
       </div>
 
-      <div className="p-3 border-t border-slate-800 font-mono text-[11px] text-slate-500 flex items-center justify-between shrink-0 bg-slate-900">
+      <div className="p-3 border-t border-[rgba(154,144,136,0.12)] font-ui text-[11px] tracking-wider uppercase text-ash flex items-center justify-between shrink-0 bg-[#100c0a]">
         <span>SQLite + Beancount</span>
-        <span className="text-emerald-400 font-semibold">● LIVE</span>
+        <span className="text-gain-bright font-bold">● LIVE</span>
       </div>
     </aside>
   );

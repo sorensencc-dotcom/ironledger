@@ -64,35 +64,35 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
     switch (status) {
       case 'SUCCESS':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[10px] font-bold bg-[#132a1c] text-[#8fc79e] border border-[#1d442b]">
+            <CheckCircle2 className="w-3 h-3 text-[#8fc79e]" />
             SUCCESS
           </span>
         );
       case 'RECIPROCAL_SUCCESS':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-950/80 text-blue-400 border border-blue-800/60">
-            <ArrowUpDown className="w-3 h-3 text-blue-400" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[10px] font-bold bg-[#241c16] text-[#b8922a] border border-[#3a2e26]">
+            <ArrowUpDown className="w-3 h-3 text-[#b8922a]" />
             RECIPROCAL
           </span>
         );
       case 'CIRCUIT_OPEN':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-400 border border-rose-800/60">
-            <XCircle className="w-3 h-3 text-rose-400" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[10px] font-bold bg-[#2c120e] text-[#e2765f] border border-[#4a1c14] animate-pulse">
+            <XCircle className="w-3 h-3 text-[#e2765f]" />
             CIRCUIT OPEN
           </span>
         );
       case 'STALE_CACHED':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-400 border border-amber-800/60">
-            <AlertTriangle className="w-3 h-3 text-amber-400" />
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[10px] font-bold bg-[#2a1d0d] text-[#e0a84c] border border-[#4a3518]">
+            <AlertTriangle className="w-3 h-3 text-[#e0a84c]" />
             STALE
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-400 border border-zinc-800">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[10px] font-bold bg-[#1a1410] text-[#a89e94] border border-[#2c2420]">
             {status}
           </span>
         );
@@ -105,29 +105,33 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
   return (
     <div className="space-y-4 font-mono">
       {/* Watchlist Table Card */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 mb-3 border-b border-zinc-800">
+      <div className="bg-[#1a1410] border border-[#2c2420] rounded-none p-4 relative overflow-hidden">
+        <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+          WATCHLIST
+        </div>
+
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 mb-3 border-b border-[#2c2420] relative z-10">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs uppercase text-zinc-400 font-bold tracking-wider">
+              <span className="text-xs uppercase text-[#b8922a] font-sans font-bold tracking-wider">
                 Active Price Watchlist
               </span>
-              <span className="text-[10px] px-2 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 font-bold">
+              <span className="text-[10px] px-2 py-0.2 rounded-none bg-[#241c16] text-[#b8922a] border border-[#3a2e26] font-bold">
                 {items.length} PAIRS
               </span>
               {isLocked ? (
-                <span className="text-[10px] px-2 py-0.2 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 font-bold flex items-center gap-1">
+                <span className="text-[10px] px-2 py-0.2 rounded-none bg-[#241c16] text-[#b8922a] border border-[#3a2e26] font-bold flex items-center gap-1">
                   <Lock className="w-2.5 h-2.5" />
                   PROTECTED
                 </span>
               ) : (
-                <span className="text-[10px] px-2 py-0.2 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 font-bold flex items-center gap-1 animate-pulse">
+                <span className="text-[10px] px-2 py-0.2 rounded-none bg-[#132a1c] text-[#8fc79e] border border-[#1d442b] font-bold flex items-center gap-1 animate-pulse">
                   <Unlock className="w-2.5 h-2.5" />
                   EDIT MODE
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
+            <p className="text-[11px] text-[#7a6e65] mt-0.5">
               Exact-rational market price resolution with dual Beancount &amp; SQLite persistence
             </p>
           </div>
@@ -139,22 +143,22 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                 setIsLocked(nextState);
                 if (nextState) setIsAdding(false);
               }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold border transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-none text-xs font-semibold border transition-all ${
                 isLocked
-                  ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-700/60'
-                  : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-700/80 ring-1 ring-emerald-500/40'
+                  ? 'bg-[#241c16] hover:bg-[#2c2420] text-[#b8922a] border-[#3a2e26]'
+                  : 'bg-[#132a1c] hover:bg-[#1d442b] text-[#8fc79e] border-[#1d442b]'
               }`}
               title={isLocked ? 'Watchlist editing is locked. Click to unlock modifications.' : 'Watchlist editing is unlocked. Click to lock and prevent accidental edits.'}
             >
               {isLocked ? (
                 <>
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Lock Guard</span>
+                  <Lock className="w-3.5 h-3.5 text-[#b8922a]" />
+                  <span className="font-mono text-xs uppercase">Lock Guard</span>
                 </>
               ) : (
                 <>
-                  <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Unlocked</span>
+                  <Unlock className="w-3.5 h-3.5 text-[#8fc79e]" />
+                  <span className="font-mono text-xs uppercase">Unlocked</span>
                 </>
               )}
             </button>
@@ -170,20 +174,20 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
               }}
               disabled={isLocked}
               title={isLocked ? 'Watchlist is locked. Click Lock Guard to unlock and add symbols.' : 'Add new target pair to watchlist'}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-none text-xs font-mono uppercase transition-colors ${
                 isLocked
-                  ? 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
-                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700'
+                  ? 'bg-[#130f0c] text-[#7a6e65] border border-[#2c2420] cursor-not-allowed'
+                  : 'bg-[#241c16] hover:bg-[#2c2420] text-[#e8dfd1] border border-[#3a2e26]'
               }`}
             >
-              <Plus className="w-3.5 h-3.5 text-zinc-400" />
+              <Plus className="w-3.5 h-3.5 text-[#b8922a]" />
               <span>Add Symbol</span>
             </button>
 
             <button
               onClick={handleSync}
               disabled={syncing || loading}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-sm ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-mono uppercase font-bold bg-[#c4501a] hover:bg-[#d4622b] text-[#f2ece2] transition-all shadow-sm ${
                 syncing ? 'opacity-70 cursor-not-allowed' : ''
               }`}
             >
@@ -195,41 +199,41 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
 
         {/* Inline Add Symbol Form */}
         {isAdding && (
-          <form onSubmit={handleAddSubmit} className="mb-4 p-3 bg-zinc-900/70 border border-zinc-800 rounded-md space-y-3">
+          <form onSubmit={handleAddSubmit} className="mb-4 p-3 bg-[#130f0c] border border-[#3a2e26] rounded-none space-y-3 relative z-10">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-200">Add Watchlist Target Pair</span>
-              {addingError && <span className="text-xs text-rose-400">{addingError}</span>}
+              <span className="text-xs font-bold text-[#f2ece2] font-sans uppercase tracking-wider">Add Watchlist Target Pair</span>
+              {addingError && <span className="text-xs text-[#e2765f]">{addingError}</span>}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] text-zinc-400 block mb-1">Base Commodity (e.g. NVDA, SOL)</label>
+                <label className="text-[10px] text-[#7a6e65] uppercase font-sans font-bold block mb-1">Base Commodity (e.g. NVDA, SOL)</label>
                 <input
                   type="text"
                   placeholder="AAPL"
                   value={newSymbol}
                   onChange={(e) => setNewSymbol(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 uppercase focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0d0a08] border border-[#3a2e26] rounded-none px-2.5 py-1.5 text-xs text-[#f2ece2] uppercase font-mono focus:outline-none focus:border-[#c4501a]"
                   required
                 />
               </div>
               <div>
-                <label className="text-[10px] text-zinc-400 block mb-1">Quote Currency</label>
+                <label className="text-[10px] text-[#7a6e65] uppercase font-sans font-bold block mb-1">Quote Currency</label>
                 <input
                   type="text"
                   placeholder="USD"
                   value={newQuote}
                   onChange={(e) => setNewQuote(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 uppercase focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0d0a08] border border-[#3a2e26] rounded-none px-2.5 py-1.5 text-xs text-[#f2ece2] uppercase font-mono focus:outline-none focus:border-[#c4501a]"
                 />
               </div>
               <div>
-                <label className="text-[10px] text-zinc-400 block mb-1">Fallback Quote ($)</label>
+                <label className="text-[10px] text-[#7a6e65] uppercase font-sans font-bold block mb-1">Fallback Quote ($)</label>
                 <input
                   type="text"
                   placeholder="225.50 (optional)"
                   value={newManualQuote}
                   onChange={(e) => setNewManualQuote(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#0d0a08] border border-[#3a2e26] rounded-none px-2.5 py-1.5 text-xs text-[#f2ece2] font-mono focus:outline-none focus:border-[#c4501a]"
                 />
               </div>
             </div>
@@ -237,13 +241,13 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAdding(false)}
-                className="px-2.5 py-1 rounded text-xs bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                className="px-2.5 py-1 rounded-none text-xs bg-[#1a1410] border border-[#3a2e26] text-[#7a6e65] hover:text-[#f2ece2] font-mono uppercase"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-3 py-1 rounded text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+                className="px-3 py-1 rounded-none text-xs bg-[#c4501a] hover:bg-[#d4622b] text-[#f2ece2] font-mono uppercase font-bold"
               >
                 Save Symbol
               </button>
@@ -252,9 +256,9 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
         )}
 
         {/* Watchlist Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto relative z-10">
           <table className="w-full text-left text-xs">
-            <thead className="text-zinc-500 border-b border-zinc-900">
+            <thead className="text-[#7a6e65] font-sans font-bold text-[10px] uppercase tracking-wider border-b border-[#2c2420]">
               <tr>
                 <th className="py-2">Symbol</th>
                 <th className="py-2">Quote</th>
@@ -267,59 +271,59 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                 <th className="py-2 text-center w-12">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-900 text-zinc-300">
+            <tbody className="divide-y divide-[#2c2420]/60 text-[#a89e94]">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-6 text-center text-zinc-500">
+                  <td colSpan={9} className="py-6 text-center text-[#7a6e65]">
                     No watchlist symbols configured in config/prices.json.
                   </td>
                 </tr>
               ) : (
                 items.map((item: WatchlistItem) => (
-                  <tr key={`${item.symbol}-${item.quote_currency}`} className="hover:bg-zinc-900/50 transition-colors">
-                    <td className="py-2.5 font-bold text-white flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                  <tr key={`${item.symbol}-${item.quote_currency}`} className="hover:bg-[#241c16]/60 transition-colors">
+                    <td className="py-2.5 font-bold text-[#f2ece2] flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 bg-[#b8922a]"></span>
                       {item.symbol}
                     </td>
-                    <td className="py-2.5 text-zinc-400">{item.quote_currency}</td>
-                    <td className="py-2.5 text-right font-bold text-zinc-100">
-                      {item.price_display ? `$${item.price_display}` : <span className="text-zinc-600">—</span>}
+                    <td className="py-2.5 text-[#7a6e65]">{item.quote_currency}</td>
+                    <td className="py-2.5 text-right font-bold text-[#f2ece2]">
+                      {item.price_display ? `$${item.price_display}` : <span className="text-[#7a6e65]">—</span>}
                     </td>
-                    <td className="py-2.5 text-right text-zinc-400 font-mono text-[11px]">
+                    <td className="py-2.5 text-right text-[#a89e94] font-mono text-[11px]">
                       {item.rate_numerator && item.rate_denominator ? (
-                        <span className="bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                        <span className="bg-[#0d0a08] px-1.5 py-0.5 rounded-none border border-[#2c2420]">
                           {item.rate_numerator}/{item.rate_denominator}
                         </span>
                       ) : (
-                        <span className="text-zinc-600">—</span>
+                        <span className="text-[#7a6e65]">—</span>
                       )}
                     </td>
-                    <td className="py-2.5 text-center text-zinc-400">
-                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                    <td className="py-2.5 text-center text-[#a89e94]">
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-none bg-[#0d0a08] border border-[#2c2420]">
                         {item.last_provider}
                       </span>
                     </td>
                     <td className="py-2.5 text-center">{getStatusBadge(item.last_status)}</td>
-                    <td className="py-2.5 text-right text-zinc-400">
+                    <td className="py-2.5 text-right text-[#7a6e65]">
                       {item.last_latency_ms != null ? `${item.last_latency_ms}ms` : '0ms'}
                     </td>
-                    <td className="py-2.5 text-right text-zinc-500 text-[11px]">
+                    <td className="py-2.5 text-right text-[#7a6e65] text-[11px]">
                       {item.directive_date || (item.updated_at ? item.updated_at.slice(0, 10) : '—')}
                     </td>
                     <td className="py-2.5 text-center">
                       {isLocked ? (
                         <span
                           title="Watchlist is locked. Unlock to delete symbols."
-                          className="inline-flex p-1 text-zinc-700 cursor-not-allowed"
+                          className="inline-flex p-1 text-[#7a6e65] cursor-not-allowed"
                         >
-                          <Lock className="w-3.5 h-3.5 text-zinc-700" />
+                          <Lock className="w-3.5 h-3.5 text-[#7a6e65]" />
                         </span>
                       ) : (
                         <button
                           onClick={() => handleRemove(item.symbol, item.quote_currency)}
                           disabled={removingSymbol === `${item.symbol}-${item.quote_currency}`}
                           title={`Remove ${item.symbol} from watchlist`}
-                          className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-zinc-850 transition-colors disabled:opacity-50"
+                          className="p-1 rounded-none text-[#7a6e65] hover:text-[#e2765f] hover:bg-[#2c120e] transition-colors disabled:opacity-50"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -334,35 +338,39 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
       </div>
 
       {/* Resolution Audit Telemetry Card */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
-        <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-800">
+      <div className="bg-[#1a1410] border border-[#2c2420] rounded-none p-4 relative overflow-hidden">
+        <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+          AUDIT
+        </div>
+
+        <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#2c2420] relative z-10">
           <div className="flex items-center gap-2">
-            <Activity className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="text-xs uppercase text-zinc-400 font-bold tracking-wider">
+            <Activity className="w-3.5 h-3.5 text-[#b8922a]" />
+            <span className="text-xs uppercase text-[#b8922a] font-sans font-bold tracking-wider">
               Recent Price Feed Resolution Audit Log ({audit.length})
             </span>
           </div>
-          <span className="text-[10px] text-emerald-400 font-bold">PRICING DAEMON ACTIVE</span>
+          <span className="text-[10px] text-[#8fc79e] font-bold font-sans uppercase tracking-wider">PRICING DAEMON ACTIVE</span>
         </div>
 
-        <div className="divide-y divide-zinc-900 max-h-52 overflow-y-auto pr-1">
+        <div className="divide-y divide-[#2c2420]/60 max-h-52 overflow-y-auto pr-1 relative z-10">
           {audit.length === 0 ? (
-            <div className="py-4 text-center text-zinc-600 text-xs">No price feed resolution audit records yet.</div>
+            <div className="py-4 text-center text-[#7a6e65] text-xs">No price feed resolution audit records yet.</div>
           ) : (
             audit.map((rec: PriceAuditRecord, idx: number) => (
-              <div key={idx} className="py-2 px-1 flex items-center justify-between text-xs hover:bg-zinc-900/30 rounded">
+              <div key={idx} className="py-2 px-1 flex items-center justify-between text-xs hover:bg-[#241c16]/60 rounded-none">
                 <div className="flex items-center gap-3">
-                  <span className="font-bold text-zinc-200">{rec.symbol}/{rec.quote_currency}</span>
-                  <span className="text-zinc-500 text-[11px]">{rec.provider_id}</span>
+                  <span className="font-bold text-[#f2ece2]">{rec.symbol}/{rec.quote_currency}</span>
+                  <span className="text-[#7a6e65] text-[11px]">{rec.provider_id}</span>
                   {rec.rate_numerator && rec.rate_denominator && (
-                    <span className="text-zinc-400 text-[11px] font-mono">
+                    <span className="text-[#a89e94] text-[11px] font-mono">
                       Rate: {rec.rate_numerator}/{rec.rate_denominator}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-zinc-500 text-[10px]">{rec.created_at}</span>
-                  <span className="text-zinc-400 text-[10px]">{rec.latency_ms}ms</span>
+                  <span className="text-[#7a6e65] text-[10px]">{rec.created_at}</span>
+                  <span className="text-[#a89e94] text-[10px]">{rec.latency_ms}ms</span>
                   {getStatusBadge(rec.status)}
                 </div>
               </div>

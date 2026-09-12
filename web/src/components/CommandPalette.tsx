@@ -171,11 +171,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center pt-24 p-4 font-sans select-none">
-      <div className="w-full max-w-xl bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-start justify-center pt-24 p-4 font-sans select-none">
+      <div className="w-full max-w-xl bg-[#1a1410] border border-[#3a2e26] rounded-none shadow-2xl overflow-hidden relative">
+        {/* Ghost Watermark */}
+        <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+          COMMAND
+        </div>
+
         {/* Search Header */}
-        <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-3">
-          <Search className="w-4 h-4 text-slate-400" />
+        <div className="px-4 py-3.5 border-b border-[#2c2420] flex items-center gap-3 bg-[#241c16] relative z-10">
+          <Search className="w-4 h-4 text-[#b8922a]" />
           <input
             type="text"
             placeholder="Type a command or search action..."
@@ -185,17 +190,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               setSelectedIndex(0);
             }}
             autoFocus
-            className="flex-1 bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none font-mono"
+            className="flex-1 bg-transparent text-xs text-[#f2ece2] placeholder-[#7a6e65] focus:outline-none font-mono"
           />
-          <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+          <kbd className="text-[10px] font-mono px-2 py-0.5 rounded-none bg-[#1a1410] text-[#b8922a] border border-[#3a2e26]">
             ESC
           </kbd>
         </div>
 
         {/* Action List */}
-        <div className="max-h-72 overflow-y-auto p-2 divide-y divide-slate-800/40">
+        <div className="max-h-72 overflow-y-auto p-2 divide-y divide-[#2c2420]/60 relative z-10">
           {filtered.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-500 font-mono">
+            <div className="p-6 text-center text-xs text-[#7a6e65] font-mono">
               No matching commands found.
             </div>
           ) : (
@@ -206,15 +211,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 <button
                   key={action.id}
                   onClick={() => action.run()}
-                  className={`w-full px-3 py-2 rounded text-left flex items-center justify-between text-xs transition-colors ${
-                    isSel ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/40 font-medium' : 'text-slate-300 hover:bg-slate-800/60'
+                  className={`w-full px-3 py-2.5 rounded-none text-left flex items-center justify-between text-xs transition-colors ${
+                    isSel
+                      ? 'bg-[#2c1a14] text-[#f2ece2] border-l-2 border-[#c4501a] font-medium'
+                      : 'text-[#a89e94] hover:bg-[#241c16] hover:text-[#f2ece2]'
                   }`}
                 >
                   <div className="flex items-center space-x-2.5">
-                    <Icon className={`w-4 h-4 ${isSel ? 'text-indigo-400' : 'text-slate-400'}`} />
-                    <span>{action.title}</span>
+                    <Icon className={`w-4 h-4 ${isSel ? 'text-[#c4501a]' : 'text-[#7a6e65]'}`} />
+                    <span className="font-mono text-xs">{action.title}</span>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-500 uppercase">{action.category}</span>
+                  <span className="text-[10px] font-sans font-bold text-[#b8922a] uppercase tracking-wider">
+                    {action.category}
+                  </span>
                 </button>
               );
             })

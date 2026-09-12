@@ -63,47 +63,54 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden font-sans">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none">
+      <div className="w-full max-w-lg bg-[#1a1410] border border-[#3a2e26] rounded-none shadow-2xl overflow-hidden font-sans relative">
+        {/* Ghost Watermark */}
+        <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+          RULES
+        </div>
+
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-850">
+        <div className="px-5 py-3.5 border-b border-[#2c2420] flex items-center justify-between bg-[#241c16] relative z-10">
           <div className="flex items-center space-x-2">
-            <Wand2 className="w-4 h-4 text-indigo-400" />
-            <h3 className="font-semibold text-sm text-slate-100">Rule Creation Wizard</h3>
+            <Wand2 className="w-4 h-4 text-[#b8922a]" />
+            <h3 className="font-serif font-bold text-sm text-[#f2ece2] tracking-wide">
+              Rule Creation Wizard
+            </h3>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200">
+          <button onClick={onClose} className="text-[#7a6e65] hover:text-[#f2ece2] transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 space-y-4 text-xs font-mono">
+        <div className="p-5 space-y-4 text-xs font-mono relative z-10">
           {error && (
-            <div className="p-3 rounded bg-rose-950/60 border border-rose-800 text-rose-300 flex items-center gap-2">
+            <div className="p-3 rounded-none bg-[#2c120e] border border-[#4a1c14] text-[#e2765f] flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
           {/* Source Payee Info */}
-          <div className="p-3 rounded bg-slate-800/50 border border-slate-700/50 space-y-1">
-            <span className="text-slate-500 uppercase text-[10px]">Staged Payee</span>
-            <div className="text-slate-200 font-bold truncate">{transaction.payee || '(Unnamed)'}</div>
+          <div className="p-3 rounded-none bg-[#130f0c] border border-[#2c2420] space-y-1">
+            <span className="text-[#7a6e65] uppercase font-sans font-bold tracking-wider text-[10px]">Staged Payee</span>
+            <div className="text-[#f2ece2] font-serif font-bold text-sm truncate">{transaction.payee || '(Unnamed)'}</div>
           </div>
 
           {/* Match Type Picker */}
           <div className="space-y-1.5">
-            <label className="text-slate-400 uppercase text-[10px]">Match Algorithm</label>
+            <label className="text-[#a89e94] uppercase font-sans font-bold tracking-wider text-[10px]">Match Algorithm</label>
             <div className="grid grid-cols-3 gap-2">
               {(['exact', 'prefix', 'regex'] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
                   onClick={() => setMatchType(type)}
-                  className={`py-1.5 px-3 rounded text-center uppercase font-bold border transition-colors ${
+                  className={`py-1.5 px-3 rounded-none text-center uppercase font-mono font-bold border transition-colors ${
                     matchType === type
-                      ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500'
-                      : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-800'
+                      ? 'bg-[#2c1a14] text-[#e2765f] border-[#c4501a]'
+                      : 'bg-[#241c16] text-[#7a6e65] border-[#2c2420] hover:bg-[#2c2420] hover:text-[#e8dfd1]'
                   }`}
                 >
                   {type}
@@ -114,48 +121,48 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
 
           {/* Pattern Input */}
           <div className="space-y-1.5">
-            <label className="text-slate-400 uppercase text-[10px]">Matching Pattern</label>
+            <label className="text-[#a89e94] uppercase font-sans font-bold tracking-wider text-[10px]">Matching Pattern</label>
             <input
               type="text"
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
-              className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+              className="w-full px-3 py-2 rounded-none bg-[#0d0a08] border border-[#3a2e26] text-[#f2ece2] text-xs font-mono focus:outline-none focus:border-[#c4501a]"
             />
           </div>
 
           {/* Target Account Input */}
           <div className="space-y-1.5">
-            <label className="text-slate-400 uppercase text-[10px]">Target Contra Account</label>
+            <label className="text-[#a89e94] uppercase font-sans font-bold tracking-wider text-[10px]">Target Contra Account</label>
             <input
               type="text"
               value={targetAccount}
               onChange={(e) => setTargetAccount(e.target.value)}
               placeholder="Expenses:Food:Groceries"
-              className="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
+              className="w-full px-3 py-2 rounded-none bg-[#0d0a08] border border-[#3a2e26] text-[#f2ece2] text-xs font-mono focus:outline-none focus:border-[#c4501a]"
             />
           </div>
 
           {/* Retroactive Match Estimation Pill */}
-          <div className="p-3 rounded bg-indigo-950/30 border border-indigo-800/40 flex items-center justify-between text-indigo-300 text-[11px]">
-            <span>Retroactive Staging Matches:</span>
-            <span className="font-bold">
+          <div className="p-3 rounded-none bg-[#241c16] border border-[#3a2e26] flex items-center justify-between text-[#b8922a] text-[11px]">
+            <span className="font-sans font-bold uppercase tracking-wider text-[10px]">Retroactive Staging Matches:</span>
+            <span className="font-mono font-bold">
               {loadingCandidate ? 'Computing...' : `${retroMatches ?? 1} transactions`}
             </span>
           </div>
         </div>
 
         {/* Modal Footer */}
-        <div className="px-5 py-3 border-t border-slate-800 bg-slate-850 flex justify-end space-x-2">
+        <div className="px-5 py-3 border-t border-[#2c2420] bg-[#241c16] flex justify-end space-x-2 relative z-10">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+            className="px-3.5 py-1.5 rounded-none bg-[#1a1410] hover:bg-[#2c2420] border border-[#3a2e26] text-[#a89e94] hover:text-[#f2ece2] text-xs font-mono uppercase tracking-wider transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSaveRule}
             disabled={saving || !pattern || !targetAccount}
-            className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50"
+            className="px-4 py-1.5 rounded-none bg-[#c4501a] hover:bg-[#d4622b] text-[#f2ece2] text-xs font-mono uppercase tracking-wider font-bold flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50"
           >
             {saving ? <Wand2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
             <span>Save & Apply Rule</span>

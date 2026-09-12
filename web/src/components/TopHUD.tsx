@@ -50,35 +50,35 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
   // Multi-threshold Freshness Indicator (<5s green, 5-30s amber, >30s rose pulse)
   const latency = freshness?.latency_seconds ?? 999;
-  let freshnessColor = 'bg-rose-950/60 text-rose-300 border-rose-700/80 animate-pulse';
-  let freshnessDot = 'bg-rose-500 shadow-rose-500/50';
+  let freshnessColor = 'bg-loss-tint text-loss-bright border-loss/40 animate-pulse';
+  let freshnessDot = 'bg-loss-bright';
   let freshnessLabel = `Projection: Desync (${latency >= 999 ? 'No sync' : `${latency.toFixed(1)}s`})`;
 
   if (latency < 5) {
-    freshnessColor = 'bg-emerald-950/50 text-emerald-300 border-emerald-700/60';
-    freshnessDot = 'bg-emerald-400 shadow-emerald-400/50';
+    freshnessColor = 'bg-gain-tint text-gain-bright border-gain/40';
+    freshnessDot = 'bg-gain-bright';
     freshnessLabel = `Projection: Synced (${latency.toFixed(1)}s)`;
   } else if (latency <= 30) {
-    freshnessColor = 'bg-amber-950/50 text-amber-300 border-amber-700/60';
-    freshnessDot = 'bg-amber-400 shadow-amber-400/50';
+    freshnessColor = 'bg-brass/10 text-brass border-brass/40';
+    freshnessDot = 'bg-brass';
     freshnessLabel = `Projection: Stale (${latency.toFixed(1)}s)`;
   }
 
   // SimpleFIN Aggregator Ingestion Status Indicator
   const syncState = syncStatus?.state ?? 'UNCONFIGURED';
-  let syncColor = 'bg-amber-950/50 text-amber-300 border-amber-700/60';
-  let syncDot = 'bg-amber-400 shadow-amber-400/50';
+  let syncColor = 'bg-brass/10 text-brass border-brass/40';
+  let syncDot = 'bg-brass';
   let syncLabel = 'SimpleFIN: Unconfigured';
   let syncTooltip = 'No SimpleFIN credentials stored. Run: ironledger sync auth claim';
 
   if (syncState === 'HEALTHY') {
-    syncColor = 'bg-emerald-950/50 text-emerald-300 border-emerald-700/60';
-    syncDot = 'bg-emerald-400 shadow-emerald-400/50';
+    syncColor = 'bg-gain-tint text-gain-bright border-gain/40';
+    syncDot = 'bg-gain-bright';
     syncLabel = 'SimpleFIN: Healthy';
     syncTooltip = `SimpleFIN Bridge Connected | Pending in DB: ${syncStatus?.pending_count ?? 0}`;
   } else if (syncState === 'DEGRADED') {
-    syncColor = 'bg-rose-950/60 text-rose-300 border-rose-700/80 animate-pulse';
-    syncDot = 'bg-rose-500 shadow-rose-500/50';
+    syncColor = 'bg-loss-tint text-loss-bright border-loss/40 animate-pulse';
+    syncDot = 'bg-loss-bright';
     syncLabel = 'SimpleFIN: Degraded';
     syncTooltip = syncStatus?.last_error_code
       ? `SimpleFIN Degraded: ${syncStatus.last_error_code}`
@@ -90,17 +90,14 @@ export const TopHUD: React.FC<TopHUDProps> = ({
   const isReady = readiness?.status === 'ready';
 
   return (
-    <header className="h-14 border-b border-slate-700 bg-slate-900 px-4 flex items-center justify-between z-20 shrink-0 select-none gap-3">
+    <header className="h-14 border-b border-[rgba(139,58,26,0.25)] bg-[#1a1410] px-4 flex items-center justify-between z-20 shrink-0 select-none gap-3 shadow-md">
       {/* Brand & Primary Navigation */}
       <div className="flex items-center space-x-4 shrink-0">
         <div className="flex items-center space-x-2.5">
-          <div className="flex items-center justify-center w-8 h-8 rounded bg-indigo-600 text-white font-mono font-bold text-sm shadow-md shadow-indigo-500/20">
-            IL
-          </div>
           <div className="flex items-center gap-2">
-            <h1 className="font-semibold text-sm tracking-wide text-slate-100 flex items-center gap-2 whitespace-nowrap">
+            <h1 className="font-display font-black italic text-lg tracking-wide text-brass flex items-center gap-2 whitespace-nowrap">
               IronLedger
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/80 font-mono font-normal">
+              <span className="text-[10px] px-1.5 py-0.5 bg-black/40 text-ash border border-border font-ui font-semibold tracking-widest uppercase not-italic">
                 v0.11.0
               </span>
             </h1>
@@ -108,33 +105,33 @@ export const TopHUD: React.FC<TopHUDProps> = ({
         </div>
 
         {/* Quick View Navigation Tabs */}
-        <nav className="flex items-center bg-slate-950/70 p-0.5 rounded-md border border-slate-800 text-xs font-medium font-sans">
+        <nav className="flex items-center bg-black/40 p-0.5 border border-border text-xs font-ui tracking-wider uppercase">
           <button
             onClick={() => onSelectView('staging')}
-            className={`px-3 py-1 rounded transition-colors ${
+            className={`px-3 py-1 transition-colors ${
               activeView === 'staging'
-                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                ? 'bg-forge text-white border-b-2 border-ember font-bold'
+                : 'text-ash hover:text-bone hover:bg-card-hover'
             }`}
           >
             Staging
           </button>
           <button
             onClick={() => onSelectView('portfolio')}
-            className={`px-3 py-1 rounded transition-colors ${
+            className={`px-3 py-1 transition-colors ${
               activeView === 'portfolio'
-                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                ? 'bg-forge text-white border-b-2 border-ember font-bold'
+                : 'text-ash hover:text-bone hover:bg-card-hover'
             }`}
           >
             Holdings &amp; Watchlist
           </button>
           <button
             onClick={() => onSelectView('analytics')}
-            className={`px-3 py-1 rounded transition-colors ${
+            className={`px-3 py-1 transition-colors ${
               activeView === 'analytics'
-                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                ? 'bg-forge text-white border-b-2 border-ember font-bold'
+                : 'text-ash hover:text-bone hover:bg-card-hover'
             }`}
           >
             Cash Flow
@@ -143,39 +140,39 @@ export const TopHUD: React.FC<TopHUDProps> = ({
       </div>
 
       {/* Center Status HUDs */}
-      <div className="flex items-center space-x-2 font-mono text-xs overflow-x-auto py-1">
+      <div className="flex items-center space-x-2 font-ui text-[11px] tracking-wider uppercase overflow-x-auto py-1">
         {/* Health & Readiness Probes */}
         <div
-          className={`px-2 py-1 rounded border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+          className={`px-2 py-1 border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
             isHealthy && isReady
-              ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60'
-              : 'bg-rose-950/50 text-rose-300 border-rose-800/60 animate-pulse'
+              ? 'bg-gain-tint text-gain-bright border-gain/40'
+              : 'bg-loss-tint text-loss-bright border-loss/40 animate-pulse'
           }`}
           title={`Healthz: ${health?.status || 'unknown'} | Readyz: ${readiness?.status || 'unknown'}`}
         >
-          <Server className="w-3.5 h-3.5 text-emerald-400" />
+          <Server className="w-3.5 h-3.5 text-gain-bright" />
           <span>{isHealthy && isReady ? 'PROBES: OK' : 'PROBES: DEGRADED'}</span>
         </div>
 
         {/* Envelope Encryption HUD */}
         <div
-          className="px-2 py-1 rounded border border-indigo-900/60 bg-indigo-950/40 text-indigo-300 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+          className="px-2 py-1 border border-border bg-black/40 text-bone flex items-center gap-1.5 whitespace-nowrap shrink-0"
           title="Envelope encryption: AES-256-GCM DEKs wrapped with local KEK"
         >
-          <Key className="w-3.5 h-3.5 text-indigo-400" />
+          <Key className="w-3.5 h-3.5 text-brass" />
           <span>ENVELOPE: ACTIVE</span>
         </div>
 
         {/* Safe Mode Guard Banner with Explicit Permissions */}
         <div
-          className={`px-2.5 py-1 rounded border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
+          className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
             isSafe
-              ? 'bg-rose-950/50 text-rose-300 border-rose-800/60'
-              : 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60'
+              ? 'bg-[rgba(196,80,26,0.1)] text-ember border-[rgba(196,80,26,0.4)]'
+              : 'bg-gain-tint text-gain-bright border-gain/40'
           }`}
           title={isSafe ? 'Safe Mode Active: Live compiles require confirmation token' : 'Safe Mode Unlocked: Operator full live write access'}
         >
-          {isSafe ? <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+          {isSafe ? <ShieldAlert className="w-3.5 h-3.5 text-ember shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-gain-bright shrink-0" />}
           <div className="flex items-center gap-1.5">
             <span className="font-bold">{isSafe ? 'SAFE MODE' : 'UNLOCKED'}</span>
           </div>
@@ -183,76 +180,76 @@ export const TopHUD: React.FC<TopHUDProps> = ({
 
         {/* SimpleFIN Aggregator Ingestion Status Pill */}
         <div
-          className={`px-2.5 py-1 rounded border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${syncColor}`}
+          className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${syncColor}`}
           title={syncTooltip}
         >
-          <span className={`w-2 h-2 rounded-full ${syncDot} shadow-sm`} />
+          <span className={`w-1.5 h-1.5 ${syncDot}`} />
           {syncState === 'DEGRADED' ? (
-            <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <AlertTriangle className="w-3.5 h-3.5 text-loss-bright shrink-0" />
           ) : (
-            <Landmark className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <Landmark className="w-3.5 h-3.5 text-gain-bright shrink-0" />
           )}
           <span>{syncLabel}</span>
         </div>
 
         {/* Projection Freshness Pill */}
-        <div className={`px-2.5 py-1 rounded border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${freshnessColor}`}>
-          <span className={`w-2 h-2 rounded-full ${freshnessDot} shadow-sm`} />
+        <div className={`px-2.5 py-1 border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${freshnessColor}`}>
+          <span className={`w-1.5 h-1.5 ${freshnessDot}`} />
           <RefreshCw className={`w-3.5 h-3.5 ${latency > 5 ? 'animate-spin' : ''}`} />
           <span>{freshnessLabel}</span>
         </div>
 
         {/* Session Token HUD */}
-        <div className="px-2.5 py-1 rounded border border-slate-700 bg-slate-800/60 text-slate-300 flex items-center gap-1.5 whitespace-nowrap shrink-0">
-          <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+        <div className="px-2.5 py-1 border border-border bg-black/30 text-ash flex items-center gap-1.5 whitespace-nowrap shrink-0 font-mono text-[10px]">
+          <Cpu className="w-3.5 h-3.5 text-rust" />
           <span>D-0 LOCALHOST</span>
         </div>
       </div>
 
       {/* Action Controls */}
-      <div className="flex items-center space-x-2 shrink-0">
+      <div className="flex items-center space-x-2 shrink-0 font-ui text-xs tracking-wider uppercase font-bold">
         <a
           href="/docs/index.html"
           target="_blank"
           rel="noreferrer"
-          className="px-2.5 py-1 rounded text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          className="px-2.5 py-1 bg-black/40 hover:bg-card-hover text-ash hover:text-white border border-border flex items-center gap-1.5 transition-colors whitespace-nowrap"
           title="User Guide & Documentation"
         >
-          <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+          <HelpCircle className="w-3.5 h-3.5 text-brass" />
           <span>Docs</span>
         </a>
 
         <button
           onClick={onOpenCommandPalette}
-          className="px-2.5 py-1 rounded text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          className="px-2.5 py-1 bg-black/40 hover:bg-card-hover text-ash hover:text-white border border-border flex items-center gap-1.5 transition-colors whitespace-nowrap font-mono text-[11px]"
           title="Command Palette (Ctrl+K)"
         >
-          <Terminal className="w-3.5 h-3.5 text-slate-400" />
+          <Terminal className="w-3.5 h-3.5 text-ash" />
           <span>Ctrl+K</span>
         </button>
 
         <button
           onClick={onTriggerSync}
           disabled={isSyncing}
-          className="px-3 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-700/50 flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
+          className="px-3 py-1 bg-black/40 hover:bg-gain-tint text-gain-bright border border-gain/40 flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap"
           title="Poll SimpleFIN Bank Feeds (/api/sync/poll)"
         >
-          <Landmark className={`w-3.5 h-3.5 text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+          <Landmark className={`w-3.5 h-3.5 text-gain-bright ${isSyncing ? 'animate-spin' : ''}`} />
           <span>{isSyncing ? 'Syncing...' : 'Bank Sync'}</span>
         </button>
 
         <button
           onClick={onOpenSimulation}
-          className="px-3 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-700/50 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          className="px-3 py-1 bg-black/40 hover:bg-brass/10 text-brass border border-brass/40 flex items-center gap-1.5 transition-colors whitespace-nowrap"
         >
-          <Play className="w-3.5 h-3.5 text-indigo-400" />
+          <Play className="w-3.5 h-3.5 text-brass" />
           <span>Simulate</span>
         </button>
 
         <button
           onClick={onTriggerCompile}
           disabled={isCompiling}
-          className="px-3 py-1 rounded text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white font-sans flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50 whitespace-nowrap"
+          className="px-4 py-1 bg-ember hover:bg-ember/90 text-black font-extrabold flex items-center gap-1.5 shadow-sm transition-colors disabled:opacity-50 whitespace-nowrap"
         >
           {isCompiling ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
           <span>Compile</span>

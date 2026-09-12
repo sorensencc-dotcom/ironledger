@@ -369,7 +369,7 @@ export default function App() {
   const activeTx = filteredStaging[selectedIndex] || null;
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-900 text-slate-100 overflow-hidden font-sans">
+    <div className="h-screen w-screen flex flex-col bg-[#0d0a08] text-[#f2ece2] overflow-hidden font-sans">
       {/* Top HUD */}
       <TopHUD
         activeView={activeView}
@@ -454,7 +454,7 @@ export default function App() {
         )}
 
         {activeView === 'federation' && (
-          <div className="flex-1 p-6 overflow-y-auto">
+          <div className="flex-1 p-6 overflow-y-auto bg-[#0d0a08]">
             <FederationView
               onNotify={(msg, type) => setNotification({ msg, type: type === 'error' ? 'error' : 'success' })}
             />
@@ -462,32 +462,33 @@ export default function App() {
         )}
 
         {activeView === 'failover' && (
-          <div className="flex-1 p-6 overflow-y-auto">
+          <div className="flex-1 p-6 overflow-y-auto bg-[#0d0a08]">
             <FailoverView
               onNotify={(msg, type) => setNotification({ msg, type: type === 'error' ? 'error' : 'success' })}
             />
           </div>
         )}
 
-
-
         {activeView === 'rules' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-slate-100">Categorization Rules</h2>
-              <span className="text-xs text-slate-500">{rules.length} active rules</span>
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
+            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+              RULES
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
+              <h2 className="text-base font-serif font-bold text-[#f2ece2]">Categorization Rules</h2>
+              <span className="text-xs text-[#7a6e65] font-mono">{rules.length} active rules</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
               {rules.map((rule) => (
-                <div key={rule.rule_id} className="p-3.5 rounded bg-slate-800/60 border border-slate-700/60 space-y-2 text-xs">
+                <div key={rule.rule_id} className="p-3.5 rounded-none bg-[#1a1410] border border-[#2c2420] space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 uppercase font-bold text-[10px]">
+                    <span className="px-1.5 py-0.2 rounded-none bg-[#241c16] text-[#b8922a] border border-[#3a2e26] uppercase font-mono font-bold text-[10px]">
                       {rule.match_type}
                     </span>
-                    <span className="text-slate-500 text-[10px]">Priority: {rule.priority}</span>
+                    <span className="text-[#7a6e65] text-[10px]">Priority: {rule.priority}</span>
                   </div>
-                  <div className="font-bold text-slate-100">{rule.pattern}</div>
-                  <div className="text-indigo-400">&rarr; {rule.target_account}</div>
+                  <div className="font-bold text-[#f2ece2]">{rule.pattern}</div>
+                  <div className="text-[#c4501a] font-mono">&rarr; {rule.target_account}</div>
                 </div>
               ))}
             </div>
@@ -495,17 +496,20 @@ export default function App() {
         )}
 
         {activeView === 'balances' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-slate-100">Account Balances & Chart</h2>
-              <span className="text-xs text-slate-500">{balances.length} accounts</span>
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
+            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+              BALANCES
             </div>
-            <div className="divide-y divide-slate-800/60 text-xs">
+            <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
+              <h2 className="text-base font-serif font-bold text-[#f2ece2]">Account Balances & Chart</h2>
+              <span className="text-xs text-[#7a6e65] font-mono">{balances.length} accounts</span>
+            </div>
+            <div className="divide-y divide-[#2c2420]/60 text-xs bg-[#1a1410] border border-[#2c2420] rounded-none p-3 relative z-10">
               {balances.map((b) => (
-                <div key={b.account} className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-300">{b.account}</span>
-                  <span className="font-bold text-slate-100">
-                    {b.formatted_amount} <span className="text-slate-500 text-[10px]">{b.currency}</span>
+                <div key={b.account} className="py-2.5 flex items-center justify-between hover:bg-[#241c16]/50 transition-colors px-2">
+                  <span className="text-[#a89e94]">{b.account}</span>
+                  <span className="font-bold text-[#f2ece2] font-mono">
+                    {b.formatted_amount} <span className="text-[#7a6e65] text-[10px]">{b.currency}</span>
                   </span>
                 </div>
               ))}
@@ -514,14 +518,17 @@ export default function App() {
         )}
 
         {activeView === 'analytics' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
+            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+              FLOWS
+            </div>
+            <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <div>
-                <h2 className="text-base font-bold text-slate-100">Cash Flow &amp; Sankey Visualizer</h2>
-                <p className="text-xs text-slate-500">Directed cash flows from income roots through operating buffer to expenses and investments</p>
+                <h2 className="text-base font-serif font-bold text-[#f2ece2]">Cash Flow &amp; Sankey Visualizer</h2>
+                <p className="text-xs text-[#7a6e65]">Directed cash flows from income roots through operating buffer to expenses and investments</p>
               </div>
               <div className="flex items-center gap-3">
-                <label className="text-xs text-slate-400">Period:</label>
+                <label className="text-xs text-[#7a6e65] font-sans font-bold uppercase text-[10px]">Period:</label>
                 <input
                   type="month"
                   value={sankeyPeriod}
@@ -532,22 +539,22 @@ export default function App() {
                       fetchSankeyForPeriod(val);
                     }
                   }}
-                  className="bg-slate-900 border border-slate-700 text-slate-200 text-xs px-2.5 py-1 rounded focus:outline-none focus:border-indigo-500"
+                  className="bg-[#0d0a08] border border-[#3a2e26] text-[#f2ece2] text-xs px-2.5 py-1 rounded-none focus:outline-none focus:border-[#c4501a] font-mono"
                 />
                 <button
                   onClick={() => fetchSankeyForPeriod(sankeyPeriod)}
                   disabled={loadingAnalytics}
-                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors disabled:opacity-50"
+                  className="px-2.5 py-1 rounded-none text-xs bg-[#1a1410] hover:bg-[#241c16] text-[#e8dfd1] border border-[#3a2e26] font-mono uppercase tracking-wider transition-colors disabled:opacity-50"
                 >
                   {loadingAnalytics ? 'Loading...' : 'Refresh'}
                 </button>
               </div>
             </div>
 
-            <div className="flex justify-center p-4 bg-slate-900/40 rounded-lg border border-slate-800">
+            <div className="flex justify-center p-4 bg-[#1a1410] rounded-none border border-[#2c2420] relative z-10">
               {sankeyFlows.length === 0 ? (
-                <div className="py-12 text-center text-xs text-slate-500">
-                  No cash flows recorded for period <span className="font-bold text-slate-400">{sankeyPeriod}</span>.
+                <div className="py-12 text-center text-xs text-[#7a6e65]">
+                  No cash flows recorded for period <span className="font-bold text-[#f2ece2] font-mono">{sankeyPeriod}</span>.
                 </div>
               ) : (
                 <CashFlowSankey flows={sankeyFlows} width={880} height={420} />
@@ -557,11 +564,14 @@ export default function App() {
         )}
 
         {activeView === 'portfolio' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono bg-[#0d0a08] relative">
+            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+              PORTFOLIO
+            </div>
+            <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <div>
-                <h2 className="text-base font-bold text-slate-100">Multi-Asset Portfolio &amp; Watchlist</h2>
-                <p className="text-xs text-slate-500">Real-time valuation, exact rational quotes &amp; automated feed scraping</p>
+                <h2 className="text-base font-serif font-bold text-[#f2ece2]">Multi-Asset Portfolio &amp; Watchlist</h2>
+                <p className="text-xs text-[#7a6e65]">Real-time valuation, exact rational quotes &amp; automated feed scraping</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -569,7 +579,7 @@ export default function App() {
                     api.getPortfolioData().then(setPortfolioHoldings).catch(console.error);
                     fetchWatchlist();
                   }}
-                  className="px-2.5 py-1.5 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                  className="px-2.5 py-1.5 rounded-none text-xs bg-[#1a1410] hover:bg-[#241c16] text-[#e8dfd1] border border-[#3a2e26] font-mono uppercase tracking-wider transition-colors"
                 >
                   Refresh All
                 </button>
@@ -589,11 +599,14 @@ export default function App() {
         )}
 
         {activeView === 'audit' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
+            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+              AUDIT
+            </div>
+            <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <div>
-                <h2 className="text-base font-bold text-slate-100">Meta-Ledger & Audit Trail</h2>
-                <p className="text-xs text-slate-500">Append-only cryptographically hash-chained state mutations</p>
+                <h2 className="text-base font-serif font-bold text-[#f2ece2]">Meta-Ledger & Audit Trail</h2>
+                <p className="text-xs text-[#7a6e65]">Append-only cryptographically hash-chained state mutations</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -601,7 +614,7 @@ export default function App() {
                     api.getAudit().then(setAuditLog).catch(console.error);
                     api.getMutations().then(setMutations).catch(console.error);
                   }}
-                  className="px-2.5 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                  className="px-2.5 py-1 rounded-none text-xs bg-[#1a1410] hover:bg-[#241c16] text-[#e8dfd1] border border-[#3a2e26] font-mono uppercase tracking-wider transition-colors"
                 >
                   Refresh Chain
                 </button>
@@ -609,35 +622,35 @@ export default function App() {
             </div>
 
             {/* Mutation Events List */}
-            <div className="space-y-3">
+            <div className="space-y-3 relative z-10">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Ledger State Mutations ({mutations.length})</h3>
-                <span className="text-[10px] text-emerald-400 font-bold">SHA-256 Chain Verified</span>
+                <h3 className="text-xs font-bold text-[#b8922a] font-sans uppercase tracking-wider">Ledger State Mutations ({mutations.length})</h3>
+                <span className="text-[10px] text-[#8fc79e] font-bold font-sans uppercase tracking-wider">SHA-256 Chain Verified</span>
               </div>
-              <div className="divide-y divide-slate-800/60 text-xs border border-slate-800 rounded bg-slate-900/60 p-2">
+              <div className="divide-y divide-[#2c2420]/60 text-xs border border-[#2c2420] rounded-none bg-[#1a1410] p-2">
                 {mutations.length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-xs">No mutation events recorded yet.</div>
+                  <div className="p-4 text-center text-[#7a6e65] text-xs">No mutation events recorded yet.</div>
                 ) : (
                   mutations.map((m) => (
-                    <div key={m.mutation_id} className="py-2.5 px-2 flex flex-col space-y-1.5 hover:bg-slate-800/40 rounded transition-colors">
+                    <div key={m.mutation_id} className="py-2.5 px-2 flex flex-col space-y-1.5 hover:bg-[#241c16]/50 rounded-none transition-colors">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold text-[10px]">
+                          <span className="px-1.5 py-0.2 rounded-none bg-[#241c16] text-[#b8922a] border border-[#3a2e26] font-bold text-[10px] font-mono">
                             SEQ #{m.seq}
                           </span>
-                          <span className="text-slate-200 font-bold uppercase">{m.action}</span>
+                          <span className="text-[#f2ece2] font-bold uppercase font-mono">{m.action}</span>
                         </div>
-                        <span className="text-slate-500 text-[10px]">{m.ts_utc}</span>
+                        <span className="text-[#7a6e65] text-[10px] font-mono">{m.ts_utc}</span>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] text-slate-400">
-                        <div>Staged: <span className="text-slate-200 font-bold">{m.staged_count}</span></div>
-                        <div>Applied: <span className="text-slate-200 font-bold">{m.rules_applied}</span></div>
-                        <div>Created: <span className="text-slate-200 font-bold">{m.rules_created}</span></div>
-                        <div>Actor: <span className="text-indigo-400">{m.operator_session}</span></div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px] text-[#7a6e65]">
+                        <div>Staged: <span className="text-[#f2ece2] font-bold font-mono">{m.staged_count}</span></div>
+                        <div>Applied: <span className="text-[#f2ece2] font-bold font-mono">{m.rules_applied}</span></div>
+                        <div>Created: <span className="text-[#f2ece2] font-bold font-mono">{m.rules_created}</span></div>
+                        <div>Actor: <span className="text-[#b8922a] font-mono">{m.operator_session}</span></div>
                       </div>
-                      <div className="text-[10px] font-mono text-slate-500 flex items-center gap-2 truncate">
+                      <div className="text-[10px] font-mono text-[#7a6e65] flex items-center gap-2 truncate">
                         <span>Hash:</span>
-                        <span className="text-emerald-400/80 truncate font-mono">{m.mutation_hash}</span>
+                        <span className="text-[#8fc79e] truncate font-mono">{m.mutation_hash}</span>
                       </div>
                     </div>
                   ))
@@ -646,25 +659,25 @@ export default function App() {
             </div>
 
             {/* Audit Log Events List */}
-            <div className="space-y-3 pt-4">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Operator Audit Events ({auditLog.length})</h3>
-              <div className="divide-y divide-slate-800/60 text-xs border border-slate-800 rounded bg-slate-900/60 p-2">
+            <div className="space-y-3 pt-4 relative z-10">
+              <h3 className="text-xs font-bold text-[#b8922a] font-sans uppercase tracking-wider">Operator Audit Events ({auditLog.length})</h3>
+              <div className="divide-y divide-[#2c2420]/60 text-xs border border-[#2c2420] rounded-none bg-[#1a1410] p-2">
                 {auditLog.length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-xs">No audit events recorded yet.</div>
+                  <div className="p-4 text-center text-[#7a6e65] text-xs">No audit events recorded yet.</div>
                 ) : (
                   auditLog.map((a) => (
-                    <div key={`${a.sequence_number}-${a.event_hash}`} className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-800/40 rounded transition-colors">
+                    <div key={`${a.sequence_number}-${a.event_hash}`} className="py-2.5 px-2 flex items-center justify-between hover:bg-[#241c16]/50 rounded-none transition-colors">
                       <div className="space-y-0.5">
-                        <div className="text-slate-200 font-semibold flex items-center gap-2">
+                        <div className="text-[#f2ece2] font-semibold flex items-center gap-2">
                           <span>{a.action}</span>
-                          <span className="text-slate-500 text-[10px]">({a.target})</span>
+                          <span className="text-[#7a6e65] text-[10px] font-mono">({a.target})</span>
                         </div>
-                        <div className="text-slate-500 text-[10px]">
+                        <div className="text-[#7a6e65] text-[10px] font-mono">
                           Seq #{a.sequence_number} &bull; {a.timestamp_utc} &bull; Actor: {a.actor}
                         </div>
                       </div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                        a.result === 'ok' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'
+                      <span className={`px-2 py-0.5 rounded-none text-[10px] uppercase font-bold font-mono ${
+                        a.result === 'ok' ? 'bg-[#132a1c] text-[#8fc79e] border border-[#1d442b]' : 'bg-[#2c120e] text-[#e2765f] border border-[#4a1c14]'
                       }`}>
                         {a.result}
                       </span>
@@ -679,10 +692,10 @@ export default function App() {
 
       {/* Floating Notification Toast */}
       {notification && (
-        <div className={`fixed bottom-6 right-6 px-4 py-2.5 rounded shadow-xl font-mono text-xs z-50 flex items-center gap-2 border ${
+        <div className={`fixed bottom-6 right-6 px-4 py-2.5 rounded-none shadow-2xl font-mono text-xs z-50 flex items-center gap-2 border ${
           notification.type === 'success'
-            ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800'
-            : 'bg-rose-950/90 text-rose-200 border-rose-800'
+            ? 'bg-[#132a1c]/95 text-[#8fc79e] border-[#1d442b]'
+            : 'bg-[#2c120e]/95 text-[#e2765f] border-[#4a1c14]'
         }`}>
           <span>{notification.msg}</span>
         </div>
