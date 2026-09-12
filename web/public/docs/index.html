@@ -40,11 +40,9 @@
     .prose-code {
       font-family: 'Fira Code', monospace;
     }
-    /* Smooth scrolling */
     html {
       scroll-behavior: smooth;
     }
-    /* Custom scrollbar */
     ::-webkit-scrollbar {
       width: 8px;
       height: 8px;
@@ -72,8 +70,8 @@
       <div>
         <span class="font-bold text-sm tracking-wide text-slate-100 flex items-center gap-2">
           IronLedger
-          <span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono">
-            User Guide & Spec
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono">
+            v0.11.0 &bull; Phase 11 Federated Fabric
           </span>
         </span>
       </div>
@@ -81,7 +79,7 @@
     
     <div class="flex items-center space-x-4 text-xs font-mono">
       <a href="/" class="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 shadow transition-colors">
-        <span>&larr; Open Workbench</span>
+        <span>&larr; Open Operator Workbench</span>
       </a>
     </div>
   </header>
@@ -91,7 +89,7 @@
     <!-- Sidebar Navigation -->
     <aside class="w-64 border-r border-slate-800/80 p-6 hidden md:block shrink-0 sticky top-14 h-[calc(100vh-3.5rem)] overflow-y-auto">
       <div class="text-[11px] font-mono uppercase tracking-wider text-slate-500 font-semibold mb-3">
-        Diataxis Documentation
+        Diataxis Navigation
       </div>
       <nav class="space-y-1 text-xs">
         <a href="#tutorial" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors">
@@ -101,27 +99,28 @@
           2. How-To Guides
         </a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
-          <li><a href="#how-to-review" class="hover:text-indigo-400">&bull; Review & Approve</a></li>
-          <li><a href="#how-to-split" class="hover:text-indigo-400">&bull; Multi-Leg Split</a></li>
-          <li><a href="#how-to-rules" class="hover:text-indigo-400">&bull; Categorization Rules</a></li>
-          <li><a href="#how-to-safemode" class="hover:text-indigo-400">&bull; Safe Mode & Compile</a></li>
-          <li><a href="#how-to-docker" class="hover:text-indigo-400">&bull; Docker Automation</a></li>
+          <li><a href="#how-to-review" class="hover:text-indigo-400">&bull; Review & Staging</a></li>
+          <li><a href="#how-to-compliance" class="hover:text-indigo-400">&bull; Compliance Bundles</a></li>
+          <li><a href="#how-to-anomaly" class="hover:text-indigo-400">&bull; Anomaly Detection</a></li>
+          <li><a href="#how-to-federation" class="hover:text-indigo-400">&bull; Federated Outbox</a></li>
+          <li><a href="#how-to-connectors" class="hover:text-indigo-400">&bull; Connectors & Webhooks</a></li>
         </ul>
         <a href="#reference" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">
-          3. Reference & API
+          3. Technical Reference
         </a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
           <li><a href="#ref-api" class="hover:text-indigo-400">&bull; REST API Catalog</a></li>
-          <li><a href="#ref-cli" class="hover:text-indigo-400">&bull; CLI Command Tree</a></li>
+          <li><a href="#ref-cli" class="hover:text-indigo-400">&bull; CLI Command Matrix</a></li>
           <li><a href="#ref-shortcuts" class="hover:text-indigo-400">&bull; Keyboard Shortcuts</a></li>
         </ul>
         <a href="#explanation" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">
           4. Architecture & Invariants
         </a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
-          <li><a href="#exp-meta-ledger" class="hover:text-indigo-400">&bull; Meta-Ledger Hash-Chain</a></li>
-          <li><a href="#exp-drift" class="hover:text-indigo-400">&bull; Rule Drift (HCT)</a></li>
-          <li><a href="#exp-beancount" class="hover:text-indigo-400">&bull; Plaintext Authority</a></li>
+          <li><a href="#exp-meta-ledger" class="hover:text-indigo-400">&bull; Meta-Ledger Chaining</a></li>
+          <li><a href="#exp-event-model" class="hover:text-indigo-400">&bull; gov.event.v1 Envelope</a></li>
+          <li><a href="#exp-fencing" class="hover:text-indigo-400">&bull; Lease Fencing</a></li>
+          <li><a href="#exp-rational" class="hover:text-indigo-400">&bull; Zero-Float Arithmetic</a></li>
         </ul>
       </nav>
     </aside>
@@ -132,13 +131,13 @@
       <!-- Hero Header -->
       <section class="space-y-4 border-b border-slate-800 pb-8">
         <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-indigo-950/80 border border-indigo-800/60 text-indigo-300 font-mono text-xs">
-          <span>Enterprise Operator Guide</span> &bull; <span>Version 0.1.0</span>
+          <span>Enterprise Operator Guide</span> &bull; <span>Version 0.11.0</span> &bull; <span>Phase 11 Ratified</span>
         </div>
         <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white">
           IronLedger Operator Guide & Reference
         </h1>
         <p class="text-base text-slate-400 leading-relaxed">
-          IronLedger is a local-first, single-operator financial operating system. Plaintext Beancount is the sole accounting authority; SQLite is a disposable, rebuildable analytical projection.
+          IronLedger is an enterprise financial operating system combining plaintext Beancount accounting authority with SQLite analytical projections, compliance Merkle trees, pure rational fraud detection, multi-tenant federation, and lease-fenced event streaming.
         </p>
       </section>
 
@@ -146,10 +145,10 @@
       <section id="tutorial" class="space-y-6">
         <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
           <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold uppercase">Diataxis 1</span>
-          <h2 class="text-2xl font-bold text-white">Quickstart Tutorial: From Import to Plaintext Ledger</h2>
+          <h2 class="text-2xl font-bold text-white">Quickstart Tutorial: Ingestion, Verification, and Federation</h2>
         </div>
         <p class="text-sm text-slate-400">
-          In this 3-step tutorial, you will ingest bank export records, categorize and approve them in the Operator Workbench, and compile them into verified Beancount plaintext files.
+          In this 4-step workflow, you ingest source statements, review transactions in the workbench, generate compliance audit bundles, and publish federated event streams.
         </p>
 
         <div class="space-y-4">
@@ -157,10 +156,10 @@
           <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
             <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
               <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">1</span>
-              Ingest Bank Statement Files
+              Ingest Statement Records
             </h3>
             <p class="text-xs text-slate-400">
-              Run the CLI import pipeline to stage OFX or CSV records into your local staging database:
+              Stage bank records into the local database from OFX or CSV exports:
             </p>
             <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli import inbox/checking_export.ofx --confirm "import inbox/checking_export.ofx"</pre>
           </div>
@@ -169,14 +168,14 @@
           <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
             <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
               <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">2</span>
-              Open Operator Workbench
+              Review and Approve in Operator Workbench
             </h3>
             <p class="text-xs text-slate-400">
-              Launch the visual workbench to review staging entries with sub-second keyboard shortcuts:
+              Launch the local Operator Workbench web application to review staged items:
             </p>
             <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli web --db ironledger.db --open-browser</pre>
             <p class="text-xs text-slate-400">
-              Use <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">j</kbd> / <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">k</kbd> to select transactions, <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">Ctrl+R</kbd> to learn a rule, and <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">a</kbd> to approve.
+              Navigate transactions with <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">j</kbd> / <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">k</kbd>, trigger categorization rules with <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">Ctrl+R</kbd>, and approve with <kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 border border-slate-700 font-mono">a</kbd>.
             </p>
           </div>
 
@@ -184,12 +183,24 @@
           <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
             <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
               <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">3</span>
-              Simulate and Compile to Beancount
+              Generate Sealed Compliance Audit Bundle
             </h3>
             <p class="text-xs text-slate-400">
-              Trigger a safe-mode dry-run simulation first to inspect the unified plaintext diff, then compile directly to disk:
+              Create a tamper-evident RFC 6962 binary Merkle tree bundle for regulatory inspection:
             </p>
-            <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli compile --ledger-dir ledger --confirm "authorize compile"</pre>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli compliance generate --framework SOC2_TYPE2 --out audit_bundle.tar</pre>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-3">
+            <h3 class="text-sm font-semibold text-white flex items-center gap-2 font-mono">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">4</span>
+              Dispatch Federated Events
+            </h3>
+            <p class="text-xs text-slate-400">
+              Deliver pending outbox events across peer cluster nodes using fenced worker leases:
+            </p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli federation outbox dispatch --worker-id worker_prod_1 --batch-size 50</pre>
           </div>
         </div>
       </section>
@@ -201,69 +212,84 @@
           <h2 class="text-2xl font-bold text-white">How-To Guides</h2>
         </div>
 
-        <!-- How to review & approve -->
+        <!-- How to review & split -->
         <div id="how-to-review" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Review, Categorize, and Approve Staged Transactions</h3>
+          <h3 class="text-base font-semibold text-white">How to Review, Split, and Approve Staged Transactions</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Staged transactions require matching contra accounts before compilation. To review:
+            Staged transactions require balanced contra account postings before compilation into plaintext Beancount files.
           </p>
           <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li>In the Staging Inbox, select any row with status <code class="font-mono text-amber-300">pending</code>.</li>
-            <li>Inspect the raw source evidence and Beancount syntax in the right Inspector Sidecar.</li>
-            <li>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 font-mono">a</kbd> or click <strong>Approve</strong>. If uncategorized, enter target account (e.g. <code class="font-mono text-indigo-300">Expenses:Food:Groceries</code>).</li>
-            <li>Approved transactions advance to <code class="font-mono text-emerald-300">approved</code> status, ready for compilation.</li>
+            <li>Select any row in the Staging Inbox with status <code class="font-mono text-amber-300">pending</code>.</li>
+            <li>To split a single transaction across multiple expense categories, supply minor-unit postings summing exactly to 0.</li>
+            <li>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-800 font-mono">a</kbd> to approve the transaction. Approved entries advance to <code class="font-mono text-emerald-300">approved</code> status.</li>
           </ol>
         </div>
 
-        <!-- How to multi-leg split -->
-        <div id="how-to-split" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Execute a Multi-Leg Transaction Split</h3>
+        <!-- How to compliance -->
+        <div id="how-to-compliance" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Generate and Verify Compliance Audit Bundles</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            When a single payment covers multiple expenditure categories, split the contra leg:
+            Compliance audit bundles encapsulate canonical JSONL streams for mutation events, governance logs, and pricing history inside deterministic TAR archives.
           </p>
           <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li>Select the transaction in the Register Grid.</li>
-            <li>Call the split API or modal with balanced minor-unit postings:
-              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">POST /api/staging/{id}/split
-{
-  "postings": [
-    {"account": "Assets:Checking", "currency": "USD", "minor_units": -5000, "scale": 2},
-    {"account": "Expenses:Groceries", "currency": "USD", "minor_units": 3500, "scale": 2},
-    {"account": "Expenses:Household", "currency": "USD", "minor_units": 1500, "scale": 2}
-  ]
-}</pre>
+            <li>Generate an audit bundle:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli compliance generate --ledger-id default --framework SOC2_TYPE2 --out bundle.tar</pre>
             </li>
-            <li>The system validates that the sum of all postings equals exactly 0 minor units.</li>
+            <li>Verify bundle integrity and Merkle root correctness:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli compliance verify --bundle bundle.tar</pre>
+            </li>
           </ol>
         </div>
 
-        <!-- How to Safe Mode -->
-        <div id="how-to-safemode" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Operate Under Safe Mode Gating</h3>
+        <!-- How to anomaly -->
+        <div id="how-to-anomaly" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Detect and Resolve Rational Anomaly Flags</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Safe mode protects against accidental or automated live disk modifications.
+            The anomaly detection engine uses exact rational integer arithmetic ($N/D$, zero float division) to identify duplicates, velocity spikes, and statistical outliers.
+          </p>
+          <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li>Scan the ledger for anomalies:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli anomaly scan --ledger-id default</pre>
+            </li>
+            <li>List unresolved flags:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli anomaly list --status UNRESOLVED</pre>
+            </li>
+            <li>Resolve a detected flag with audit tracking:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli anomaly resolve --flag-id flag_123 --status CONFIRMED_FRAUD --actor operator_1</pre>
+            </li>
+          </ol>
+        </div>
+
+        <!-- How to federation -->
+        <div id="how-to-federation" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Manage Multi-Tenant Cluster Federation</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Federated clusters communicate via the <code class="font-mono text-indigo-300">gov.event.v1</code> canonical envelope with lease-fenced outbox delivery.
+          </p>
+          <ol class="list-decimal list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li>Inspect registered cluster nodes:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli federation nodes list</pre>
+            </li>
+            <li>Check outbox queue depth:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli federation outbox list --unpublished-only</pre>
+            </li>
+            <li>Dispatch pending events to peers:
+              <pre class="my-2 p-2.5 rounded bg-slate-950 text-[11px] font-mono text-slate-300">python -m ironledger.cli federation outbox dispatch --worker-id worker_primary</pre>
+            </li>
+          </ol>
+        </div>
+
+        <!-- How to connectors & webhooks -->
+        <div id="how-to-connectors" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Operate Connectors, Webhooks, and DLQ Redrive</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            External connectors use token bucket rate limiting and circuit breakers. Webhook deliveries support HMAC signatures and atomic dead-letter queue redrive.
           </p>
           <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li><strong>Dry-Run Simulations:</strong> Allowed at all times without confirmation token (<code class="font-mono text-indigo-300">POST /api/compile/simulate</code>).</li>
-            <li><strong>Live Compiles:</strong> Require passing <code class="font-mono text-emerald-300">"safe_mode_token": "authorize compile"</code> in the request payload.</li>
-            <li><strong>Safe Mode Disable:</strong> Place <code class="font-mono text-amber-300">{"enabled": false}</code> in <code class="font-mono text-slate-400">config/safe-mode.json</code> for full operator write access.</li>
+            <li><strong>Credential Inspection:</strong> Credentials use AES-256-GCM envelope encryption. The UI reports DEK rotation age and fingerprint without leaking plaintext secrets.</li>
+            <li><strong>Dead-Letter Queue Redrive:</strong> In the Webhooks Workbench view, click <strong>Redrive Delivery</strong> on any failed delivery to reset status to <code class="font-mono text-indigo-300">PENDING</code> and re-enter the dispatch queue.</li>
+            <li><strong>Circuit Breakers:</strong> Breakers automatically transition to <code class="font-mono text-rose-400">OPEN</code> upon consecutive upstream failures, preventing resource exhaustion.</li>
           </ul>
-        </div>
-
-        <!-- How to Docker -->
-        <div id="how-to-docker" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Run IronLedger Automatically via Docker</h3>
-          <p class="text-xs text-slate-400 leading-relaxed">
-            Run the containerized workbench service with host persistence and auto-restart:
-          </p>
-          <pre class="p-3 rounded bg-slate-950 border border-slate-800/80 text-xs font-mono text-emerald-300 overflow-x-auto"># Launch in background
-docker compose up -d
-
-# Inspect live logs
-docker compose logs -f
-
-# Shutdown container
-docker compose down</pre>
         </div>
       </section>
 
@@ -271,7 +297,7 @@ docker compose down</pre>
       <section id="reference" class="space-y-6">
         <div class="flex items-center gap-2 border-b border-slate-800 pb-2">
           <span class="text-xs font-mono px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-bold uppercase">Diataxis 3</span>
-          <h2 class="text-2xl font-bold text-white">Reference & Technical Specification</h2>
+          <h2 class="text-2xl font-bold text-white">Technical Reference</h2>
         </div>
 
         <!-- REST API Catalog Table -->
@@ -284,51 +310,112 @@ docker compose down</pre>
                   <th class="p-2.5">Method</th>
                   <th class="p-2.5">Endpoint</th>
                   <th class="p-2.5">Description</th>
-                  <th class="p-2.5">Gating</th>
+                  <th class="p-2.5">Domain</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/60 bg-slate-950/40 text-slate-300">
                 <tr>
                   <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/api/v1/federation/tenants</td>
+                  <td class="p-2.5">List registered federation tenants</td>
+                  <td class="p-2.5 text-indigo-400">Federation</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/api/v1/federation/nodes</td>
+                  <td class="p-2.5">List cluster topology and node health</td>
+                  <td class="p-2.5 text-indigo-400">Federation</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/api/v1/federation/outbox</td>
+                  <td class="p-2.5">Query federated event outbox queue</td>
+                  <td class="p-2.5 text-indigo-400">Federation</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
+                  <td class="p-2.5">/api/v1/federation/events/ingest</td>
+                  <td class="p-2.5">Idempotent peer event ingestion</td>
+                  <td class="p-2.5 text-indigo-400">Federation</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
                   <td class="p-2.5">/api/staging</td>
-                  <td class="p-2.5">List staged transactions with postings & scores</td>
-                  <td class="p-2.5 text-slate-500">None</td>
+                  <td class="p-2.5">List staged transactions with scores</td>
+                  <td class="p-2.5 text-slate-400">Staging</td>
                 </tr>
                 <tr>
                   <td class="p-2.5 text-blue-400 font-bold">POST</td>
                   <td class="p-2.5">/api/staging/{id}/approve</td>
                   <td class="p-2.5">Approve staged transaction</td>
-                  <td class="p-2.5 text-slate-500">None</td>
-                </tr>
-                <tr>
-                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
-                  <td class="p-2.5">/api/staging/{id}/split</td>
-                  <td class="p-2.5">Split transaction contra leg (balanced sum=0)</td>
-                  <td class="p-2.5 text-slate-500">None</td>
-                </tr>
-                <tr>
-                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
-                  <td class="p-2.5">/api/rules/{id}/drift</td>
-                  <td class="p-2.5">Calculate Hit Confidence Trend (HCT) & drift metrics</td>
-                  <td class="p-2.5 text-slate-500">None</td>
-                </tr>
-                <tr>
-                  <td class="p-2.5 text-blue-400 font-bold">POST</td>
-                  <td class="p-2.5">/api/compile/simulate</td>
-                  <td class="p-2.5">Zero-mutation dry run returning plaintext diff preview</td>
-                  <td class="p-2.5 text-slate-500">Safe</td>
+                  <td class="p-2.5 text-slate-400">Staging</td>
                 </tr>
                 <tr>
                   <td class="p-2.5 text-blue-400 font-bold">POST</td>
                   <td class="p-2.5">/api/compile</td>
-                  <td class="p-2.5">Compile approved transactions to Beancount files</td>
-                  <td class="p-2.5 text-amber-400">Token Gated</td>
+                  <td class="p-2.5">Compile approved entries to Beancount</td>
+                  <td class="p-2.5 text-slate-400">Compiler</td>
                 </tr>
                 <tr>
                   <td class="p-2.5 text-emerald-400 font-bold">GET</td>
-                  <td class="p-2.5">/api/system/mutations</td>
-                  <td class="p-2.5">Inspect append-only SHA-256 Meta-Ledger chain</td>
-                  <td class="p-2.5 text-slate-500">None</td>
+                  <td class="p-2.5">/metrics</td>
+                  <td class="p-2.5">Prometheus OpenMetrics telemetry</td>
+                  <td class="p-2.5 text-emerald-400">Observability</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-emerald-400 font-bold">GET</td>
+                  <td class="p-2.5">/healthz, /readyz</td>
+                  <td class="p-2.5">Service liveness and readiness probes</td>
+                  <td class="p-2.5 text-emerald-400">Observability</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- CLI Command Matrix -->
+        <div id="ref-cli" class="space-y-3 pt-4">
+          <h3 class="text-base font-semibold text-white font-mono">CLI Command Tree</h3>
+          <div class="border border-slate-800 rounded-lg overflow-hidden font-mono text-xs">
+            <table class="w-full text-left divide-y divide-slate-800">
+              <thead class="bg-slate-900 text-slate-400">
+                <tr>
+                  <th class="p-2.5">Command</th>
+                  <th class="p-2.5">Description</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 bg-slate-950/40 text-slate-300">
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger compliance generate</td>
+                  <td class="p-2.5">Generate deterministic Merkle audit bundle TAR</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger compliance verify</td>
+                  <td class="p-2.5">Cryptographically verify audit bundle and manifest</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger anomaly scan</td>
+                  <td class="p-2.5">Execute pure rational fraud and anomaly detection scan</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger anomaly resolve</td>
+                  <td class="p-2.5">Atomically resolve detected anomaly flag</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger federation nodes list</td>
+                  <td class="p-2.5">List peer cluster nodes and topology status</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger federation outbox dispatch</td>
+                  <td class="p-2.5">Dispatch outbox batches using fenced worker leases</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger compile</td>
+                  <td class="p-2.5">Execute token-gated compilation to Beancount files</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 text-indigo-300 font-bold">ironledger web</td>
+                  <td class="p-2.5">Start local Operator Workbench web server</td>
                 </tr>
               </tbody>
             </table>
@@ -375,29 +462,37 @@ docker compose down</pre>
         </div>
 
         <div id="exp-meta-ledger" class="space-y-3">
-          <h3 class="text-base font-semibold text-white">Why Meta-Ledger Cryptographic Chaining Matters</h3>
+          <h3 class="text-base font-semibold text-white">Meta-Ledger Cryptographic Chaining</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Financial systems often suffer from untracked data drift between review databases and final ledger files. IronLedger solves this via an append-only <code class="font-mono text-indigo-300">mutation_events</code> table. Every compilation write calculates the SHA-256 digest of the entire on-disk ledger directory before and after writing, linking them into an unbroken cryptographic chain anchored at genesis. SQLite database triggers strictly forbid any <code class="font-mono text-rose-400">UPDATE</code> or <code class="font-mono text-rose-400">DELETE</code> operations.
+            Financial operations enforce an unbroken SHA-256 hash chain in <code class="font-mono text-indigo-300">mutation_events</code>. Every compilation write calculates directory hashes before and after mutation, linking records back to genesis. SQLite triggers prevent modifications or deletions.
           </p>
         </div>
 
-        <div id="exp-drift" class="space-y-3">
-          <h3 class="text-base font-semibold text-white">Hit Confidence Trend (HCT) & Drift Detection</h3>
+        <div id="exp-event-model" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Canonical gov.event.v1 Event Model</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Machine learned categorization rules decay over time as merchant narrations change. IronLedger computes an active Hit Confidence Trend metric:
+            All cross-cluster and internal events follow the canonical <code class="font-mono text-indigo-300">gov.event.v1</code> schema. Timestamps use UTC RFC 3339 format, and event IDs derive deterministically from SHA-256 digests of the canonical payload. EventRouter atomically persists events into both the outbox and governance audit trails.
           </p>
-          <div class="p-3 rounded bg-slate-900 border border-slate-800 font-mono text-xs text-indigo-300">
-            HCT = max(0.0, 1.0 - (OverrideRate * 1.5) - DecayFactor(t))
-          </div>
+        </div>
+
+        <div id="exp-fencing" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Fenced Worker Lease Architecture</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Rules with HCT &ge; 80% display in emerald. When override rates rise, rules degrade to amber warnings and are automatically blocked from automated bulk categorization.
+            To prevent double-dispatch in distributed deployments, outbox workers acquire batches with randomized UUID fence tokens (<code class="font-mono text-indigo-300">lease_fence_token</code>). When a worker lease expires and another worker claims the batch, stale acknowledgements affect zero rows.
+          </p>
+        </div>
+
+        <div id="exp-rational" class="space-y-3">
+          <h3 class="text-base font-semibold text-white">Pure Rational Integer Arithmetic</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Floating-point arithmetic is forbidden across all accounting, token bucket, rate limiter, and anomaly detection calculations. All ratios and statistical variance formulas operate on integer fractions ($N/D$), eliminating representation drift.
           </p>
         </div>
       </section>
 
       <!-- Footer -->
       <footer class="pt-8 border-t border-slate-800 text-xs font-mono text-slate-500 flex flex-col md:flex-row justify-between items-center gap-4">
-        <div>IronLedger Enterprise Financial OS &bull; Phase 5 Ratified</div>
+        <div>IronLedger Enterprise Financial OS &bull; Phase 11 Ratified</div>
         <div class="flex items-center gap-4">
           <a href="/" class="text-indigo-400 hover:underline">Workbench App</a>
           <a href="/api/docs" class="text-indigo-400 hover:underline">FastAPI Swagger</a>
