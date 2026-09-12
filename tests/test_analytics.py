@@ -76,8 +76,20 @@ def test_analytics_api_endpoints(tmp_path: Path):
     res = client.get("/api/analytics/sankey?period=2026-09")
     assert res.status_code == 200
     assert isinstance(res.json(), list)
-
-    # Test /api/analytics/portfolio endpoint
     res = client.get("/api/analytics/portfolio")
     assert res.status_code == 200
     assert isinstance(res.json(), list)
+
+
+def test_mcp_trigger_price_sync(tmp_path):
+    ledger_dir, projection_dir, db_path = setup_analytics_db(tmp_path)
+    res = call_tool(
+        "trigger_price_sync",
+        {"symbols": ["AAPL", "BTC"], "quote_currency": "USD"},
+        ledger_dir=ledger_dir,
+        projection_dir=projection_dir,
+        db=db_path,
+    )
+    assert res["isError"] is False
+    data = json.loads(res["content"][0]["text"])
+    assert data["status"] == "failed"

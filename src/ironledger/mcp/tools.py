@@ -9,7 +9,7 @@ from ironledger.project.errors import ProjectError
 from ironledger.project.query import assert_fresh, balances, projection_status, search
 
 CORE_TOOL_NAMES = ('search', 'balances', 'projection_status')
-ANALYTICS_TOOL_NAMES = ('get_cash_flow_sankey', 'get_portfolio_holdings')
+ANALYTICS_TOOL_NAMES = ('get_cash_flow_sankey', 'get_portfolio_holdings', 'trigger_price_sync')
 TOOL_NAMES = CORE_TOOL_NAMES
 ALL_TOOL_NAMES = CORE_TOOL_NAMES + ANALYTICS_TOOL_NAMES
 
@@ -100,6 +100,19 @@ def list_tools(include_analytics: bool = False):
                 'additionalProperties': False,
             },
         },
+        {
+            'name': 'trigger_price_sync',
+            'description': 'Resolve and persist exact-rational prices for requested symbols.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'symbols': {'type': 'array', 'items': {'type': 'string'}},
+                    'quote_currency': {'type': 'string', 'default': 'USD'},
+                },
+                'required': ['symbols'],
+                'additionalProperties': False,
+            },
+        },
     ]
     return core + analytics_tools
 
@@ -114,6 +127,25 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
 
     ledger_dir = Path(ledger_dir)
     projection_dir = Path(projection_dir)
+
+    if name == 'trigger_price_sync':
+        from ironledger.prices.providers.manual import ManualProvider
+        from ironledger.prices.router import PriceCascadeRouter
+        from ironledger.prices.scraper_daemon import PriceScraperDaemon
+        symbols = args.get('symbols')
+        quote = args.get('quote_currency', 'USD')
+        if not isinstance(symbols, list) or not all(isinstance(symbol, str) for symbol in symbols):
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'symbols must be an array of strings'}]}
+        if not isinstance(quote, str):
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'quote_currency must be a string'}]}
+        # Network providers are configured by deployment; empty manual chain fails closed.
+        result = PriceScraperDaemon(Path(db), ledger_dir / 'prices.beancount', PriceCascadeRouter({'DEFAULT': [ManualProvider()]})).sync_watchlist([(symbol, quote) for symbol in symbols])
+        try:
+            audit_result = 'ok' if result['status'] == 'success' else 'error'
+            _audit_tool(db, action='mcp trigger_price_sync', target='trigger_price_sync', result=audit_result)
+        except Exception:
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'Audit logging failed'}]}
+        return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps(result, sort_keys=True)}]}
 
     if name == 'projection_status':
         status_data = projection_status(ledger_dir, projection_dir, db=db)
