@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build:docs": "python ../scripts/build-docs.py",
+    "build": "npm run build:docs && tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run"
   },

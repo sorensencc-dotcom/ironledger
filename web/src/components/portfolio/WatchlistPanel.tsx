@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Plus, Activity, CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Trash2 } from 'lucide-react';
+import { RefreshCw, Plus, Activity, CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Trash2, Lock, Unlock } from 'lucide-react';
 import type { WatchlistData, WatchlistItem, PriceAuditRecord } from '../../types';
 
 interface WatchlistPanelProps {
@@ -17,6 +17,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
   onAddSymbol,
   onRemoveSymbol,
 }) => {
+  const [isLocked, setIsLocked] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [removingSymbol, setRemovingSymbol] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
     if (!newSymbol.trim()) return;
     try {
       setAddingError(null);
@@ -49,6 +51,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
   };
 
   const handleRemove = async (symbol: string, quoteCurrency: string) => {
+    if (isLocked) return;
     try {
       setRemovingSymbol(`${symbol}-${quoteCurrency}`);
       await onRemoveSymbol(symbol, quoteCurrency);
@@ -112,19 +115,71 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
               <span className="text-[10px] px-2 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60 font-bold">
                 {items.length} PAIRS
               </span>
+              {isLocked ? (
+                <span className="text-[10px] px-2 py-0.2 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 font-bold flex items-center gap-1">
+                  <Lock className="w-2.5 h-2.5" />
+                  PROTECTED
+                </span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.2 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 font-bold flex items-center gap-1 animate-pulse">
+                  <Unlock className="w-2.5 h-2.5" />
+                  EDIT MODE
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-zinc-500 mt-0.5">
               Exact-rational market price resolution with dual Beancount &amp; SQLite persistence
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Lock / Unlock Hammer Guard Button */}
             <button
-              onClick={() => setIsAdding(!isAdding)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 transition-colors"
+              onClick={() => {
+                const nextState = !isLocked;
+                setIsLocked(nextState);
+                if (nextState) setIsAdding(false);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold border transition-all ${
+                isLocked
+                  ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-700/60'
+                  : 'bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border-emerald-700/80 ring-1 ring-emerald-500/40'
+              }`}
+              title={isLocked ? 'Watchlist editing is locked. Click to unlock modifications.' : 'Watchlist editing is unlocked. Click to lock and prevent accidental edits.'}
+            >
+              {isLocked ? (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Lock Guard</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Unlocked</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                if (isLocked) {
+                  setIsLocked(false);
+                  setIsAdding(true);
+                } else {
+                  setIsAdding(!isAdding);
+                }
+              }}
+              disabled={isLocked}
+              title={isLocked ? 'Watchlist is locked. Click Lock Guard to unlock and add symbols.' : 'Add new target pair to watchlist'}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs transition-colors ${
+                isLocked
+                  ? 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
+                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700'
+              }`}
             >
               <Plus className="w-3.5 h-3.5 text-zinc-400" />
               <span>Add Symbol</span>
             </button>
+
             <button
               onClick={handleSync}
               disabled={syncing || loading}
@@ -252,14 +307,23 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                       {item.directive_date || (item.updated_at ? item.updated_at.slice(0, 10) : '—')}
                     </td>
                     <td className="py-2.5 text-center">
-                      <button
-                        onClick={() => handleRemove(item.symbol, item.quote_currency)}
-                        disabled={removingSymbol === `${item.symbol}-${item.quote_currency}`}
-                        title={`Remove ${item.symbol} from watchlist`}
-                        className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-850 transition-colors disabled:opacity-50"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isLocked ? (
+                        <span
+                          title="Watchlist is locked. Unlock to delete symbols."
+                          className="inline-flex p-1 text-zinc-700 cursor-not-allowed"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-zinc-700" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleRemove(item.symbol, item.quote_currency)}
+                          disabled={removingSymbol === `${item.symbol}-${item.quote_currency}`}
+                          title={`Remove ${item.symbol} from watchlist`}
+                          className="p-1 rounded text-zinc-400 hover:text-rose-400 hover:bg-zinc-850 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
