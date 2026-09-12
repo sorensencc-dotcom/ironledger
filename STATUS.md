@@ -1,31 +1,28 @@
 # IronLedger Project Status
 
 ## Active Goal
-Phase 9 Complete: Connector Governance & Enterprise Deployment Pipeline (C:\dev\IronLedger). Ready for Gate 2 Final Review and Sign-Off.
+Phase 10: Enterprise Production Hardening, Compliance Auditing & Operational Governance (C:\dev\IronLedger).
 
-## Milestone Status: Gate 2 Ready
-- **Specification:** Ratified in `docs/meta/specs/ironledger-phase-9-spec.md`.
-- **Implementation Plan:** Executed in `docs/superpowers/plans/2026-09-11-phase-9-implementation-plan.md`.
-- **Exit Evidence:** Sealed in `docs/meta/phases/ironledger-phase-9-evidence.md`.
+## Milestone Status: Gate 1 Planning (Session Kickoff)
+- **Preceding Baseline:** Phase 9 ratified, sealed in `docs/meta/phases/ironledger-phase-9-evidence.md`, and released under tag `v0.9.0` (commit `6a9ee90`).
+- **Regression Invariant:** 900 passed, 5 skipped (100% pass rate in 31.94s).
+- **Current Milestone:** Phase 10 Specification & Architecture Design (Gate 1 Charter).
 
-## Subsystem Tasks
-1. **Task 9.1:** Multi-Protocol Connector Governance & Ingestion Rate Limiter (`0012_connectors_governance.sql`, `src/ironledger/connectors/`, `tests/test_connectors.py`) — **COMPLETED** (9 tests passing)
-2. **Task 9.2:** Secret Management, Hardware Token / HSM & Envelope Encryption (`src/ironledger/security/`, `tests/test_envelope_encryption.py`) — **COMPLETED** (9 tests passing)
-3. **Task 9.3:** Real-Time Webhook Dispatcher & Event Notification Fabric (`src/ironledger/events/`, `tests/test_webhooks.py`) — **COMPLETED** (7 tests passing)
-4. **Task 9.4:** Enterprise Deployment Pipeline & Container Infrastructure (`deploy/`, `Dockerfile`, `src/ironledger/web/routers/health.py`, `tests/test_health.py`) — **COMPLETED** (2 tests passing)
-5. **Task 9.5:** System Observability & Prometheus Metrics Exporter (`src/ironledger/observability/`, `src/ironledger/web/routers/metrics.py`, `tests/test_observability.py`) — **COMPLETED** (5 tests passing)
-6. **Task 9.6:** Acceptance Regression Suite & Phase 9 Exit Evidence (`tests/test_phase9_exit_contract.py`, `docs/meta/phases/ironledger-phase-9-evidence.md`) — **COMPLETED** (3 tests passing)
+## Phase 10 Candidate Scope
+1. **Compliance & Audit Ledger:** SOC2 / ISO27001 automated compliance reporting, immutable evidence export bundles, and cryptographic archive sealing.
+2. **High-Availability & Replication Fabric:** SQLite WAL replication topology, read-replica synchronization, and automated failover recovery.
+3. **Advanced Anomaly & Fraud Detection:** Rule-based and heuristic ledger anomaly detector (duplicate charges, anomalous transaction spikes, velocity checks) operating purely on integer arithmetic.
+4. **Disaster Recovery & Point-in-Time Restoration:** Cold backup verification harnesses, automated backup rotation, and integrity verification pipelines.
+5. **Operator Workbench UI Hardening:** Production static asset compilation, role-gated UI routing, and live WebSocket / SSE notification stream.
+6. **Acceptance Regression Suite & Phase 10 Evidence:** Comprehensive end-to-end exit contract tests, static AST guards, and Phase 10 exit documentation.
 
-## Key Architecture & Invariants Locked
-- **Integer Rational Arithmetic:** Token bucket rate limiter, refill math, and timing calculations use pure integer math.
-- **Decoupled Runtime:** Static AST visitor verifies zero runtime `import beancount` across the codebase.
-- **Envelope Encryption:** AES-256-GCM with separate Data Encryption Key (DEK) and Payload IVs / auth tags.
-- **Outbox Immutability:** Append-only SQLite triggers on `event_outbox` rejecting updates and deletions.
-- **Webhook Delivery Fabric:** Leased worker claims, startup lease reconciliation, HMAC-SHA256 signature verification, 300s freshness window, and DLQ routing.
-- **Enterprise Container Pipeline:** Multi-stage non-root container image (`USER 10001:10001`), `/healthz` and `/readyz` probes, and Prometheus OpenMetrics exporter.
-
-## Test Summary
-- **Total Tests:** **900 passed, 5 skipped** (100% pass rate).
+## Core Architectural Invariants Maintained
+- **Plaintext Ground Truth:** Plaintext Beancount files remain the sole financial authority.
+- **Decoupled Runtime:** Zero runtime `import beancount` enforced via static AST visitor.
+- **Pure Integer Arithmetic:** Exact rational arithmetic without float representation or drift.
+- **Envelope Encryption:** AES-256-GCM with separate IV/auth tags and KMS/DPAPI key providers.
+- **Append-Only Immutability:** SQLite triggers guarding outbox, audit, and mutation streams.
+- **Multi-Tenant Boundaries:** Relational composite primary and foreign keys enforcing isolation.
 
 ## Next Action
-Execute Gate 2 Final Review and Sign-Off Protocol.
+Draft Phase 10 Specification (`docs/meta/specs/ironledger-phase-10-spec.md`) and Implementation Plan for operator review and Gate 1 ratification.
