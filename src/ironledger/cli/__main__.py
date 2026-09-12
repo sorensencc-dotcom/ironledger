@@ -267,7 +267,27 @@ def _build_parser() -> argparse.ArgumentParser:
     anom_res.add_argument("--actor", default="operator", help="actor name")
     anom_res.add_argument("--reason", default="", help="resolution reason")
 
+    # federation command tree
+    fed_p = sub.add_parser("federation", help="multi-tenant federation and event outbox governance")
+    fed_p.add_argument("--db", default=argparse.SUPPRESS, help="path to SQLite ledger index")
+    fed_sub = fed_p.add_subparsers(dest="federation_command", required=True)
+
+    fed_nodes = fed_sub.add_parser("nodes", help="manage cluster nodes")
+    fed_nodes_sub = fed_nodes.add_subparsers(dest="nodes_command", required=True)
+    fed_nodes_sub.add_parser("list", help="list cluster nodes")
+
+    fed_outbox = fed_sub.add_parser("outbox", help="manage federated event outbox")
+    fed_outbox_sub = fed_outbox.add_subparsers(dest="outbox_command", required=True)
+    fed_outbox_list = fed_outbox_sub.add_parser("list", help="list pending outbox events")
+    fed_outbox_list.add_argument("--tenant-id", default=None, help="filter by tenant identifier")
+    fed_outbox_list.add_argument("--limit", type=int, default=50, help="maximum events to list")
+
+    fed_outbox_disp = fed_outbox_sub.add_parser("dispatch", help="claim and dispatch outbox events")
+    fed_outbox_disp.add_argument("--worker-id", default="cli_worker", help="worker identifier")
+    fed_outbox_disp.add_argument("--batch-size", type=int, default=50, help="batch size")
+
     return parser
+
 
 
 
@@ -362,8 +382,38 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_compliance(args)
     if args.command == "anomaly":
         return _cmd_anomaly(args)
+    if args.command == "federation":
+        return _cmd_federation(args)
     parser.error(f"unknown command {args.command!r}")
     return 2
+
+
+def _cmd_federation(args) -> int:
+    from ironledger.cli.commands.federation import (
+        run_federation_nodes_list,
+        run_federation_outbox_dispatch,
+        run_federation_outbox_list,
+    )
+
+    db_path = getattr(args, "db", None) or "ironledger.db"
+    if args.federation_command == "nodes":
+        if args.nodes_command == "list":
+            return run_federation_nodes_list(db_path=db_path)
+    elif args.federation_command == "outbox":
+        if args.outbox_command == "list":
+            return run_federation_outbox_list(
+                db_path=db_path,
+                tenant_id=args.tenant_id,
+                limit=args.limit,
+            )
+        elif args.outbox_command == "dispatch":
+            return run_federation_outbox_dispatch(
+                db_path=db_path,
+                worker_id=args.worker_id,
+                batch_size=args.batch_size,
+            )
+    return 2
+
 
 
 def _cmd_compliance(args) -> int:

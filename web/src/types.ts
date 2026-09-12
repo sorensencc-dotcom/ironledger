@@ -225,8 +225,41 @@ export interface HealthStatus {
   database?: string;
 }
 
+export interface FederationTenant {
+  tenant_id: string;
+  name: string;
+  default_ledger_id: string;
+  is_active: boolean;
+  created_at_utc: string;
+}
+
+export interface FederationClusterNode {
+  node_id: string;
+  cluster_id: string;
+  endpoint_url: string;
+  role: 'PRIMARY' | 'REPLICA' | 'WITNESS';
+  last_heartbeat_utc: string | null;
+  is_active: boolean;
+  created_at_utc: string;
+}
+
+export interface FederatedOutboxEvent {
+  seq: number;
+  event_id: string;
+  tenant_id: string;
+  ledger_id: string;
+  event_type: string;
+  source: string;
+  severity: 'INFO' | 'WARN' | 'ERROR' | 'CRITICAL';
+  payload: Record<string, any>;
+  metadata: Record<string, any>;
+  published_to_peers: boolean;
+  created_at_utc: string;
+}
+
 export type GovernanceToastCategory =
   | 'SUCCESS_GOVERNANCE_ACTION'
   | 'ERROR_GOVERNANCE_ACTION'
   | 'CIRCUIT_BREAKER_OPEN'
   | 'DLQ_REDRIVE_COMPLETE';
+

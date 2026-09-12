@@ -9,7 +9,9 @@ import { SimulationModal } from './components/SimulationModal';
 import { ConnectorsView } from './components/ConnectorsView';
 import { WebhooksPanel } from './components/WebhooksPanel';
 import { MetricsView } from './components/MetricsView';
+import { FederationView } from './components/FederationView';
 import { api } from './api';
+
 import type {
   AuditEvent,
   BalanceItem,
@@ -362,6 +364,15 @@ export default function App() {
             loading={loadingViewData}
           />
         )}
+
+        {activeView === 'federation' && (
+          <div className="flex-1 p-6 overflow-y-auto">
+            <FederationView
+              onNotify={(msg, type) => setNotification({ msg, type: type === 'error' ? 'error' : 'success' })}
+            />
+          </div>
+        )}
+
 
         {activeView === 'rules' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono">

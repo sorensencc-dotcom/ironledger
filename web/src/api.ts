@@ -21,7 +21,11 @@ import type {
   WebhookDelivery,
   WebhookDLQEntry,
   WebhookSubscription,
+  FederationTenant,
+  FederationClusterNode,
+  FederatedOutboxEvent,
 } from './types';
+
 
 const API_BASE = '/api';
 
@@ -343,4 +347,44 @@ export const api = {
     if (!res.ok) throw new Error('Failed to scrape metrics');
     return res.text();
   },
+
+  // Federation & Event Routing (Phase 11)
+  async getFederationTenants(): Promise<FederationTenant[]> {
+    const res = await fetch(`${API_BASE}/federation/tenants`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch federation tenants: ${res.statusText}`);
+    return res.json();
+  },
+
+  async createFederationTenant(payload: { tenant_id: string; name: string; default_ledger_id?: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/federation/tenants`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to create tenant: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async getFederationNodes(): Promise<FederationClusterNode[]> {
+    const res = await fetch(`${API_BASE}/federation/nodes`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch cluster nodes: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getFederatedEvents(params?: { tenant_id?: string; source?: string; event_type?: string; limit?: number; offset?: number }): Promise<FederatedOutboxEvent[]> {
+    const query = new URLSearchParams();
+    if (params?.tenant_id) query.set('tenant_id', params.tenant_id);
+    if (params?.source) query.set('source', params.source);
+    if (params?.event_type) query.set('event_type', params.event_type);
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.offset) query.set('offset', String(params.offset));
+
+    const res = await fetch(`${API_BASE}/federation/events?${query.toString()}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch federated events: ${res.statusText}`);
+    return res.json();
+  },
 };
+

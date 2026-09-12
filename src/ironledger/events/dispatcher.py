@@ -1,19 +1,187 @@
-"""Webhook delivery dispatcher with worker lease claiming and dead-letter queue (DLQ) routing."""
+"""Outbox dispatcher, webhook dispatcher, and peer event ingestion registry with lease fencing."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
-import urllib.request
 import urllib.error
+import urllib.request
 import uuid
-from datetime import datetime, timezone, timedelta
-from typing import Any, Callable
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Final
 
+from ironledger.events.envelope import (
+    FederatedEvent,
+    canonical_event_bytes,
+    validate_federated_event,
+)
 from ironledger.events.models import DeliveryResult, WebhookDelivery
 from ironledger.events.signer import WebhookSigner
 from ironledger.security.envelope import EnvelopeCiphertext, EnvelopeEncryptor
 from ironledger.security.key_provider import EnvironmentKeyProvider, KeyProvider
+
+
+DEFAULT_LEASE_SECONDS: Final[int] = 30
+
+
+class OutboxDispatchError(ValueError):
+    """Raised when outbox dispatch or lease acquisition fails."""
+
+
+class OutboxDispatcher:
+    """Manages fenced outbox leasing and peer event synchronization."""
+
+    @staticmethod
+    def claim_batch(
+        conn: sqlite3.Connection,
+        worker_id: str,
+        batch_size: int = 50,
+        lease_seconds: int = DEFAULT_LEASE_SECONDS,
+    ) -> tuple[str, list[FederatedEvent]]:
+        """Claim an unpublished batch of events using randomized lease fencing tokens."""
+        now = datetime.now(timezone.utc)
+        now_utc = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        lease_expires = (now + timedelta(seconds=lease_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fence_token = uuid.uuid4().hex
+
+        cursor = conn.cursor()
+
+        # Find candidate events (unpublished and unleased or lease expired)
+        cursor.execute(
+            """
+            SELECT event_id, seq, tenant_id, ledger_id, event_type, source, severity,
+                   payload_json, metadata_json, created_at_utc
+            FROM federated_event_outbox
+            WHERE published_to_peers = 0
+              AND (lease_expires_at_utc IS NULL OR lease_expires_at_utc < ?)
+            ORDER BY seq ASC
+            LIMIT ?
+            """,
+            (now_utc, batch_size),
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return fence_token, []
+
+        event_ids = [r[0] for r in rows]
+        placeholders = ",".join("?" for _ in event_ids)
+
+        # Atomic lease acquisition
+        cursor.execute(
+            f"""
+            UPDATE federated_event_outbox
+            SET lease_owner_id = ?,
+                lease_fence_token = ?,
+                lease_expires_at_utc = ?
+            WHERE event_id IN ({placeholders})
+              AND published_to_peers = 0
+              AND (lease_expires_at_utc IS NULL OR lease_expires_at_utc < ?)
+            """,
+            [worker_id, fence_token, lease_expires] + event_ids + [now_utc],
+        )
+
+        claimed_events: list[FederatedEvent] = []
+        for r in rows:
+            claimed_events.append(
+                FederatedEvent(
+                    event_id=r[0],
+                    tenant_id=r[2],
+                    ledger_id=r[3],
+                    event_type=r[4],
+                    source=r[5],
+                    severity=r[6],
+                    payload=json.loads(r[7]),
+                    metadata=json.loads(r[8]),
+                    occurred_at=r[9],
+                    recorded_at=r[9],
+                )
+            )
+
+        return fence_token, claimed_events
+
+    @staticmethod
+    def acknowledge_batch(
+        conn: sqlite3.Connection,
+        event_ids: list[str],
+        fence_token: str,
+    ) -> int:
+        """Mark a claimed batch as published if the fencing token is still valid."""
+        if not event_ids:
+            return 0
+
+        placeholders = ",".join("?" for _ in event_ids)
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            UPDATE federated_event_outbox
+            SET published_to_peers = 1,
+                lease_owner_id = NULL,
+                lease_fence_token = NULL,
+                lease_expires_at_utc = NULL
+            WHERE event_id IN ({placeholders})
+              AND lease_fence_token = ?
+            """,
+            event_ids + [fence_token],
+        )
+        return cursor.rowcount
+
+    @staticmethod
+    def ingest_peer_event(
+        conn: sqlite3.Connection,
+        cluster_id: str,
+        event: FederatedEvent,
+    ) -> bool:
+        """Idempotently ingest a federated event from a peer cluster."""
+        validate_federated_event(event)
+
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cursor = conn.cursor()
+
+        # Check if already ingested from this cluster
+        cursor.execute(
+            """
+            SELECT 1 FROM peer_ingested_events WHERE cluster_id = ? AND event_id = ?
+            """,
+            (cluster_id, event.event_id),
+        )
+        if cursor.fetchone():
+            return False
+
+        # Record peer ingestion
+        cursor.execute(
+            """
+            INSERT INTO peer_ingested_events (cluster_id, event_id, ingested_at_utc)
+            VALUES (?, ?, ?)
+            """,
+            (cluster_id, event.event_id, now_utc),
+        )
+
+        # Persist into local governance audit trail
+        import hashlib
+        canonical_bytes = canonical_event_bytes(event)
+        envelope_hash = hashlib.sha256(canonical_bytes).hexdigest()
+
+        cursor.execute(
+            """
+            INSERT INTO governance_audit_events (
+                ledger_id, actor, action, target, before_state_json, after_state_json,
+                envelope_hash, timestamp_utc
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event.ledger_id,
+                f"peer:{cluster_id}",
+                event.event_type,
+                f"event:{event.event_id}",
+                "{}",
+                json.dumps(event.payload, sort_keys=True),
+                envelope_hash,
+                event.recorded_at,
+            ),
+        )
+
+        return True
 
 
 class WebhookDispatcher:
@@ -57,6 +225,9 @@ class WebhookDispatcher:
             )
 
         rows = cursor.fetchall()
+        if not rows:
+            return []
+
         claimed: list[WebhookDelivery] = []
         for row in rows:
             l_id, d_id, e_id, s_id, r_count, next_retry, c_at = row
@@ -281,3 +452,4 @@ class WebhookDispatcher:
             ),
         )
         conn.commit()
+

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3 } from 'lucide-react';
+import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3, Network } from 'lucide-react';
 
 export type ActiveView =
   | 'staging'
@@ -9,6 +9,7 @@ export type ActiveView =
   | 'connectors'
   | 'webhooks'
   | 'metrics'
+  | 'federation'
   | 'settings';
 
 interface SidebarProps {
@@ -47,6 +48,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badgeColor: 'bg-rose-600 text-white',
     },
     {
+      id: 'federation' as ActiveView,
+      label: 'Federation & Events',
+      icon: Network,
+    },
+    {
       id: 'metrics' as ActiveView,
       label: 'Telemetry & Metrics',
       icon: BarChart3,
@@ -69,6 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Shield,
     },
   ];
+
 
   return (
     <aside className="w-60 border-r border-slate-700 bg-slate-900/95 flex flex-col justify-between shrink-0 select-none">
