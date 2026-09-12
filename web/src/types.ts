@@ -119,3 +119,114 @@ export interface MutationEvent {
   mutation_hash: string;
 }
 
+// Option B: Governance, Connectors, Webhooks, Metrics Models
+export interface ConnectorProvider {
+  provider_id: string;
+  name: string;
+  protocol_type: 'PLAID' | 'SIMPLEFIN' | 'OFX' | 'REST_JSON';
+  base_url: string;
+  is_active: boolean;
+  rate_limit_rpm: number;
+  burst_capacity: number;
+  circuit_breaker_state: 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+  failure_count: number;
+  created_at_utc: string;
+}
+
+export interface ConnectorCredentialStatus {
+  provider_id: string;
+  has_credentials: boolean;
+  kek_key_id: string | null;
+  dek_rotation_age_days: number;
+  iv_freshness_status: 'FRESH' | 'STALE' | 'EXPIRED' | 'UNCONFIGURED';
+  created_at_utc: string | null;
+  updated_at_utc: string | null;
+}
+
+export interface ConnectorSyncRun {
+  ledger_id: string;
+  run_id: string;
+  provider_id: string;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CIRCUIT_BROKEN';
+  records_fetched: number;
+  records_staged: number;
+  error_code: string | null;
+  error_details: string | null;
+  started_at_utc: string;
+  completed_at_utc: string | null;
+}
+
+export interface SyncTimelineEvent {
+  event_id: string;
+  timestamp_utc: string;
+  event_type: string;
+  provider_id: string;
+  summary: string;
+  details: Record<string, any>;
+}
+
+export interface TriggerSyncResult {
+  run_id: string;
+  provider_id: string;
+  status: string;
+  records_fetched: number;
+  records_staged: number;
+  message: string;
+}
+
+export interface WebhookSubscription {
+  ledger_id: string;
+  subscription_id: string;
+  target_url: string;
+  secret_fingerprint_hex: string;
+  event_types: string[];
+  is_active: boolean;
+  created_at_utc: string;
+}
+
+export interface WebhookDelivery {
+  ledger_id: string;
+  delivery_id: string;
+  event_id: string;
+  subscription_id: string;
+  status: 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'FAILED' | 'DEAD_LETTERED';
+  retry_count: number;
+  next_retry_at_utc: string;
+  leased_by: string | null;
+  leased_until_utc: string | null;
+  last_status_code: number | null;
+  last_error: string | null;
+  created_at_utc: string;
+  completed_at_utc: string | null;
+}
+
+export interface WebhookDLQEntry {
+  ledger_id: string;
+  dlq_entry_id: string;
+  delivery_id: string;
+  event_id: string;
+  subscription_id: string;
+  status_code: number | null;
+  last_error: string;
+  attempt_count: number;
+  failed_at_utc: string;
+}
+
+export interface RedriveDLQResult {
+  dlq_entry_id: string;
+  delivery_id: string;
+  status: string;
+  message: string;
+}
+
+export interface HealthStatus {
+  status: string;
+  service: string;
+  database?: string;
+}
+
+export type GovernanceToastCategory =
+  | 'SUCCESS_GOVERNANCE_ACTION'
+  | 'ERROR_GOVERNANCE_ACTION'
+  | 'CIRCUIT_BREAKER_OPEN'
+  | 'DLQ_REDRIVE_COMPLETE';

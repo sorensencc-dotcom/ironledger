@@ -6,17 +6,28 @@ import { InspectorSidecar } from './components/InspectorSidecar';
 import { RuleWizardModal } from './components/RuleWizardModal';
 import { CommandPalette } from './components/CommandPalette';
 import { SimulationModal } from './components/SimulationModal';
+import { ConnectorsView } from './components/ConnectorsView';
+import { WebhooksPanel } from './components/WebhooksPanel';
+import { MetricsView } from './components/MetricsView';
 import { api } from './api';
 import type {
   AuditEvent,
   BalanceItem,
   CompileResult,
+  ConnectorCredentialStatus,
+  ConnectorProvider,
+  ConnectorSyncRun,
   FreshnessStatus,
+  HealthStatus,
   MutationEvent,
   Rule,
   SafeModeStatus,
   StagedTransaction,
   SyncStatus,
+  SyncTimelineEvent,
+  WebhookDelivery,
+  WebhookDLQEntry,
+  WebhookSubscription,
 } from './types';
 
 export default function App() {
@@ -31,10 +42,27 @@ export default function App() {
   const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
   const [mutations, setMutations] = useState<MutationEvent[]>([]);
 
+  // Connectors State
+  const [providers, setProviders] = useState<ConnectorProvider[]>([]);
+  const [credentials, setCredentials] = useState<ConnectorCredentialStatus[]>([]);
+  const [connectorSyncRuns, setConnectorSyncRuns] = useState<ConnectorSyncRun[]>([]);
+  const [connectorTimeline, setConnectorTimeline] = useState<SyncTimelineEvent[]>([]);
+
+  // Webhooks State
+  const [webhookSubs, setWebhookSubs] = useState<WebhookSubscription[]>([]);
+  const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDelivery[]>([]);
+  const [webhookDLQ, setWebhookDLQ] = useState<WebhookDLQEntry[]>([]);
+
+  // Health & Metrics State
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [readiness, setReadiness] = useState<HealthStatus | null>(null);
+  const [rawMetrics, setRawMetrics] = useState<string>('');
+
   const [safeMode, setSafeMode] = useState<SafeModeStatus | null>(null);
   const [freshness, setFreshness] = useState<FreshnessStatus | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [loadingViewData, setLoadingViewData] = useState(false);
 
   // Modals state
   const [isRuleWizardOpen, setIsRuleWizardOpen] = useState(false);
@@ -52,18 +80,24 @@ export default function App() {
   // Fetch initial data
   const refreshAll = async () => {
     try {
-      const [stg, rls, sm, fresh, sync] = await Promise.all([
-        api.getStaging(statusFilter),
-        api.getRules(),
-        api.getSafeMode(),
-        api.getFreshness(),
+      const [stg, rls, sm, fresh, sync, h, r, dlq] = await Promise.all([
+        api.getStaging(statusFilter).catch(() => []),
+        api.getRules().catch(() => []),
+        api.getSafeMode().catch(() => null),
+        api.getFreshness().catch(() => null),
         api.getSyncStatus().catch(() => null),
+        api.getHealthz().catch(() => null),
+        api.getReadyz().catch(() => null),
+        api.getWebhookDLQ().catch(() => []),
       ]);
       setStaging(stg);
       setRules(rls);
       setSafeMode(sm);
       setFreshness(fresh);
       if (sync) setSyncStatus(sync);
+      if (h) setHealth(h);
+      if (r) setReadiness(r);
+      if (dlq) setWebhookDLQ(dlq);
     } catch (err) {
       console.error('Failed to load initial workbench data:', err);
     }
@@ -73,25 +107,67 @@ export default function App() {
     refreshAll();
     const interval = setInterval(async () => {
       try {
-        const [fresh, sync] = await Promise.all([
+        const [fresh, sync, h, r, dlq] = await Promise.all([
           api.getFreshness().catch(() => null),
           api.getSyncStatus().catch(() => null),
+          api.getHealthz().catch(() => null),
+          api.getReadyz().catch(() => null),
+          api.getWebhookDLQ().catch(() => []),
         ]);
         if (fresh) setFreshness(fresh);
         if (sync) setSyncStatus(sync);
+        if (h) setHealth(h);
+        if (r) setReadiness(r);
+        if (dlq) setWebhookDLQ(dlq);
       } catch {}
     }, 5000);
     return () => clearInterval(interval);
   }, [statusFilter]);
 
-  // Load balances or audit when active view changes
-  useEffect(() => {
-    if (activeView === 'balances') {
-      api.getBalances().then(setBalances).catch(console.error);
-    } else if (activeView === 'audit') {
-      api.getAudit().then(setAuditLog).catch(console.error);
-      api.getMutations().then(setMutations).catch(console.error);
+  // Load view-specific data
+  const loadViewData = async () => {
+    setLoadingViewData(true);
+    try {
+      if (activeView === 'balances') {
+        const b = await api.getBalances();
+        setBalances(b);
+      } else if (activeView === 'audit') {
+        const [a, m] = await Promise.all([api.getAudit(), api.getMutations()]);
+        setAuditLog(a);
+        setMutations(m);
+      } else if (activeView === 'connectors') {
+        const [p, c, r, t] = await Promise.all([
+          api.getConnectors(),
+          api.getConnectorCredentials(),
+          api.getConnectorSyncRuns(),
+          api.getConnectorTimeline(),
+        ]);
+        setProviders(p);
+        setCredentials(c);
+        setConnectorSyncRuns(r);
+        setConnectorTimeline(t);
+      } else if (activeView === 'webhooks') {
+        const [s, d, q] = await Promise.all([
+          api.getWebhookSubscriptions(),
+          api.getWebhookDeliveries(),
+          api.getWebhookDLQ(),
+        ]);
+        setWebhookSubs(s);
+        setWebhookDeliveries(d);
+        setWebhookDLQ(q);
+      } else if (activeView === 'metrics') {
+        const m = await api.getMetricsRaw();
+        setRawMetrics(m);
+      }
+    } catch (err) {
+      console.error('Failed to load view data:', err);
+    } finally {
+      setLoadingViewData(false);
     }
+  };
+
+  useEffect(() => {
+    loadViewData();
   }, [activeView]);
 
   const showNotification = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -165,6 +241,32 @@ export default function App() {
     }
   };
 
+  const handleTriggerConnectorSync = async (providerId: string) => {
+    try {
+      const res = await api.triggerConnectorSync(providerId);
+      showNotification(res.message, 'success');
+      loadViewData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
+  const handleCreateWebhookSub = async (targetUrl: string, eventTypes: string[]) => {
+    const res = await api.createWebhookSubscription({ target_url: targetUrl, event_types: eventTypes });
+    showNotification(`Subscribed to ${res.target_url}`, 'success');
+    loadViewData();
+  };
+
+  const handleRedriveDLQ = async (dlqEntryId: string) => {
+    try {
+      const res = await api.redriveWebhookDLQ(dlqEntryId);
+      showNotification(res.message, 'success');
+      loadViewData();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
   // Filter staging items by search query
   const filteredStaging = staging.filter((tx) => {
     if (!searchQuery.trim()) return true;
@@ -185,6 +287,8 @@ export default function App() {
         safeMode={safeMode}
         freshness={freshness}
         syncStatus={syncStatus}
+        health={health}
+        readiness={readiness}
         onOpenSimulation={handleRunSimulation}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onTriggerCompile={handleTriggerCompile}
@@ -201,6 +305,7 @@ export default function App() {
           onSelectView={setActiveView}
           pendingCount={staging.filter((t) => t.status === 'pending').length}
           rulesCount={rules.length}
+          dlqCount={webhookDLQ.length}
         />
 
         {/* Central Viewport */}
@@ -224,6 +329,38 @@ export default function App() {
               onOpenRuleWizard={handleOpenRuleWizard}
             />
           </>
+        )}
+
+        {activeView === 'connectors' && (
+          <ConnectorsView
+            providers={providers}
+            credentials={credentials}
+            syncRuns={connectorSyncRuns}
+            timeline={connectorTimeline}
+            onTriggerSync={handleTriggerConnectorSync}
+            onRefresh={loadViewData}
+            loading={loadingViewData}
+          />
+        )}
+
+        {activeView === 'webhooks' && (
+          <WebhooksPanel
+            subscriptions={webhookSubs}
+            deliveries={webhookDeliveries}
+            dlqEntries={webhookDLQ}
+            onCreateSubscription={handleCreateWebhookSub}
+            onRedriveDLQ={handleRedriveDLQ}
+            onRefresh={loadViewData}
+            loading={loadingViewData}
+          />
+        )}
+
+        {activeView === 'metrics' && (
+          <MetricsView
+            rawMetrics={rawMetrics}
+            onRefresh={loadViewData}
+            loading={loadingViewData}
+          />
         )}
 
         {activeView === 'rules' && (
@@ -397,4 +534,3 @@ export default function App() {
     </div>
   );
 }
-

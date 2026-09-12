@@ -11,13 +11,10 @@ from fastapi.staticfiles import StaticFiles
 
 from ironledger.db.connection import connect
 from ironledger.observability.middleware import MetricsMiddleware
-from ironledger.web.routers import compile, health, metrics, projection, rules, staging, sync, system
+from ironledger.web.errors import GovernanceException, governance_exception_handler
+from ironledger.web.routers import compile, connectors, health, metrics, projection, rules, staging, sync, system, webhooks
 
 __all__ = ["create_app"]
-
-
-
-
 
 
 def create_app(
@@ -30,9 +27,10 @@ def create_app(
     app = FastAPI(
         title="IronLedger Operator Workbench",
         description="Local-first Enterprise Operator Workbench API",
-        version="0.1.0",
+        version="0.10.0",
     )
 
+    app.add_exception_handler(GovernanceException, governance_exception_handler)
     app.add_middleware(MetricsMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -78,6 +76,8 @@ def create_app(
     app.include_router(compile.router)
     app.include_router(system.router)
     app.include_router(sync.router)
+    app.include_router(connectors.router)
+    app.include_router(webhooks.router)
 
     # Mount static assets if build directory exists
     if static_dir and Path(static_dir).exists():

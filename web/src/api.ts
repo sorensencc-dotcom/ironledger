@@ -2,15 +2,25 @@ import type {
   AuditEvent,
   BalanceItem,
   CompileResult,
+  ConnectorCredentialStatus,
+  ConnectorProvider,
+  ConnectorSyncRun,
   FreshnessStatus,
+  HealthStatus,
   MutationEvent,
   Posting,
+  RedriveDLQResult,
   Rule,
   RuleDrift,
   SafeModeStatus,
   StagedTransaction,
   SyncPollResult,
   SyncStatus,
+  SyncTimelineEvent,
+  TriggerSyncResult,
+  WebhookDelivery,
+  WebhookDLQEntry,
+  WebhookSubscription,
 } from './types';
 
 const API_BASE = '/api';
@@ -19,8 +29,10 @@ let cachedCsrfToken: string | null = null;
 
 const getHeaders = (extra: Record<string, string> = {}) => {
   const token = localStorage.getItem('ironledger_op_token') || 'd0-localhost-token';
+  const ledgerId = localStorage.getItem('ironledger_active_ledger') || 'default';
   const headers: Record<string, string> = {
     'X-IronLedger-Op-Token': token,
+    'X-IronLedger-Ledger-Id': ledgerId,
     ...extra,
   };
   if (cachedCsrfToken) {
@@ -29,11 +41,15 @@ const getHeaders = (extra: Record<string, string> = {}) => {
   return headers;
 };
 
+const generateIdempotencyKey = (prefix: string = 'key') => {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+};
+
 export const api = {
   // Staging
   async getStaging(status?: string): Promise<StagedTransaction[]> {
     const url = status ? `${API_BASE}/staging?status=${status}` : `${API_BASE}/staging`;
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch staging: ${res.statusText}`);
     return res.json();
   },
@@ -41,7 +57,7 @@ export const api = {
   async categorize(stagedId: string, targetAccount: string, notes?: string) {
     const res = await fetch(`${API_BASE}/staging/${stagedId}/categorize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ target_account: targetAccount, notes }),
     });
     if (!res.ok) throw new Error(`Failed to categorize: ${res.statusText}`);
@@ -51,7 +67,7 @@ export const api = {
   async approve(stagedId: string, targetAccount?: string) {
     const res = await fetch(`${API_BASE}/staging/${stagedId}/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(targetAccount ? { target_account: targetAccount } : {}),
     });
     if (!res.ok) throw new Error(`Failed to approve: ${res.statusText}`);
@@ -61,7 +77,7 @@ export const api = {
   async reject(stagedId: string, reason?: string) {
     const res = await fetch(`${API_BASE}/staging/${stagedId}/reject`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ reason }),
     });
     if (!res.ok) throw new Error(`Failed to reject: ${res.statusText}`);
@@ -71,7 +87,7 @@ export const api = {
   async split(stagedId: string, postings: Posting[]) {
     const res = await fetch(`${API_BASE}/staging/${stagedId}/split`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ postings }),
     });
     if (!res.ok) throw new Error(`Failed to split: ${res.statusText}`);
@@ -80,7 +96,7 @@ export const api = {
 
   // Rules
   async getRules(): Promise<Rule[]> {
-    const res = await fetch(`${API_BASE}/rules`);
+    const res = await fetch(`${API_BASE}/rules`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch rules: ${res.statusText}`);
     return res.json();
   },
@@ -94,7 +110,7 @@ export const api = {
   }) {
     const res = await fetch(`${API_BASE}/rules`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`Failed to create rule: ${res.statusText}`);
@@ -104,6 +120,7 @@ export const api = {
   async disableRule(ruleId: string) {
     const res = await fetch(`${API_BASE}/rules/${ruleId}/disable`, {
       method: 'POST',
+      headers: getHeaders(),
     });
     if (!res.ok) throw new Error(`Failed to disable rule: ${res.statusText}`);
     return res.json();
@@ -112,7 +129,7 @@ export const api = {
   async generateCandidate(stagedId: string, patternType: 'exact' | 'prefix' | 'regex' = 'exact') {
     const res = await fetch(`${API_BASE}/rules/candidate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ staged_id: stagedId, pattern_type: patternType }),
     });
     if (!res.ok) throw new Error(`Failed to generate candidate: ${res.statusText}`);
@@ -120,26 +137,26 @@ export const api = {
   },
 
   async getRuleDrift(ruleId: string): Promise<RuleDrift> {
-    const res = await fetch(`${API_BASE}/rules/${ruleId}/drift`);
+    const res = await fetch(`${API_BASE}/rules/${ruleId}/drift`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch rule drift: ${res.statusText}`);
     return res.json();
   },
 
   // Projection
   async getBalances(): Promise<BalanceItem[]> {
-    const res = await fetch(`${API_BASE}/balances`);
+    const res = await fetch(`${API_BASE}/balances`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch balances: ${res.statusText}`);
     return res.json();
   },
 
   async search(query: string) {
-    const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Search failed: ${res.statusText}`);
     return res.json();
   },
 
   async getFreshness(): Promise<FreshnessStatus> {
-    const res = await fetch(`${API_BASE}/projection/freshness`);
+    const res = await fetch(`${API_BASE}/projection/freshness`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to check freshness: ${res.statusText}`);
     return res.json();
   },
@@ -148,7 +165,7 @@ export const api = {
   async compile(dryRun: boolean = false, safeModeToken?: string): Promise<CompileResult> {
     const res = await fetch(`${API_BASE}/compile`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         dry_run: dryRun,
         rebuild_projection: true,
@@ -157,32 +174,35 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Compile request failed: ${res.statusText}`);
+      throw new Error(err.message || err.detail || `Compile request failed: ${res.statusText}`);
     }
     return res.json();
   },
 
   async simulate(): Promise<CompileResult> {
-    const res = await fetch(`${API_BASE}/compile/simulate`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/compile/simulate`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
     if (!res.ok) throw new Error(`Simulation failed: ${res.statusText}`);
     return res.json();
   },
 
   async getSafeMode(): Promise<SafeModeStatus> {
-    const res = await fetch(`${API_BASE}/system/safe-mode`);
+    const res = await fetch(`${API_BASE}/system/safe-mode`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to check safe mode: ${res.statusText}`);
     return res.json();
   },
 
   async getAudit(): Promise<AuditEvent[]> {
-    const res = await fetch(`${API_BASE}/system/audit`);
+    const res = await fetch(`${API_BASE}/system/audit`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch audit: ${res.statusText}`);
     const data = await res.json();
     return data.events || [];
   },
 
   async getMutations(): Promise<MutationEvent[]> {
-    const res = await fetch(`${API_BASE}/system/mutations`);
+    const res = await fetch(`${API_BASE}/system/mutations`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch mutations: ${res.statusText}`);
     const data = await res.json();
     return data.mutations || [];
@@ -211,9 +231,116 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Sync poll failed: ${res.statusText}`);
+      throw new Error(err.message || err.detail || `Sync poll failed: ${res.statusText}`);
     }
     return res.json();
   },
-};
 
+  // Connector Governance (Phase 9/10 Option B)
+  async getConnectors(): Promise<ConnectorProvider[]> {
+    const res = await fetch(`${API_BASE}/connectors`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch connectors: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getConnectorCredentials(): Promise<ConnectorCredentialStatus[]> {
+    const res = await fetch(`${API_BASE}/connectors/credentials`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch credentials status: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getConnectorSyncRuns(limit = 50): Promise<ConnectorSyncRun[]> {
+    const res = await fetch(`${API_BASE}/connectors/sync-runs?limit=${limit}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch sync runs: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getConnectorTimeline(limit = 30): Promise<SyncTimelineEvent[]> {
+    const res = await fetch(`${API_BASE}/connectors/timeline?limit=${limit}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch timeline: ${res.statusText}`);
+    return res.json();
+  },
+
+  async triggerConnectorSync(providerId: string): Promise<TriggerSyncResult> {
+    const idempKey = generateIdempotencyKey('sync');
+    const res = await fetch(`${API_BASE}/connectors/${providerId}/trigger`, {
+      method: 'POST',
+      headers: getHeaders({
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempKey,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to trigger sync for ${providerId}`);
+    }
+    return res.json();
+  },
+
+  // Webhooks & DLQ
+  async getWebhookSubscriptions(): Promise<WebhookSubscription[]> {
+    const res = await fetch(`${API_BASE}/webhooks/subscriptions`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch webhook subscriptions: ${res.statusText}`);
+    return res.json();
+  },
+
+  async createWebhookSubscription(payload: { target_url: string; event_types?: string[] }): Promise<WebhookSubscription> {
+    const res = await fetch(`${API_BASE}/webhooks/subscriptions`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to create webhook subscription: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async getWebhookDeliveries(limit = 50): Promise<WebhookDelivery[]> {
+    const res = await fetch(`${API_BASE}/webhooks/deliveries?limit=${limit}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch webhook deliveries: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getWebhookDLQ(limit = 50): Promise<WebhookDLQEntry[]> {
+    const res = await fetch(`${API_BASE}/webhooks/dlq?limit=${limit}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch webhook DLQ: ${res.statusText}`);
+    return res.json();
+  },
+
+  async redriveWebhookDLQ(dlqEntryId: string): Promise<RedriveDLQResult> {
+    const idempKey = generateIdempotencyKey('dlq');
+    const res = await fetch(`${API_BASE}/webhooks/dlq/${dlqEntryId}/redrive`, {
+      method: 'POST',
+      headers: getHeaders({
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempKey,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || err.detail || `Failed to redrive DLQ entry: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // Health & Metrics
+  async getHealthz(): Promise<HealthStatus> {
+    const res = await fetch('/healthz');
+    if (!res.ok) throw new Error('Health check failed');
+    return res.json();
+  },
+
+  async getReadyz(): Promise<HealthStatus> {
+    const res = await fetch('/readyz');
+    if (!res.ok) throw new Error('Readiness probe failed');
+    return res.json();
+  },
+
+  async getMetricsRaw(): Promise<string> {
+    const res = await fetch('/metrics');
+    if (!res.ok) throw new Error('Failed to scrape metrics');
+    return res.text();
+  },
+};

@@ -1,13 +1,22 @@
 import React from 'react';
-import { Inbox, BookOpen, Layers, Shield } from 'lucide-react';
+import { Inbox, BookOpen, Layers, Shield, Plug, Webhook, BarChart3 } from 'lucide-react';
 
-export type ActiveView = 'staging' | 'rules' | 'balances' | 'audit' | 'settings';
+export type ActiveView =
+  | 'staging'
+  | 'rules'
+  | 'balances'
+  | 'audit'
+  | 'connectors'
+  | 'webhooks'
+  | 'metrics'
+  | 'settings';
 
 interface SidebarProps {
   activeView: ActiveView;
   onSelectView: (view: ActiveView) => void;
   pendingCount: number;
   rulesCount: number;
+  dlqCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -15,6 +24,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectView,
   pendingCount,
   rulesCount,
+  dlqCount = 0,
 }) => {
   const navItems = [
     {
@@ -23,6 +33,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Inbox,
       badge: pendingCount > 0 ? pendingCount : null,
       badgeColor: 'bg-indigo-600 text-white',
+    },
+    {
+      id: 'connectors' as ActiveView,
+      label: 'Connectors & Ingestion',
+      icon: Plug,
+    },
+    {
+      id: 'webhooks' as ActiveView,
+      label: 'Webhooks & DLQ',
+      icon: Webhook,
+      badge: dlqCount > 0 ? dlqCount : null,
+      badgeColor: 'bg-rose-600 text-white',
+    },
+    {
+      id: 'metrics' as ActiveView,
+      label: 'Telemetry & Metrics',
+      icon: BarChart3,
     },
     {
       id: 'rules' as ActiveView,
@@ -87,4 +114,3 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
-

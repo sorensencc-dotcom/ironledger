@@ -9,13 +9,17 @@ import {
   HelpCircle,
   Landmark,
   AlertTriangle,
+  Key,
+  Server,
 } from 'lucide-react';
-import type { FreshnessStatus, SafeModeStatus, SyncStatus } from '../types';
+import type { FreshnessStatus, HealthStatus, SafeModeStatus, SyncStatus } from '../types';
 
 interface TopHUDProps {
   safeMode: SafeModeStatus | null;
   freshness: FreshnessStatus | null;
   syncStatus: SyncStatus | null;
+  health: HealthStatus | null;
+  readiness: HealthStatus | null;
   onOpenSimulation: () => void;
   onOpenCommandPalette: () => void;
   onTriggerCompile: () => void;
@@ -28,6 +32,8 @@ export const TopHUD: React.FC<TopHUDProps> = ({
   safeMode,
   freshness,
   syncStatus,
+  health,
+  readiness,
   onOpenSimulation,
   onOpenCommandPalette,
   onTriggerCompile,
@@ -74,6 +80,10 @@ export const TopHUD: React.FC<TopHUDProps> = ({
       : 'SimpleFIN connection error or SSRF warning detected';
   }
 
+  // Probe Status
+  const isHealthy = health?.status === 'ok';
+  const isReady = readiness?.status === 'ready';
+
   return (
     <header className="h-14 border-b border-slate-700 bg-slate-900 px-4 flex items-center justify-between z-20 shrink-0 select-none gap-3">
       {/* Brand */}
@@ -85,14 +95,36 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           <h1 className="font-semibold text-sm tracking-wide text-slate-100 flex items-center gap-2 whitespace-nowrap">
             IronLedger
             <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/80 font-mono font-normal">
-              v0.7.0
+              v0.10.0
             </span>
           </h1>
         </div>
       </div>
 
       {/* Center Status HUDs */}
-      <div className="flex items-center space-x-2.5 font-mono text-xs overflow-x-auto py-1">
+      <div className="flex items-center space-x-2 font-mono text-xs overflow-x-auto py-1">
+        {/* Health & Readiness Probes */}
+        <div
+          className={`px-2 py-1 rounded border flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+            isHealthy && isReady
+              ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800/60'
+              : 'bg-rose-950/50 text-rose-300 border-rose-800/60 animate-pulse'
+          }`}
+          title={`Healthz: ${health?.status || 'unknown'} | Readyz: ${readiness?.status || 'unknown'}`}
+        >
+          <Server className="w-3.5 h-3.5 text-emerald-400" />
+          <span>{isHealthy && isReady ? 'PROBES: OK' : 'PROBES: DEGRADED'}</span>
+        </div>
+
+        {/* Envelope Encryption HUD */}
+        <div
+          className="px-2 py-1 rounded border border-indigo-900/60 bg-indigo-950/40 text-indigo-300 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+          title="Envelope encryption: AES-256-GCM DEKs wrapped with local KEK"
+        >
+          <Key className="w-3.5 h-3.5 text-indigo-400" />
+          <span>ENVELOPE: ACTIVE</span>
+        </div>
+
         {/* Safe Mode Guard Banner with Explicit Permissions */}
         <div
           className={`px-2.5 py-1 rounded border flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
@@ -105,9 +137,6 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           {isSafe ? <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" /> : <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
           <div className="flex items-center gap-1.5">
             <span className="font-bold">{isSafe ? 'SAFE MODE' : 'UNLOCKED'}</span>
-            <span className="text-[10px] text-slate-400 hidden 2xl:inline">
-              ({isSafe ? 'Simulate: OK | Compile: Token' : 'All Permitted'})
-            </span>
           </div>
         </div>
 
@@ -191,4 +220,3 @@ export const TopHUD: React.FC<TopHUDProps> = ({
     </header>
   );
 };
-
