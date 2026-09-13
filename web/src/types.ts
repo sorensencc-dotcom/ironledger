@@ -341,7 +341,11 @@ export interface WatchlistItem {
   last_status: string;
   last_latency_ms: number;
   updated_at: string | null;
+  trend?: 'UP' | 'DOWN' | 'FLAT' | null;
+  change_percent?: string | null;
+  previous_price_display?: string | null;
 }
+
 
 export interface PriceAuditRecord {
   symbol: string;

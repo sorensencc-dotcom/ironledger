@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, Plus, Activity, CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Trash2, Lock, Unlock } from 'lucide-react';
+import { RefreshCw, Plus, Activity, CheckCircle2, AlertTriangle, XCircle, ArrowUpDown, Trash2, Lock, Unlock, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { WatchlistData, WatchlistItem, PriceAuditRecord } from '../../types';
 
 interface WatchlistPanelProps {
@@ -60,6 +60,37 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
     }
   };
 
+  const getTrendBadge = (trend?: 'UP' | 'DOWN' | 'FLAT' | null, changePercent?: string | null, prevPrice?: string | null) => {
+    if (!trend || trend === 'FLAT' || !changePercent) {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[10px] font-mono bg-[#130f0c] text-[#7a6e65] border border-[#2c2420]">
+          <Minus className="w-2.5 h-2.5 text-[#7a6e65]" />
+          <span>0.00%</span>
+        </span>
+      );
+    }
+    if (trend === 'UP') {
+      return (
+        <span
+          title={prevPrice ? `Prior: $${prevPrice}` : undefined}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[10px] font-mono font-bold bg-[#132a1c] text-[#8fc79e] border border-[#1d442b]"
+        >
+          <TrendingUp className="w-2.5 h-2.5 text-[#8fc79e]" />
+          <span>{changePercent}</span>
+        </span>
+      );
+    }
+    return (
+      <span
+        title={prevPrice ? `Prior: $${prevPrice}` : undefined}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[10px] font-mono font-bold bg-[#2c120e] text-[#e2765f] border border-[#4a1c14]"
+      >
+        <TrendingDown className="w-2.5 h-2.5 text-[#e2765f]" />
+        <span>{changePercent}</span>
+      </span>
+    );
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'SUCCESS':
@@ -98,6 +129,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
         );
     }
   };
+
 
   const items = data?.items || [];
   const audit = data?.recent_audit || [];
@@ -263,6 +295,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                 <th className="py-2">Symbol</th>
                 <th className="py-2">Quote</th>
                 <th className="py-2 text-right">Latest Price</th>
+                <th className="py-2 text-center">Trend (24h)</th>
                 <th className="py-2 text-right">Rational (N/D)</th>
                 <th className="py-2 text-center">Provider</th>
                 <th className="py-2 text-center">Status</th>
@@ -274,7 +307,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
             <tbody className="divide-y divide-[#2c2420]/60 text-[#a89e94]">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-6 text-center text-[#7a6e65]">
+                  <td colSpan={10} className="py-6 text-center text-[#7a6e65]">
                     No watchlist symbols configured in config/prices.json.
                   </td>
                 </tr>
@@ -288,6 +321,9 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                     <td className="py-2.5 text-[#7a6e65]">{item.quote_currency}</td>
                     <td className="py-2.5 text-right font-bold text-[#f2ece2]">
                       {item.price_display ? `$${item.price_display}` : <span className="text-[#7a6e65]">—</span>}
+                    </td>
+                    <td className="py-2.5 text-center">
+                      {getTrendBadge(item.trend, item.change_percent, item.previous_price_display)}
                     </td>
                     <td className="py-2.5 text-right text-[#a89e94] font-mono text-[11px]">
                       {item.rate_numerator && item.rate_denominator ? (
@@ -310,6 +346,7 @@ export const WatchlistPanel: React.FC<WatchlistPanelProps> = ({
                     <td className="py-2.5 text-right text-[#7a6e65] text-[11px]">
                       {item.directive_date || (item.updated_at ? item.updated_at.slice(0, 10) : '—')}
                     </td>
+
                     <td className="py-2.5 text-center">
                       {isLocked ? (
                         <span

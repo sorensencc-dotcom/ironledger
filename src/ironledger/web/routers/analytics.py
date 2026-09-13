@@ -175,26 +175,31 @@ def get_watchlist(
 
     try:
         cursor = conn.cursor()
-        # Query latest price_history per commodity
+        # Query latest 2 price points per commodity in price_history for trend calculation
         cursor.execute(
             """
-            SELECT base_currency, quote_currency, rate_numerator, rate_denominator, directive_date, source, created_at
+            SELECT base_currency, quote_currency, rate_numerator, rate_denominator, directive_date, source, created_at,
+                   ROW_NUMBER() OVER (PARTITION BY base_currency, quote_currency ORDER BY id DESC) as rn
             FROM price_history
-            WHERE id IN (
-                SELECT MAX(id) FROM price_history GROUP BY base_currency, quote_currency
-            )
             """
         )
-        history_map = {
-            (r[0], r[1]): {
+        history_records = cursor.fetchall()
+        latest_history: dict[tuple[str, str], dict] = {}
+        prior_history: dict[tuple[str, str], dict] = {}
+        for r in history_records:
+            key = (r[0], r[1])
+            rn = r[7]
+            data = {
                 "rate_numerator": r[2],
                 "rate_denominator": r[3],
                 "directive_date": r[4],
                 "source": r[5],
                 "created_at": r[6],
             }
-            for r in cursor.fetchall()
-        }
+            if rn == 1:
+                latest_history[key] = data
+            elif rn == 2:
+                prior_history[key] = data
 
         # Query latest audit log entries
         cursor.execute(
@@ -202,7 +207,7 @@ def get_watchlist(
             SELECT symbol, quote_currency, provider_id, status, rate_numerator, rate_denominator, latency_ms, error_message, created_at
             FROM price_feed_audit
             ORDER BY audit_id DESC
-            LIMIT 25
+            LIMIT 50
             """
         )
         recent_audit = [
@@ -224,16 +229,52 @@ def get_watchlist(
         for wl in watchlist_items:
             sym = wl["symbol"]
             quote = wl["quote_currency"]
-            hist = history_map.get((sym, quote))
+            hist = latest_history.get((sym, quote))
             audit_matches = [a for a in recent_audit if a["symbol"] == sym and a["quote_currency"] == quote]
             latest_audit = audit_matches[0] if audit_matches else None
-            
+
             num = hist["rate_numerator"] if hist else (latest_audit["rate_numerator"] if latest_audit else None)
             den = hist["rate_denominator"] if hist else (latest_audit["rate_denominator"] if latest_audit else None)
             price_str = None
+            trend = "FLAT"
+            change_percent = None
+            prev_price_str = None
+
+            prior = prior_history.get((sym, quote))
+            if not prior:
+                succ_audits = [a for a in audit_matches if a.get("status") == "SUCCESS"]
+                if len(succ_audits) > 1:
+                    prior = succ_audits[1]
+
             if num is not None and den is not None and den > 0:
                 q, _ = divmod(num * 10000, den)
                 price_str = f"{q // 10000}.{q % 10000:04d}"
+
+                if prior and prior.get("rate_numerator") and prior.get("rate_denominator"):
+                    p_num = prior["rate_numerator"]
+                    p_den = prior["rate_denominator"]
+                    if p_den > 0 and p_num > 0:
+                        pq, _ = divmod(p_num * 10000, p_den)
+                        prev_price_str = f"{pq // 10000}.{pq % 10000:04d}"
+
+                        # Exact cross-multiplication for direction
+                        diff = num * p_den - p_num * den
+                        if diff > 0:
+                            trend = "UP"
+                        elif diff < 0:
+                            trend = "DOWN"
+                        else:
+                            trend = "FLAT"
+
+                        # Percentage change = (diff / (den * p_num)) * 10000 with Banker's rounding
+                        pct_num = diff * 10000
+                        pct_den = den * p_num
+                        quot, rem = divmod(abs(pct_num), pct_den)
+                        if rem * 2 > pct_den or (rem * 2 == pct_den and (quot % 2 != 0)):
+                            quot += 1
+                        int_pct, frac_pct = divmod(quot, 100)
+                        sign = "+" if diff > 0 else ("-" if diff < 0 else "")
+                        change_percent = f"{sign}{int_pct}.{frac_pct:02d}%"
 
             items_out.append({
                 "symbol": sym,
@@ -246,7 +287,11 @@ def get_watchlist(
                 "last_status": latest_audit["status"] if latest_audit else "UNRESOLVED",
                 "last_latency_ms": latest_audit["latency_ms"] if latest_audit else 0,
                 "updated_at": hist["created_at"] if hist else (latest_audit["created_at"] if latest_audit else None),
+                "trend": trend,
+                "change_percent": change_percent,
+                "previous_price_display": prev_price_str,
             })
+
 
         return {
             "quote_currency": default_quote,
