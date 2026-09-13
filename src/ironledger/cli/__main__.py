@@ -437,7 +437,7 @@ def _cmd_prices(args) -> int:
     import json
     from pathlib import Path
     from ironledger.prices.scraper_daemon import PriceScraperDaemon
-    from ironledger.prices.router import PriceCascadeRouter
+    from ironledger.prices.router import PriceCascadeRouter, create_default_price_router
     from ironledger.prices.providers.manual import ManualProvider
     from ironledger.governance.migrations import migrate_governed
 
@@ -462,13 +462,14 @@ def _cmd_prices(args) -> int:
         except Exception:
             pass
 
-    router = PriceCascadeRouter({"DEFAULT": [ManualProvider(static_quotes=manual_quotes)]})
+    router = create_default_price_router(manual_quotes=manual_quotes)
     daemon = PriceScraperDaemon(
         db_path=Path(db_path),
         prices_ledger_path=prices_beancount,
         router=router,
         ledger_id="default",
     )
+
 
     if args.prices_command == "poll":
         symbols_arg = None

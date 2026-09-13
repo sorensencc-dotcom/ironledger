@@ -57,5 +57,13 @@ class PriceDirectiveRecord:
         return PriceDirectiveRecord(self.directive_date, self.quote_currency, self.base_currency, self.price_denominator, self.price_numerator, source_provider, f"{self.price_denominator}/{self.price_numerator}")
 
     def to_beancount_directive(self):
-        value = Decimal(self.price_numerator) / Decimal(self.price_denominator)
-        return f"{self.directive_date} price {self.base_currency:<10} {value:.4f} {self.quote_currency}"
+        scaled_num = self.price_numerator * 10000
+        quot, rem = divmod(scaled_num, self.price_denominator)
+        double_rem = rem * 2
+        if double_rem > self.price_denominator or (double_rem == self.price_denominator and (quot % 2 != 0)):
+            quot += 1
+        int_part, frac_part = divmod(quot, 10000)
+        formatted_price = f"{int_part}.{frac_part:04d}"
+        return f"{self.directive_date} price {self.base_currency:<10} {formatted_price} {self.quote_currency}"
+
+

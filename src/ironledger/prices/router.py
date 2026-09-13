@@ -30,3 +30,17 @@ class PriceCascadeRouter:
             except Exception as exc:
                 last_error = exc
         raise RuntimeError(f"All providers in cascade failed for {symbol}/{quote_currency}") from last_error
+
+
+def create_default_price_router(manual_quotes: dict[str, str] | None = None) -> PriceCascadeRouter:
+    from ironledger.prices.providers.coingecko import CoinGeckoProvider
+    from ironledger.prices.providers.manual import ManualProvider
+    from ironledger.prices.providers.yahoo import YahooFinanceProvider
+
+    providers: list[BasePriceProvider] = [
+        YahooFinanceProvider(),
+        CoinGeckoProvider(),
+        ManualProvider(static_quotes=manual_quotes or {}),
+    ]
+    return PriceCascadeRouter({"DEFAULT": providers})
+

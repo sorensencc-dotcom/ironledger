@@ -5,11 +5,18 @@ Portfolio Lot Matching, Cost Basis Tracking, and Capital Gains Valuation Subsyst
 
 ## Milestone Status: Portfolio Lot Matching & Capital Gains Subsystem v0.13.0
 - **Preceding Baseline:** Operator Workbench v0.12.0 Multi-Asset Valuation & Watchlist Lock Guard.
-- **Regression Invariant:** 978 passed, 5 skipped (100% pass rate in 54.41s).
-- **Current Milestone:** Phase 13 complete with exact rational cost basis tracking, FIFO/LIFO/HIFO lot matching reducers, SQLite projection tables (`open_lots`, `lot_disposal_allocations`), analytics REST endpoints, Form 8949 CSV export, and Operator Workbench Capital Gains Ledger UI.
+- **Regression Invariant:** 987 passed, 5 skipped (100% pass rate in 47.15s).
+- **Current Milestone:** Phase 13 complete with exact rational cost basis tracking, FIFO/LIFO/HIFO lot matching reducers, SQLite projection tables (`open_lots`, `lot_disposal_allocations`), analytics REST endpoints, Form 8949 CSV export, Operator Workbench Capital Gains Ledger UI, and live HTTP market price feeds.
 
 ## Completed Work
-1. **Database Schema & Lot Matching Projections (`src/ironledger/db/schema/0017_lot_matching.sql`)**:
+1. **Live HTTP Price Feed Providers (`src/ironledger/prices/providers/`)**:
+   - `YahooFinanceProvider`: Live equity/ETF/forex price resolution via Yahoo Finance v8 chart API with browser User-Agent headers, 5s socket timeout, and regular market price / close price extraction.
+   - `CoinGeckoProvider`: Live cryptocurrency price resolution via CoinGecko Simple Price API with canonical ticker-to-ID mapping (`BTC` -> `bitcoin`, `ETH` -> `ethereum`, `SOL` -> `solana`).
+   - `create_default_price_router`: Production cascade router factory chaining `[YahooFinanceProvider, CoinGeckoProvider, ManualProvider]` with circuit breaking, rate limiting, and zero-float rational conversion.
+   - Wired live cascade router across CLI (`ironledger prices poll`), REST API (`POST /api/analytics/prices/sync`), and MCP server (`trigger_price_sync`).
+
+2. **Database Schema & Lot Matching Projections (`src/ironledger/db/schema/0017_lot_matching.sql`)**:
+
    - Added `open_lots` tracking remaining inventory quantity, unit cost numerator/denominator, basis residue, and source posting IDs.
    - Added `lot_disposal_allocations` recording immutable allocation records linking closing postings to liquidated lots with exact recognized gain/loss calculations.
    - Created `idx_open_lots_account_commodity_date` index for deterministic chronological traversal.

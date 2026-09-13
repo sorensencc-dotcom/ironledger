@@ -130,7 +130,7 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
 
     if name == 'trigger_price_sync':
         from ironledger.prices.providers.manual import ManualProvider
-        from ironledger.prices.router import PriceCascadeRouter
+        from ironledger.prices.router import PriceCascadeRouter, create_default_price_router
         from ironledger.prices.scraper_daemon import PriceScraperDaemon
         symbols = args.get('symbols')
         quote = args.get('quote_currency', 'USD')
@@ -138,8 +138,8 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
             return {'isError': True, 'content': [{'type': 'text', 'text': 'symbols must be an array of strings'}]}
         if not isinstance(quote, str):
             return {'isError': True, 'content': [{'type': 'text', 'text': 'quote_currency must be a string'}]}
-        # Network providers are configured by deployment; empty manual chain fails closed.
-        result = PriceScraperDaemon(Path(db), ledger_dir / 'prices.beancount', PriceCascadeRouter({'DEFAULT': [ManualProvider()]})).sync_watchlist([(symbol, quote) for symbol in symbols])
+        result = PriceScraperDaemon(Path(db), ledger_dir / 'prices.beancount', create_default_price_router()).sync_watchlist([(symbol, quote) for symbol in symbols])
+
         try:
             audit_result = 'ok' if result['status'] == 'success' else 'error'
             _audit_tool(db, action='mcp trigger_price_sync', target='trigger_price_sync', result=audit_result)

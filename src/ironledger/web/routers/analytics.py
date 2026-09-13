@@ -266,7 +266,7 @@ def trigger_price_sync(
     import json
     from pathlib import Path
     from ironledger.prices.scraper_daemon import PriceScraperDaemon
-    from ironledger.prices.router import PriceCascadeRouter
+    from ironledger.prices.router import PriceCascadeRouter, create_default_price_router
     from ironledger.prices.providers.manual import ManualProvider
 
     db_path = Path(getattr(request.app.state, "db_path", "ironledger.db"))
@@ -284,13 +284,14 @@ def trigger_price_sync(
         except Exception:
             pass
 
-    router = PriceCascadeRouter({"DEFAULT": [ManualProvider(static_quotes=manual_quotes)]})
+    router = create_default_price_router(manual_quotes=manual_quotes)
     daemon = PriceScraperDaemon(
         db_path=db_path,
         prices_ledger_path=prices_beancount,
         router=router,
         ledger_id="default",
     )
+
 
     symbols = None
     if payload and "symbols" in payload:

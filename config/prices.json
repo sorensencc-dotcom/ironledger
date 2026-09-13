@@ -31,8 +31,10 @@
     "MSFT/USD": "420.00",
     "GOOGL/USD": "180.25",
     "BTC/USD": "60500.00",
-    "EUR/USD": "1.1025"
+    "EUR/USD": "1.1025",
+    "NFLX/USD": "700.00"
   },
+
   "polling_interval_minutes": 60,
   "max_stale_days": 7
 }
