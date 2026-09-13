@@ -1,12 +1,14 @@
 # IronLedger Project Status
 
 ## Active Goal
-Portfolio Lot Matching, Cost Basis Tracking, and Capital Gains Valuation Subsystem (`C:\dev\IronLedger`).
+Phase 14: IronLedger MCP Tool Surface Expansion — Read-Only Tax & Gains Tools (`get_capital_gains_summary`, `list_open_tax_lots`, `get_unrealized_gains`, `preview_lot_disposal`) for Agentic Workflows (`C:\dev\IronLedger`).
+
 
 ## Milestone Status: Portfolio Lot Matching & Capital Gains Subsystem v0.13.0
 - **Preceding Baseline:** Operator Workbench v0.12.0 Multi-Asset Valuation & Watchlist Lock Guard.
 - **Regression Invariant:** 988 passed, 5 skipped (100% pass rate in 45.82s).
 - **Current Milestone:** Phase 13 complete with exact rational cost basis tracking, FIFO/LIFO/HIFO lot matching reducers, SQLite projection tables (`open_lots`, `lot_disposal_allocations`), analytics REST endpoints, Form 8949 CSV export, Operator Workbench Capital Gains Ledger UI, live HTTP market price feeds, and 24h trending signals.
+
 
 ## Completed Work
 1. **Live HTTP Price Feed Providers & 24h Trending Signals (`src/ironledger/prices/`, `src/ironledger/web/routers/analytics.py`)**:
@@ -65,6 +67,7 @@ Portfolio Lot Matching, Cost Basis Tracking, and Capital Gains Valuation Subsyst
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Production deployment and continuous live monitoring.
+Implement Phase 14 MCP Tool Surface Expansion: register read-only schemas and dispatchers for `get_capital_gains_summary`, `list_open_tax_lots`, `get_unrealized_gains`, and `preview_lot_disposal` across stdio and HTTP transports.
+
 
 
