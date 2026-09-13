@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -21,6 +22,49 @@ class MissingPriceDirectiveError(ValuationError):
 
 class StalePriceDirectiveError(ValuationError):
     """Raised when the latest available price directive exceeds the staleness limit."""
+
+
+@dataclass(frozen=True)
+class LotCostAnnotation:
+    native_cost_numerator: int
+    native_cost_denominator: int
+    native_cost_currency: str
+    lot_date: str | None = None
+    lot_label: str | None = None
+    is_total_cost: bool = False
+
+
+def _decimal_fraction(value: str) -> tuple[int, int]:
+    sign = -1 if value.startswith("-") else 1
+    digits = value.lstrip("+-")
+    whole, _, fraction = digits.partition(".")
+    denominator = 10 ** len(fraction)
+    numerator = sign * (int(whole or "0") * denominator + int(fraction or "0"))
+    common = math.gcd(abs(numerator), denominator)
+    return numerator // common, denominator // common
+
+
+def parse_lot_annotation(
+    annotation: str, *, unit_scale: int, posting_units_minor: int
+) -> LotCostAnnotation:
+    """Parse a Beancount-style lot annotation without importing Beancount."""
+    if not isinstance(annotation, str):
+        raise TypeError("annotation must be a string")
+    if posting_units_minor == 0:
+        raise ValueError("posting_units_minor must be non-zero")
+    total = annotation.startswith("{{") and annotation.endswith("}}")
+    body = annotation[2:-2] if total else annotation[1:-1] if annotation.startswith("{") and annotation.endswith("}") else ""
+    match = re.fullmatch(r"\s*([+-]?\d+(?:\.\d+)?)\s+([A-Z0-9_.-]{1,12})(?:\s*,\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*\"([^\"]*)\")?\s*", body)
+    if not match:
+        raise ValueError(f"Malformed lot annotation: {annotation!r}")
+    amount_num, amount_den = _decimal_fraction(match.group(1))
+    if total:
+        amount_num *= 10 ** unit_scale
+        amount_den *= posting_units_minor
+        common = math.gcd(abs(amount_num), abs(amount_den))
+        amount_num //= common
+        amount_den //= common
+    return LotCostAnnotation(amount_num, amount_den, match.group(2), match.group(3), match.group(4), total)
 
 
 @dataclass(frozen=True)
