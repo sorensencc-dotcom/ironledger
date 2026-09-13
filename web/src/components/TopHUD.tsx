@@ -203,6 +203,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           >
             Cash Flow (Sankey)
           </button>
+          <button onClick={() => onSelectView('gains')} className={`px-3.5 py-1 transition-colors ${activeView === 'gains' ? 'bg-forge text-white border-b-2 border-ember font-bold' : 'text-ash hover:text-bone hover:bg-card-hover'}`}>Tax &amp; Gains</button>
         </nav>
 
         {/* Action Controls */}

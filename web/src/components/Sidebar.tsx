@@ -19,6 +19,7 @@ export type ActiveView =
   | 'balances'
   | 'analytics'
   | 'portfolio'
+  | 'gains'
   | 'audit'
   | 'connectors'
   | 'webhooks'
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Portfolio & Watchlist',
       icon: PieChart,
     },
+    { id: 'gains' as ActiveView, label: 'Tax & Capital Gains', icon: TrendingUp },
     {
       id: 'analytics' as ActiveView,
       label: 'Cash Flow (Sankey)',

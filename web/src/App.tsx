@@ -14,6 +14,7 @@ import { FailoverView } from './components/FailoverView';
 import { CashFlowSankey } from './components/analytics/CashFlowSankey';
 import { HoldingsView } from './components/portfolio/HoldingsView';
 import { WatchlistPanel } from './components/portfolio/WatchlistPanel';
+import { CapitalGainsLedger } from './components/CapitalGainsLedger';
 import { api } from './api';
 
 import type {
@@ -562,6 +563,8 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {activeView === 'gains' && <CapitalGainsLedger />}
 
         {activeView === 'portfolio' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono bg-[#0d0a08] relative">
