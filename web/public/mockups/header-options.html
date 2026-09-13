@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IronLedger — Header Architecture Redesign Mockups</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700;1,900&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <style>
+    :root {
+      --black: #0a0806;
+      --forge: #1a1410;
+      --iron: #2c2420;
+      --rust: #8B3A1A;
+      --ember: #C4501A;
+      --brass: #B8922A;
+      --ash: #9a9088;
+      --bone: #e8e0d4;
+      --white: #faf6f0;
+      --gain-bright: #8fc79e;
+      --gain-tint: rgba(90, 158, 111, 0.12);
+      --gain-border: rgba(90, 158, 111, 0.4);
+      --loss-bright: #e2765f;
+      --loss-tint: rgba(184, 65, 47, 0.12);
+      --loss-border: rgba(184, 65, 47, 0.4);
+      --border-default: rgba(154, 144, 136, 0.16);
+      --border-warm: rgba(139, 58, 26, 0.25);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0d0a08;
+      color: var(--bone);
+      font-family: 'Libre Baskerville', Georgia, serif;
+      padding: 40px 24px;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 48px;
+    }
+    .header-intro {
+      border-bottom: 1px solid var(--border-warm);
+      padding-bottom: 24px;
+    }
+    .eyebrow {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--rust);
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-size: 34px;
+      color: var(--white);
+    }
+    h1 span {
+      font-style: italic;
+      color: var(--brass);
+    }
+    .desc {
+      font-size: 14px;
+      color: var(--ash);
+      margin-top: 8px;
+      max-width: 750px;
+    }
+    .option-card {
+      background: var(--forge);
+      border: 1px solid var(--border-default);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .option-title-bar {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-warm);
+      padding-bottom: 12px;
+    }
+    .option-title {
+      font-family: 'Playfair Display', serif;
+      font-weight: 700;
+      font-size: 20px;
+      color: var(--white);
+    }
+    .option-tag {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      background: rgba(196,80,26,0.15);
+      border: 1px solid var(--ember);
+      color: var(--ember);
+    }
+    .option-tag.recommended {
+      background: var(--gain-tint);
+      border-color: var(--gain-border);
+      color: var(--gain-bright);
+    }
+    .option-explanation {
+      font-size: 13px;
+      color: var(--ash);
+      line-height: 1.5;
+    }
+    .mockup-preview-frame {
+      background: #0d0a08;
+      border: 1px solid var(--border-warm);
+      overflow: hidden;
+    }
+
+    /* Common HUD components */
+    .hud-header {
+      background: #1a1410;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      user-select: none;
+    }
+    .brand {
+      font-family: 'Playfair Display', serif;
+      font-weight: 900;
+      font-style: italic;
+      font-size: 18px;
+      color: var(--brass);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .version-tag {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--ash);
+      font-style: normal;
+      background: rgba(0,0,0,0.4);
+      padding: 2px 6px;
+      border: 1px solid var(--border-default);
+    }
+    .pill {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .pill-safe {
+      background: rgba(196,80,26,0.1);
+      border-color: rgba(196,80,26,0.4);
+      color: var(--ember);
+    }
+    .pill-desync {
+      background: var(--loss-tint);
+      border-color: var(--loss-border);
+      color: var(--loss-bright);
+    }
+    .pill-gain {
+      background: var(--gain-tint);
+      border-color: var(--gain-border);
+      color: var(--gain-bright);
+    }
+    .pill-muted {
+      background: rgba(0,0,0,0.3);
+      border-color: var(--border-default);
+      color: var(--ash);
+    }
+    .pill-brass {
+      background: rgba(184, 146, 42, 0.1);
+      border-color: rgba(184, 146, 42, 0.4);
+      color: var(--brass);
+    }
+    .btn {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border: 1px solid var(--border-default);
+      background: rgba(0,0,0,0.4);
+      color: var(--bone);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn-compile {
+      background: var(--ember);
+      color: #0a0806;
+      border-color: var(--ember);
+      font-weight: 800;
+      padding: 6px 18px;
+    }
+    .btn-sync {
+      border-color: var(--gain-border);
+      color: var(--gain-bright);
+    }
+    .nav-tabs {
+      display: flex;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border-default);
+    }
+    .nav-tab {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      color: var(--ash);
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    .nav-tab.active {
+      color: var(--white);
+      background: var(--forge);
+      border-bottom: 2px solid var(--ember);
+      font-weight: 700;
+    }
+    .tier-subbar {
+      background: #140f0c;
+      border-top: 1px solid var(--border-warm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 16px;
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-intro">
+      <div class="eyebrow">Interface Architecture Proposal</div>
+      <h1>IronLedger Header <span>Redesign Options</span></h1>
+      <p class="desc">
+        Review the three architectural options below. Each solves the horizontal crowding and box clipping defects while adhering strictly to the Cast Iron Charlie Financial Design System.
+      </p>
+    </div>
+
+    <!-- OPTION 1 -->
+    <div class="option-card">
+      <div class="option-title-bar">
+        <div class="option-title">Option 1: Canonical CIC Streamlined Header</div>
+        <div class="option-tag recommended">Recommended (Mockup Standard)</div>
+      </div>
+      <p class="option-explanation">
+        Follows the original <code>IronLedger UI Enhancements.dc.html</code> design. Nav tabs remain solely in the left Sidebar where they belong, leaving the top bar completely uncrowded. Only vital security signals (Safe Mode, Projection Desync) stay in the header. Secondary diagnostics live in a single popover.
+      </p>
+      <div class="mockup-preview-frame">
+        <div class="hud-header" style="height: 50px;">
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div class="brand">IronLedger <span class="version-tag">v0.11.0</span></div>
+            <div class="pill pill-safe">⚠ SAFE MODE</div>
+            <div class="pill pill-desync"><span class="dot" style="background:#e2765f"></span> PROJECTION: DESYNC</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="btn pill-muted" style="cursor:pointer;" title="Click for full diagnostics">● 2 PROBES OK · D-0 ▼</div>
+            <a href="#" class="btn">Docs</a>
+            <a href="#" class="btn btn-sync">Bank Sync</a>
+            <a href="#" class="btn btn-compile">Compile</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 2 -->
+    <div class="option-card">
+      <div class="option-title-bar">
+        <div class="option-title">Option 2: Two-Tier Command &amp; Control Strip</div>
+        <div class="option-tag">Dense Financial Hub</div>
+      </div>
+      <p class="option-explanation">
+        Separates diagnostics from actions into two slim rows (32px + 40px). Top tier holds the brand and all 6 real-time telemetry indicators. Bottom tier houses the global view navigation tabs and all action buttons. Guaranteed never to clip on any resolution.
+      </p>
+      <div class="mockup-preview-frame">
+        <!-- Top Tier -->
+        <div class="hud-header" style="height: 32px; background: #120e0b; border-bottom: 1px solid rgba(139,58,26,0.15);">
+          <div class="brand" style="font-size: 15px;">IronLedger <span class="version-tag" style="font-size: 9px; padding: 1px 4px;">v0.11.0</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="pill pill-gain" style="font-size: 9px; padding: 2px 6px;">PROBES: OK</div>
+            <div class="pill pill-muted" style="font-size: 9px; padding: 2px 6px;">ENVELOPE: ACTIVE</div>
+            <div class="pill pill-safe" style="font-size: 9px; padding: 2px 6px;">SAFE MODE</div>
+            <div class="pill pill-brass" style="font-size: 9px; padding: 2px 6px;">SIMPLEFIN: OFF</div>
+            <div class="pill pill-desync" style="font-size: 9px; padding: 2px 6px;">PROJECTION: DESYNC</div>
+            <div class="pill pill-muted" style="font-size: 9px; padding: 2px 6px; font-family:'JetBrains Mono',monospace;">D-0 LOCALHOST</div>
+          </div>
+        </div>
+        <!-- Bottom Tier -->
+        <div class="tier-subbar" style="height: 42px; background: #1a1410;">
+          <div class="nav-tabs">
+            <button class="nav-tab active">Staging Inbox</button>
+            <button class="nav-tab">Holdings &amp; Watchlist</button>
+            <button class="nav-tab">Cash Flow</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <a href="#" class="btn" style="font-size: 10px; padding: 4px 10px;">Docs</a>
+            <button class="btn" style="font-size: 10px; padding: 4px 10px; font-family:'JetBrains Mono',monospace;">Ctrl+K</button>
+            <button class="btn btn-sync" style="font-size: 10px; padding: 4px 12px;">Bank Sync</button>
+            <button class="btn" style="font-size: 10px; padding: 4px 12px; border-color: rgba(184,146,42,0.4); color: var(--brass);">Simulate</button>
+            <button class="btn btn-compile" style="font-size: 10px; padding: 4px 16px;">Compile</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPTION 3 -->
+    <div class="option-card">
+      <div class="option-title-bar">
+        <div class="option-title">Option 3: Unified HUD with Consolidated Telemetry Dropdown</div>
+        <div class="option-tag">Single-Row Condensed</div>
+      </div>
+      <p class="option-explanation">
+        Maintains a single 50px header. Bundles all 6 telemetry signals into a single actionable alert badge in the center. Clicking it drops down the full telemetry health inspection menu. Action buttons use icon + text hierarchy.
+      </p>
+      <div class="mockup-preview-frame">
+        <div class="hud-header" style="height: 50px;">
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div class="brand">IronLedger <span class="version-tag">v0.11.0</span></div>
+            <div class="nav-tabs">
+              <button class="nav-tab active">Staging</button>
+              <button class="nav-tab">Holdings</button>
+              <button class="nav-tab">Cash Flow</button>
+            </div>
+          </div>
+          <div style="cursor:pointer;" class="pill pill-safe" title="Click to view detailed system health">
+            <span class="dot" style="background:var(--ember)"></span> ⚠ SAFE MODE · 2 SYSTEM ALERTS ▼
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn" style="font-family:'JetBrains Mono',monospace;">Ctrl+K</button>
+            <button class="btn btn-sync">Bank Sync</button>
+            <button class="btn" style="border-color: rgba(184,146,42,0.4); color: var(--brass);">Simulate</button>
+            <button class="btn btn-compile">Compile</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
