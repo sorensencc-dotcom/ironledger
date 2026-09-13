@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+import csv
+import io
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -11,6 +13,67 @@ router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
 def get_db(request: Request) -> sqlite3.Connection:
     return request.app.state.get_db()
+
+
+def _require_ledger(conn: sqlite3.Connection, ledger_id: str) -> str:
+    row = conn.execute("SELECT base_currency FROM ledgers WHERE ledger_id = ?", (ledger_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Ledger not found")
+    return str(row[0])
+
+
+def _safe_csv_text(value: Any) -> Any:
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + value
+    return value
+
+
+@router.get("/gains")
+def get_capital_gains(
+    ledger_id: str = "default", year: str | None = None, term: str = "ALL",
+    commodity: str | None = None, account: str | None = None,
+    limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict[str, Any]:
+    currency = _require_ledger(conn, ledger_id)
+    if term not in {"ALL", "SHORT_TERM", "LONG_TERM"}:
+        raise HTTPException(status_code=400, detail="Invalid term")
+    clauses, params = ["ledger_id = ?"], [ledger_id]
+    if year is not None:
+        if not (len(year) == 4 and year.isdigit()):
+            raise HTTPException(status_code=400, detail="Invalid year")
+        clauses.append("disposal_date LIKE ?"); params.append(f"{year}-%")
+    if term != "ALL": clauses.append("term_classification = ?"); params.append(term)
+    if commodity is not None: clauses.append("commodity = ?"); params.append(commodity)
+    if account is not None: clauses.append("account = ?"); params.append(account)
+    where = " AND ".join(clauses)
+    summary = conn.execute(f"SELECT COALESCE(SUM(functional_realized_gain_minor),0), COALESCE(SUM(functional_proceeds_minor),0), COALESCE(SUM(functional_cost_basis_minor),0) FROM lot_disposal_allocations WHERE {where}", params).fetchone()
+    rows = conn.execute(f"SELECT id, account, commodity, disposal_date, acquisition_date, units_disposed_minor, unit_scale, holding_period_days, term_classification, functional_proceeds_minor, functional_cost_basis_minor, functional_realized_gain_minor, strategy_applied FROM lot_disposal_allocations WHERE {where} ORDER BY disposal_date, id LIMIT ? OFFSET ?", [*params, limit, offset]).fetchall()
+    keys = ["id","account","commodity","disposal_date","acquisition_date","units_disposed_minor","unit_scale","holding_period_days","term_classification","functional_proceeds_minor","functional_cost_basis_minor","functional_realized_gain_minor","strategy_applied"]
+    return {"ledger_id": ledger_id, "functional_currency": currency, "summary": {"total_realized_gain_minor": summary[0], "total_proceeds_minor": summary[1], "total_cost_basis_minor": summary[2]}, "allocations": [dict(zip(keys, row)) for row in rows]}
+
+
+@router.get("/lots")
+def get_open_lots(ledger_id: str = "default", account: str | None = None, commodity: str | None = None, conn: sqlite3.Connection = Depends(get_db)) -> list[dict[str, Any]]:
+    _require_ledger(conn, ledger_id)
+    clauses, params = ["ledger_id = ? AND remaining_units_minor > 0"], [ledger_id]
+    if account is not None: clauses.append("account = ?"); params.append(account)
+    if commodity is not None: clauses.append("commodity = ?"); params.append(commodity)
+    rows = conn.execute(f"SELECT lot_key, account, commodity, acquisition_date, remaining_units_minor, unit_scale, functional_cost_basis_minor, remaining_functional_cost_basis_minor, functional_currency, lot_label FROM open_lots WHERE {' AND '.join(clauses)} ORDER BY acquisition_date, lot_key", params).fetchall()
+    keys = ["lot_key","account","commodity","acquisition_date","remaining_units_minor","unit_scale","functional_cost_basis_minor","remaining_functional_cost_basis_minor","functional_currency","lot_label"]
+    return [dict(zip(keys, row)) for row in rows]
+
+
+@router.get("/gains/export")
+def export_capital_gains(ledger_id: str = "default", conn: sqlite3.Connection = Depends(get_db)) -> Any:
+    _require_ledger(conn, ledger_id)
+    rows = conn.execute("SELECT commodity, acquisition_date, disposal_date, functional_proceeds_minor, functional_cost_basis_minor, functional_realized_gain_minor, functional_currency, holding_period_days, term_classification FROM lot_disposal_allocations WHERE ledger_id = ? ORDER BY disposal_date, id LIMIT 100000", (ledger_id,)).fetchall()
+    out = io.StringIO(newline="")
+    writer = csv.writer(out, lineterminator="\r\n")
+    writer.writerow(["Description","Date_Acquired","Date_Sold","Proceeds","Cost_Basis","Gain_Loss","Functional_Currency","Holding_Period_Days","Term_Classification"])
+    writer.writerows(tuple(_safe_csv_text(v) for v in row) for row in rows)
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(iter([out.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=capital-gains.csv"})
 
 
 @router.get("/sankey")
@@ -326,5 +389,3 @@ def remove_watchlist_symbol(
         json.dump(data, f, indent=2)
 
     return {"status": "success", "removed_symbol": sym, "quote_currency": quote}
-
-
