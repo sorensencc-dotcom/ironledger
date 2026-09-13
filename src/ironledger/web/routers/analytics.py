@@ -154,7 +154,7 @@ def get_watchlist(
     import json
     from pathlib import Path
     config_dir = Path(getattr(request.app.state, "config_dir", "config"))
-    config_path = config_dir / "prices.json"
+    config_path = config_dir.joinpath("prices.json")
     
     watchlist_items: list[dict[str, str]] = []
     default_quote = "USD"
@@ -232,7 +232,8 @@ def get_watchlist(
             den = hist["rate_denominator"] if hist else (latest_audit["rate_denominator"] if latest_audit else None)
             price_str = None
             if num is not None and den is not None and den > 0:
-                price_str = f"{num / den:.4f}"
+                q, _ = divmod(num * 10000, den)
+                price_str = f"{q // 10000}.{q % 10000:04d}"
 
             items_out.append({
                 "symbol": sym,
@@ -270,9 +271,9 @@ def trigger_price_sync(
 
     db_path = Path(getattr(request.app.state, "db_path", "ironledger.db"))
     config_dir = Path(getattr(request.app.state, "config_dir", "config"))
-    config_path = config_dir / "prices.json"
-    ledger_dir = db_path.parent / "ledger"
-    prices_beancount = ledger_dir / "prices.beancount"
+    config_path = config_dir.joinpath("prices.json")
+    ledger_dir = db_path.parent.joinpath("ledger")
+    prices_beancount = ledger_dir.joinpath("prices.beancount")
 
     manual_quotes: dict[str, str] = {}
     if config_path.exists():
@@ -316,7 +317,7 @@ def add_watchlist_symbol(
         raise HTTPException(status_code=400, detail="Symbol cannot be empty")
 
     config_dir = Path(getattr(request.app.state, "config_dir", "config"))
-    config_path = config_dir / "prices.json"
+    config_path = config_dir.joinpath("prices.json")
 
     data: dict[str, Any] = {"quote_currency": "USD", "watchlist": []}
     if config_path.exists():
@@ -360,7 +361,7 @@ def remove_watchlist_symbol(
     quote = quote_currency.strip().upper()
 
     config_dir = Path(getattr(request.app.state, "config_dir", "config"))
-    config_path = config_dir / "prices.json"
+    config_path = config_dir.joinpath("prices.json")
 
     if not config_path.exists():
         raise HTTPException(status_code=404, detail="prices.json configuration not found")

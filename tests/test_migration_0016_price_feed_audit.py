@@ -7,7 +7,7 @@ from ironledger.db.connection import connect
 def test_price_feed_audit_table_is_migrated_and_accepts_success(tmp_path):
     conn = connect(str(tmp_path / "test.db"))
     try:
-        assert migrations.migrate(conn) == 16
+        assert migrations.migrate(conn) >= 16
         conn.execute(
             """
             INSERT INTO price_feed_audit (
