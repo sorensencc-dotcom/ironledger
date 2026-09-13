@@ -78,17 +78,19 @@ where $\Delta \text{scale} = \text{target\_scale} - \text{unit\_scale}$.
   $$D_{\text{native}} = \text{posting\_units\_minor} \cdot 10^{\text{cost\_scale}}$$
   Normalized via $\gcd(N_{\text{native}}, D_{\text{native}})$. Missing cost dates default to posting date. Malformed annotations with zero units raise `MalformedLotAnnotationError`.
 
-### 4.2 Brokerage Fees & Net Proceeds Treatment
-When a disposal transaction includes brokerage commissions (e.g. `Expenses:Brokerage:Commissions`):
+### 4.2 Pro-Rata Brokerage Fee Allocation & Net Proceeds
+When a disposal transaction contains brokerage commissions (e.g. `Expenses:Brokerage:Commissions`):
 1. **Gross Proceeds**: $\text{units\_disposed} \times \text{disposal\_price}$.
-2. **Allocated Fee**: Brokerage expense allocated pro-rata across disposed commodities in the transaction.
-3. **Net Proceeds**: $\text{functional\_proceeds\_minor} = \text{gross\_proceeds\_minor} - \text{allocated\_fee\_minor}$.
+2. **Pro-Rata Fee Allocation**: For transactions disposing $m$ distinct commodity positions, the fee is allocated proportionally by gross functional value:
+   $$\text{allocated\_fee\_minor}_k = \text{div\_round\_even}\left(\text{total\_fee\_minor} \cdot \text{gross\_functional\_proceeds\_minor}_k, \sum_{j=1}^{m} \text{gross\_functional\_proceeds\_minor}_j\right)$$
+   The final commodity slice absorbs any residual fee rounding difference.
+3. **Net Proceeds**: $\text{functional\_proceeds\_minor} = \text{gross\_functional\_proceeds\_minor} - \text{allocated\_fee\_minor}$.
 4. Tax reporting utilizes Net Proceeds in accordance with IRS Form 8949 standards.
 
 ### 4.3 Multi-Currency Gain/Loss Semantics
 * **Native Proceeds & Cost**: Stored in transaction currencies (`native_proceeds_currency`, `native_cost_currency`).
 * **Native Realized Gain**: Populated **only** when `native_proceeds_currency == native_cost_currency`; otherwise stored as `NULL`.
-* **Functional Valuation & Provenance**: Converted to `functional_currency` via `price_history`. The price directive ID, directive date, and staleness in days are recorded in the allocation record for audit provenance.
+* **Functional Valuation & Provenance**: Converted to `functional_currency` via `price_history`. Directive IDs (`disposal_price_directive_id`, `acquisition_price_directive_id`) are stored as nullable references (NULL for direct `@ price` posting overrides or identity conversions) along with `rate_staleness_days`.
 
 ---
 
@@ -173,8 +175,8 @@ CREATE TABLE IF NOT EXISTS lot_disposal_allocations (
     open_lot_key TEXT NOT NULL REFERENCES open_lots(lot_key),
     closing_posting_id INTEGER NOT NULL REFERENCES ledger_postings(id),
     closing_tx_id INTEGER NOT NULL REFERENCES ledger_transactions(id),
-    disposal_price_directive_id INTEGER,
-    acquisition_price_directive_id INTEGER,
+    disposal_price_directive_id INTEGER, -- Nullable reference to price_history(id)
+    acquisition_price_directive_id INTEGER, -- Nullable reference to price_history(id)
     rate_staleness_days INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'utc')),
     CONSTRAINT chk_positive_disposed CHECK (units_disposed_minor > 0)
@@ -191,16 +193,16 @@ CREATE TABLE IF NOT EXISTS portfolio_holdings_cache (
     ledger_id TEXT NOT NULL,
     account TEXT NOT NULL,
     commodity TEXT NOT NULL,
+    functional_currency TEXT NOT NULL,
     total_units_minor INTEGER NOT NULL,
     unit_scale INTEGER NOT NULL DEFAULT 4,
-    functional_currency TEXT NOT NULL,
     total_cost_basis_minor INTEGER NOT NULL,
     latest_price_numerator INTEGER NOT NULL,
     latest_price_denominator INTEGER NOT NULL,
     market_value_minor INTEGER NOT NULL,
     unrealized_gain_minor INTEGER NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now', 'utc')),
-    PRIMARY KEY (ledger_id, account, commodity)
+    PRIMARY KEY (ledger_id, account, commodity, functional_currency)
 );
 ```
 
@@ -233,7 +235,7 @@ All analytics endpoints verify caller authentication and ledger permissions via 
 
 ### 7.2 REST Endpoints (`src/ironledger/web/routers/analytics.py`)
 * `GET /api/analytics/gains`:
-  * Query parameters: `ledger_id`, `year` (`YYYY`), `term` (`SHORT_TERM` | `LONG_TERM` | `ALL`), `commodity`, `account`, `limit` (max 1000), `offset`.
+  * Query parameters: `ledger_id`, `year` (optional regex `^\d{4}$`), `term` (`SHORT_TERM` | `LONG_TERM` | `ALL`), `commodity`, `account`, `limit` (max 1000), `offset`.
 * `GET /api/analytics/lots`: Returns active open lots with `remaining_units_minor` and `remaining_functional_cost_basis_minor`.
 * `GET /api/analytics/gains/export`: Streams CSV export.
 
@@ -257,13 +259,13 @@ All analytics endpoints verify caller authentication and ledger permissions via 
 1. **Unit Tests (`tests/test_valuation_lots.py`)**:
    * Exact Banker''s rounding and cross-multiplication for HIFO.
    * Basis conservation law verification across multiple partial liquidations.
+   * Multi-commodity pro-rata fee allocation reducing net proceeds.
    * Multi-currency cost basis conversions and NULL native gain checks.
    * Strict SPEC_ID rejection on ambiguous lot matching or inventory deficits.
-   * Brokerage fee allocation reducing net proceeds.
    * Day boundary conditions (365 vs 366 days).
 2. **Security & Integration Tests (`tests/test_api_capital_gains.py`)**:
    * Tenant isolation verifying `404 Not Found` for unauthorized `ledger_id`.
-   * CSV export format validation and formula injection sanitization without corrupting negative numbers.
+   * CSV export format validation, year regex validation, and formula injection sanitization without corrupting negative numbers.
 3. **AST Isolation**:
    * Static AST verification enforcing zero runtime `beancount` imports across all packages.
 4. **UI Compilation**:
