@@ -68,6 +68,44 @@ class ValuationEngine:
     def __init__(self, conn: sqlite3.Connection | None = None) -> None:
         self._conn = conn
 
+    def refresh_portfolio_cache(
+        self, ledger_id: str = "default", conn: sqlite3.Connection | None = None,
+        *, target_scale: int = 2,
+    ) -> None:
+        """Materialize active holdings using exact rational conversion."""
+        c = self._get_connection(conn)
+        currency_row = c.execute(
+            "SELECT base_currency FROM ledgers WHERE ledger_id = ?", (ledger_id,)
+        ).fetchone()
+        if currency_row is None:
+            raise ValueError(f"Unknown ledger: {ledger_id}")
+        functional_currency = currency_row[0]
+        rows = c.execute(
+            """SELECT account, commodity, unit_scale, SUM(remaining_units_minor),
+                      SUM(remaining_functional_cost_basis_minor)
+               FROM open_lots
+               WHERE ledger_id = ? AND remaining_units_minor > 0
+               GROUP BY account, commodity, unit_scale""", (ledger_id,)
+        ).fetchall()
+        c.execute("DELETE FROM portfolio_holdings_cache WHERE ledger_id = ?", (ledger_id,))
+        for account, commodity, unit_scale, units, basis in rows:
+            if commodity == functional_currency:
+                price_num, price_den = 1, 1
+            else:
+                price = self.get_price(commodity, functional_currency, "9999-12-31", ledger_id, conn=c)
+                price_num, price_den = price.rate_numerator, price.rate_denominator
+            market = convert_amount_rational(units, unit_scale, price_num, price_den, target_scale)
+            c.execute(
+                """INSERT INTO portfolio_holdings_cache
+                   (ledger_id, account, commodity, total_units_minor, unit_scale,
+                    functional_currency, total_cost_basis_minor, latest_price_numerator,
+                    latest_price_denominator, market_value_minor, unrealized_gain_minor)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ledger_id, account, commodity, units, unit_scale, functional_currency,
+                 basis, price_num, price_den, market, market - basis),
+            )
+        c.commit()
+
     def _get_connection(self, conn: sqlite3.Connection | None) -> sqlite3.Connection:
         active_conn = conn if conn is not None else self._conn
         if active_conn is None:
