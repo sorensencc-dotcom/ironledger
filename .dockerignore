@@ -6,7 +6,6 @@ __pycache__
 .pytest_cache
 node_modules
 web/node_modules
-dist
-web/dist
 .staging.lock
 .kb-sync.lock
+

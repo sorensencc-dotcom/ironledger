@@ -192,3 +192,91 @@ class LotProcessor:
 
 def date_from_string(value: str) -> date:
     return date.fromisoformat(value)
+
+
+def simulate_lot_disposal(
+    open_lots: list[OpenLot],
+    *,
+    units_disposed_minor: int,
+    unit_scale: int,
+    disposal_price_num: int,
+    disposal_price_denom: int,
+    strategy: str = "FIFO",
+    disposal_date: str,
+    functional_currency: str = "USD",
+) -> tuple[list[LotDisposalAllocation], list[OpenLot]]:
+    """Simulate lot disposition against in-memory detached copies without database mutation."""
+    copied_lots = [
+        OpenLot(
+            lot_key=x.lot_key,
+            ledger_id=x.ledger_id,
+            account=x.account,
+            commodity=x.commodity,
+            acquisition_date=x.acquisition_date,
+            remaining_units_minor=x.remaining_units_minor,
+            unit_scale=x.unit_scale,
+            cost_num=x.cost_num,
+            cost_den=x.cost_den,
+            cost_currency=x.cost_currency,
+            original_basis_minor=x.original_basis_minor,
+            remaining_basis_minor=x.remaining_basis_minor,
+        )
+        for x in open_lots
+        if x.remaining_units_minor > 0
+    ]
+
+    if strategy == "LIFO":
+        copied_lots.sort(key=lambda x: (x.acquisition_date, x.lot_key), reverse=True)
+    elif strategy == "HIFO":
+        def compare(a, b):
+            left = a.cost_num * b.cost_den
+            right = b.cost_num * a.cost_den
+            if left != right:
+                return -1 if left > right else 1
+            if (a.acquisition_date, a.lot_key) < (b.acquisition_date, b.lot_key):
+                return -1
+            if (a.acquisition_date, a.lot_key) > (b.acquisition_date, b.lot_key):
+                return 1
+            return 0
+        copied_lots.sort(key=cmp_to_key(compare))
+    else:  # FIFO default
+        copied_lots.sort(key=lambda x: (x.acquisition_date, x.lot_key))
+
+    available = sum(x.remaining_units_minor for x in copied_lots)
+    if available < units_disposed_minor:
+        raise InsufficientInventoryError(
+            f"disposition exceeds available inventory ({available} < {units_disposed_minor})"
+        )
+
+    remaining = units_disposed_minor
+    allocations: list[LotDisposalAllocation] = []
+    for lot in copied_lots:
+        take = min(remaining, lot.remaining_units_minor)
+        basis = lot.remaining_basis_minor if take == lot.remaining_units_minor else _round_even(
+            take * lot.cost_num * 100, lot.cost_den * (10 ** lot.unit_scale)
+        )
+        proceeds = _round_even(take * disposal_price_num * 100, disposal_price_denom * (10 ** unit_scale))
+        if take == lot.remaining_units_minor:
+            basis = lot.remaining_basis_minor
+
+        lot.remaining_units_minor -= take
+        lot.remaining_basis_minor -= basis
+        days = (date_from_string(disposal_date) - date_from_string(lot.acquisition_date)).days
+        gain = proceeds - basis
+        alloc = LotDisposalAllocation(
+            open_lot_key=lot.lot_key,
+            acquisition_date=lot.acquisition_date,
+            disposal_date=disposal_date,
+            units_disposed_minor=take,
+            holding_period_days=days,
+            term_classification="LONG_TERM" if days > 365 else "SHORT_TERM",
+            functional_proceeds_minor=proceeds,
+            functional_cost_basis_minor=basis,
+            functional_realized_gain_minor=gain,
+        )
+        allocations.append(alloc)
+        remaining -= take
+        if not remaining:
+            break
+
+    return allocations, copied_lots

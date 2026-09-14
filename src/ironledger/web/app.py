@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
@@ -35,7 +36,7 @@ class NoCacheHtmlMiddleware(BaseHTTPMiddleware):
 
 
 def create_app(
-    db_path: str | Path = "ironledger.db",
+    db_path: Optional[str | Path] = None,
     projection_db_path: Optional[str | Path] = None,
     config_dir: Optional[str | Path] = None,
     static_dir: Optional[str | Path] = None,
@@ -63,6 +64,13 @@ def create_app(
         allow_headers=["*"],
     )
 
+    if db_path is None:
+        db_path = os.environ.get("IRONLEDGER_DB_PATH", "ironledger.db")
+    if projection_db_path is None:
+        projection_db_path = os.environ.get("IRONLEDGER_PROJECTION_DB_PATH")
+    if config_dir is None:
+        config_dir = os.environ.get("IRONLEDGER_CONFIG_DIR")
+
     resolved_db_path = Path(db_path).resolve()
     resolved_proj_path = (
         Path(projection_db_path).resolve()
@@ -84,6 +92,7 @@ def create_app(
     app.state.config_dir = resolved_config_dir
     app.state.get_db = get_db
     app.state.get_projection_db = get_projection_db
+    app.state.op_token = os.environ.get("IRONLEDGER_OP_TOKEN")
 
     # Include routers
     app.include_router(health.router)
@@ -100,6 +109,18 @@ def create_app(
     app.include_router(failover.router)
     app.include_router(analytics.router)
 
+    if static_dir is None:
+        env_static = os.environ.get("IRONLEDGER_STATIC_DIR")
+        if env_static and Path(env_static).exists():
+            static_dir = Path(env_static)
+        elif Path("/app/web/dist").exists():
+            static_dir = Path("/app/web/dist")
+        elif Path("/data/web/dist").exists():
+            static_dir = Path("/data/web/dist")
+        elif (resolved_db_path.parent / "web" / "dist").exists():
+            static_dir = resolved_db_path.parent / "web" / "dist"
+        elif (Path.cwd() / "web" / "dist").exists():
+            static_dir = Path.cwd() / "web" / "dist"
 
     # Mount static assets if build directory exists
     if static_dir and Path(static_dir).exists():

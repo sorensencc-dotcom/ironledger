@@ -1,61 +1,42 @@
 # IronLedger Project Status
 
 ## Active Goal
-Phase 14: IronLedger MCP Tool Surface Expansion — Read-Only Tax & Gains Tools (`get_capital_gains_summary`, `list_open_tax_lots`, `get_unrealized_gains`, `preview_lot_disposal`) for Agentic Workflows (`C:\dev\IronLedger`).
+Phase 14 Complete — Model Context Protocol (MCP) Tool Surface Expansion: Portfolio Tax & Gains Tools (`get_capital_gains_summary`, `list_open_tax_lots`, `get_unrealized_gains`, `preview_lot_disposal`) for Autonomous Agents (`C:\dev\IronLedger`).
 
 
-## Milestone Status: Portfolio Lot Matching & Capital Gains Subsystem v0.13.0
-- **Preceding Baseline:** Operator Workbench v0.12.0 Multi-Asset Valuation & Watchlist Lock Guard.
-- **Regression Invariant:** 988 passed, 5 skipped (100% pass rate in 45.82s).
-- **Current Milestone:** Phase 13 complete with exact rational cost basis tracking, FIFO/LIFO/HIFO lot matching reducers, SQLite projection tables (`open_lots`, `lot_disposal_allocations`), analytics REST endpoints, Form 8949 CSV export, Operator Workbench Capital Gains Ledger UI, live HTTP market price feeds, and 24h trending signals.
+## Milestone Status: Model Context Protocol (MCP) Tool Surface Expansion v0.14.0
+- **Preceding Baseline:** Portfolio Lot Matching & Capital Gains Subsystem v0.13.0 (988 passed, 5 skipped).
+- **Regression Invariant:** 1000 passed, 4 skipped (100% pass rate in 52.84s).
+- **Current Milestone:** Phase 14 complete with full read-only tax & gains tool exposure across stdio and HTTP loopback MCP transports, in-memory disposal simulation, static zero-float AST enforcement, and audit event tracking.
 
 
 ## Completed Work
-1. **Live HTTP Price Feed Providers & 24h Trending Signals (`src/ironledger/prices/`, `src/ironledger/web/routers/analytics.py`)**:
-   - `YahooFinanceProvider`: Live equity/ETF/forex price resolution via Yahoo Finance v8 chart API with browser User-Agent headers, 5s socket timeout, and regular market price / close price extraction.
-   - `CoinGeckoProvider`: Live cryptocurrency price resolution via CoinGecko Simple Price API with canonical ticker-to-ID mapping (`BTC` -> `bitcoin`, `ETH` -> `ethereum`, `SOL` -> `solana`).
-   - `create_default_price_router`: Production cascade router factory chaining `[YahooFinanceProvider, CoinGeckoProvider, ManualProvider]` with circuit breaking, rate limiting, and zero-float rational conversion.
-   - **24h Trending Signals**: Computed exact cross-multiplication price direction (`UP`, `DOWN`, `FLAT`), percentage change with Banker's rounding, and prior quote tracking.
-   - **Operator Workbench Watchlist GUI**: Interactive trending badges (▲ green, ▼ red, ▬ gray) and percentage change pills in `WatchlistPanel.tsx`.
+1. **In-Memory Lot Disposal Simulation Engine (`src/ironledger/valuation/lots.py`)**:
+   - Implemented `simulate_lot_disposal()` function supporting `FIFO`, `LIFO`, and `HIFO` lot matching strategies.
+   - Operates strictly on detached in-memory deep-copies of `open_lots` without mutating SQLite tables or ledger state.
+   - Preserves basis residue conservation and integer rational precision across partial lot liquidations.
 
-2. **Database Schema & Lot Matching Projections (`src/ironledger/db/schema/0017_lot_matching.sql`)**:
+2. **MCP Tool Schemas & Tool Registry (`src/ironledger/mcp/tools.py`)**:
+   - Registered `TAX_TOOL_NAMES = ('get_capital_gains_summary', 'list_open_tax_lots', 'get_unrealized_gains', 'preview_lot_disposal')` in `ALL_TOOL_NAMES`.
+   - Added schema definitions with `include_tax` parameter in `list_tools(include_analytics=False, include_tax=False, include_all=False)`.
+   - Implemented full parameter validation and schema contracts for capital gains summary filters, open tax lot queries, unrealized gain calculations, and disposal simulations.
 
+3. **Read-Only MCP Tool Dispatchers & Handlers (`src/ironledger/mcp/tools.py`)**:
+   - `get_capital_gains_summary`: Dispatches gain/loss aggregation filterable by tax year, term, account, and commodity with formatted decimal display strings.
+   - `list_open_tax_lots`: Returns active open tax lots with cost basis, remaining units, acquisition dates, and source posting IDs.
+   - `get_unrealized_gains`: Recomputes valuation cost basis vs mark-to-market prices from price directives and returns per-position and aggregate unrealized gains.
+   - `preview_lot_disposal`: Runs pure simulation of candidate sales, returning allocated lots, holding period classifications, proceeds, cost basis, and projected realized gain/loss.
 
-   - Added `open_lots` tracking remaining inventory quantity, unit cost numerator/denominator, basis residue, and source posting IDs.
-   - Added `lot_disposal_allocations` recording immutable allocation records linking closing postings to liquidated lots with exact recognized gain/loss calculations.
-   - Created `idx_open_lots_account_commodity_date` index for deterministic chronological traversal.
+4. **Security Audit Logging & Dual Transport Compatibility (`src/ironledger/mcp/tools.py`, `src/ironledger/mcp/stdio.py`, `src/ironledger/mcp/http.py`)**:
+   - Enforced fail-closed parameter validation and sanitization across all tax tool dispatchers.
+   - Routed execution through `_audit_tool()` to record immutable audit events without leaking sensitive payloads.
+   - Verified seamless execution across both standard I/O (`stdio.py`) and loopback HTTP JSON-RPC (`http.py`) MCP transports.
 
-2. **Normalized Rational Lot Parser (`src/ironledger/valuation/models.py`)**:
-   - Implemented `LotAnnotation` and `PostingLotSpec` models parsing exact unit costs (`{200.00 USD}`), total costs (`{{2000.00 USD}}`), and lot dates (`[2026-01-15]`).
-   - Validates ISO-8601 calendar dates with leap-year handling and rejects negative or zero cost denominators.
-
-3. **Deterministic Lot Matching Engine (`src/ironledger/valuation/lots.py`)**:
-   - Built `LotProcessor` supporting `FIFO`, `LIFO`, and `HIFO` (cross-multiplication ordering without float division) matching strategies.
-   - Preserves basis residue conservation ($\sum \text{allocated} + \text{remaining} = \text{original}$) across partial lot liquidations.
-   - Enforces fail-closed validation on insufficient inventory.
-   - Persists open lots and allocation records into SQLite projection tables.
-
-4. **Portfolio Cache Invalidation & Valuation Engine (`src/ironledger/valuation/engine.py`)**:
-   - Added `ValuationEngine.refresh_portfolio_cache` to recompute cost basis and unrealized gains from live open lots.
-   - Formatted minor units with integer round-half-to-even tie-breaking.
-
-5. **Analytics & Form 8949 Export Endpoints (`src/ironledger/web/routers/analytics.py`)**:
-   - `GET /api/analytics/gains`: Realized gain/loss breakdown filterable by tax year, term (short-term vs long-term), account, and commodity.
-   - `GET /api/analytics/lots`: Open lot inventory inspection with unrealized gain calculations.
-   - `GET /api/analytics/gains/export`: Form 8949 CSV report generator with spreadsheet formula-injection sanitization (`=`, `+`, `-`, `@`, `\t`, `\r`).
-
-6. **Operator Workbench Capital Gains Ledger UI (`web/src/components/CapitalGainsLedger.tsx`, `web/src/App.tsx`)**:
-   - Created interactive Capital Gains Ledger view featuring summary KPI cards (Total Realized Gain, Short-Term Gain, Long-Term Gain, Open Basis).
-   - Realized Gains table with holding period calculation, disposal date, proceeds, cost basis, and gain/loss status badges.
-   - Open Tax Lots table displaying acquisition dates, open quantities, unit costs, and current basis.
-   - On-demand Form 8949 CSV export button and tax year selector.
-   - Wired navigation via Sidebar, TopHUD, and routing state.
-
-7. **Phase 13 Exit Contract & AST Invariant Verification (`tests/test_phase13_exit_contract.py`)**:
-   - Verified strict zero runtime `import beancount` across the entire codebase.
-   - Verified zero floating-point division (`ast.Div`) across all valuation modules.
-   - Validated end-to-end multi-lot disposal lifecycle and basis residue conservation.
-   - Clean Vite production build verified (`✓ built in 23.32s`).
+5. **Phase 14 Integration & Exit Contract Test Suite (`tests/test_mcp_tax_tools.py`, `tests/test_phase14_exit_contract.py`)**:
+   - Comprehensive unit and integration test coverage for all 4 tax tools, strategy variations (FIFO, LIFO, HIFO), invalid inputs, and dual transport mechanisms.
+   - AST static analysis verification enforcing zero floating-point division (`ast.Div`) and zero runtime `import beancount`.
+   - End-to-end multi-lot lifecycle testing asserting exact minor unit calculations and database immutability.
+   - Sealed exit contract at `docs/meta/contracts/ironledger-phase-14-exit-contract.md`.
 
 ## Core Architectural Invariants Maintained
 - **Plaintext Ground Truth:** Plaintext Beancount files remain the sole financial authority.
@@ -67,7 +48,7 @@ Phase 14: IronLedger MCP Tool Surface Expansion — Read-Only Tax & Gains Tools 
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Implement Phase 14 MCP Tool Surface Expansion: register read-only schemas and dispatchers for `get_capital_gains_summary`, `list_open_tax_lots`, `get_unrealized_gains`, and `preview_lot_disposal` across stdio and HTTP transports.
+Prepare for Phase 15 release packaging, deployment validation, and live operator onboarding.
 
 
 

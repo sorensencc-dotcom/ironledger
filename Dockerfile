@@ -14,7 +14,7 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip wheel --no-cache-dir --wheel-dir /build/wheels -e .
+    && pip wheel --no-cache-dir --wheel-dir /build/wheels -e . "fastapi>=0.115.0" "uvicorn>=0.30.0" "pydantic>=2.0.0" "starlette>=0.38.0" "cryptography>=42.0.0" "jsonschema>=4.20.0" "keyring>=24.0.0" "psutil>=5.9.0"
 
 # Stage 2: Minimal Distroless / Hardened Runtime
 FROM python:3.12-slim-bookworm AS runtime
@@ -37,6 +37,7 @@ RUN pip install --no-cache-dir /wheels/*.whl \
     && rm -rf /wheels
 
 COPY --chown=ironledger:ironledger src/ /app/src/
+COPY --chown=ironledger:ironledger web/dist/ /app/web/dist/
 COPY --chown=ironledger:ironledger deploy/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
@@ -46,7 +47,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     IRONLEDGER_DB_PATH=/app/data/ironledger.db \
     IRONLEDGER_PROJECTION_DB_PATH=/app/data/projection.db \
-    IRONLEDGER_CONFIG_DIR=/app/config
+    IRONLEDGER_CONFIG_DIR=/app/config \
+    IRONLEDGER_STATIC_DIR=/app/web/dist
 
 EXPOSE 8000
 

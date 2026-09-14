@@ -24,7 +24,7 @@ packages = ["src/ironledger"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 filterwarnings = [
     "ignore::DeprecationWarning:fastapi.*",
     "ignore::DeprecationWarning:starlette.*",
