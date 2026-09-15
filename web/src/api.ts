@@ -30,6 +30,7 @@ import type {
   HoldingRecord,
   WatchlistData,
   PriceSyncResult,
+  AttachProposal,
 } from './types';
 
 
@@ -57,6 +58,31 @@ const generateIdempotencyKey = (prefix: string = 'key') => {
 
 export const api = {
   // Staging
+  async getAttachProposals(): Promise<AttachProposal[]> {
+    const res = await fetch(`${API_BASE}/staging/proposals`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch attach proposals: ${res.statusText}`);
+    return res.json();
+  },
+
+  async confirmAttach(proposalId: string, chosenStagedId: string) {
+    const res = await fetch(`${API_BASE}/staging/proposals/${proposalId}/confirm`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ chosen_staged_id: chosenStagedId }),
+    });
+    if (!res.ok) throw new Error(`Failed to confirm attach: ${res.statusText}`);
+    return res.json();
+  },
+
+  async rejectAttach(proposalId: string) {
+    const res = await fetch(`${API_BASE}/staging/proposals/${proposalId}/reject`, {
+      method: 'POST',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+    });
+    if (!res.ok) throw new Error(`Failed to reject attach: ${res.statusText}`);
+    return res.json();
+  },
+
   async getStaging(status?: string): Promise<StagedTransaction[]> {
     const url = status ? `${API_BASE}/staging?status=${status}` : `${API_BASE}/staging`;
     const res = await fetch(url, { headers: getHeaders() });

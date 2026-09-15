@@ -88,6 +88,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     imp.add_argument("path")
     imp.add_argument("--csv-profile", default=None)
+    imp.add_argument("--pdf-profile", default=None)
     imp.add_argument("--importing-account", default=None)
     imp.add_argument("--confirm", default=None)
     imp.add_argument("--allow-partial", action="store_true")
@@ -134,6 +135,25 @@ def _build_parser() -> argparse.ArgumentParser:
                                 description="Authorized action. Phrase: 'reopen <id>'.")
     rev_ro.add_argument("staged_transaction_id")
     rev_ro.add_argument("--confirm", default=None)
+
+    rev_ac = rev_sub.add_parser(
+        "attach-confirm",
+        help="confirm attaching a later source row to an existing event",
+        description="Authorized action. Phrase: 'attach-confirm <proposal-id>'.",
+    )
+    rev_ac.add_argument("proposal_id")
+    rev_ac.add_argument("--chosen", required=True)
+    rev_ac.add_argument("--confirm", default=None)
+
+    rev_ar = rev_sub.add_parser(
+        "attach-reject",
+        help="reject an attach proposal",
+        description="Authorized action. Phrase: 'attach-reject <proposal-id>'.",
+    )
+    rev_ar.add_argument("proposal_id")
+    rev_ar.add_argument("--create-pending", dest="create_pending", action="store_true", default=None)
+    rev_ar.add_argument("--no-create-pending", dest="create_pending", action="store_false")
+    rev_ar.add_argument("--confirm", default=None)
 
     rule = sub.add_parser("rule", help="manage categorization rules")
     rule_sub = rule.add_subparsers(dest="rule_command", required=True)
@@ -386,6 +406,8 @@ def main(argv: list[str] | None = None) -> int:
             "approve": _cmd_review_approve,
             "reject": _cmd_review_reject,
             "reopen": _cmd_review_reopen,
+            "attach-confirm": _cmd_review_attach_confirm,
+            "attach-reject": _cmd_review_attach_reject,
         }[args.review_command](args)
     if args.command == "rule":
         return {
@@ -797,6 +819,7 @@ def _cmd_import(args) -> int:
                 evidence_dir=args.evidence_dir,
                 records_dir=args.evidence_dir / "source_records",
                 csv_profile=args.csv_profile,
+                pdf_profile=args.pdf_profile,
                 importing_account=args.importing_account,
                 allow_partial=args.allow_partial,
             )
@@ -1025,6 +1048,59 @@ def _cmd_review_reopen(args) -> int:
             return _EXIT_STATE
         conn.commit()
         print(f"reopened {args.staged_transaction_id}")
+        return _EXIT_OK
+    finally:
+        conn.close()
+
+
+def _cmd_review_attach_confirm(args) -> int:
+    conn = connect(str(args.db))
+    try:
+        migrations.migrate(conn)
+        try:
+            auth.require_operator(
+                conn, action="review-attach-confirm", subject=args.proposal_id,
+                confirm=args.confirm, stdin_isatty=sys.stdin.isatty(),
+                config_dir=args.config_dir,
+            )
+        except AuthorizationError as exc:
+            print(f"denied: {exc}", file=sys.stderr)
+            return _EXIT_AUTH
+        try:
+            state.confirm_attach(conn, args.proposal_id, args.chosen)
+        except ReviewStateError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return _EXIT_STATE
+        conn.commit()
+        print(f"attached {args.proposal_id} -> {args.chosen}")
+        return _EXIT_OK
+    finally:
+        conn.close()
+
+
+def _cmd_review_attach_reject(args) -> int:
+    conn = connect(str(args.db))
+    try:
+        migrations.migrate(conn)
+        try:
+            auth.require_operator(
+                conn, action="review-attach-reject", subject=args.proposal_id,
+                confirm=args.confirm, stdin_isatty=sys.stdin.isatty(),
+                config_dir=args.config_dir,
+            )
+        except AuthorizationError as exc:
+            print(f"denied: {exc}", file=sys.stderr)
+            return _EXIT_AUTH
+        try:
+            new_id = state.reject_attach(
+                conn, args.proposal_id, create_pending=args.create_pending,
+            )
+        except ReviewStateError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return _EXIT_STATE
+        conn.commit()
+        extra = f" staged {new_id}" if new_id else ""
+        print(f"rejected {args.proposal_id}{extra}")
         return _EXIT_OK
     finally:
         conn.close()

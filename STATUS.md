@@ -1,13 +1,13 @@
 # IronLedger Project Status
 
 ## Active Goal
-Phase 14 Complete — Model Context Protocol (MCP) Tool Surface Expansion: Portfolio Tax & Gains Tools (`get_capital_gains_summary`, `list_open_tax_lots`, `get_unrealized_gains`, `preview_lot_disposal`) for Autonomous Agents (`C:\dev\IronLedger`).
+Phase 15 — Inbox attach + PDF statement wedge: later evidence hangs off an existing economic event after operator confirm. Packaging waits.
 
 
-## Milestone Status: Model Context Protocol (MCP) Tool Surface Expansion v0.14.0
-- **Preceding Baseline:** Portfolio Lot Matching & Capital Gains Subsystem v0.13.0 (988 passed, 5 skipped).
-- **Regression Invariant:** 1000 passed, 4 skipped (100% pass rate in 52.84s).
-- **Current Milestone:** Phase 14 complete with full read-only tax & gains tool exposure across stdio and HTTP loopback MCP transports, in-memory disposal simulation, static zero-float AST enforcement, and audit event tracking.
+## Milestone Status: Inbox Attach + PDF Statement Wedge v0.15.0
+- **Preceding Baseline:** MCP Tax & Gains Tools v0.14.0 (1000 passed, 4 skipped).
+- **Regression Invariant:** 1023 passed, 4 skipped (51.56s).
+- **Current Milestone:** Phase 15 inbox attach. Later CSV/OFX/PDF rows propose attach to an existing economic event. Operator confirms in the inbox. No second posting. PDF text-layer `example-card` profile. SimpleFIN ingest unchanged (match-target only).
 
 
 ## Completed Work
@@ -48,7 +48,7 @@ Phase 14 Complete — Model Context Protocol (MCP) Tool Surface Expansion: Portf
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Prepare for Phase 15 release packaging, deployment validation, and live operator onboarding.
+Operator try-on of one real PDF profile against live SimpleFIN charges (not packaging, not OCR).
 
 
 

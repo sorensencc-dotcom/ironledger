@@ -5,6 +5,28 @@ export interface Posting {
   scale: number;
 }
 
+export interface AttachCandidate {
+  staged_id: string;
+  payee: string;
+  date: string;
+  minor_units: number;
+}
+
+export interface AttachProposal {
+  proposal_id: string;
+  kind: 'unique' | 'ambiguous' | 'near_miss';
+  status: string;
+  pdf_description: string;
+  date: string;
+  currency: string;
+  minor_units: number;
+  scale: number;
+  source_document_id: string;
+  source_record_id: string;
+  candidates: AttachCandidate[];
+  item_type: 'attach';
+}
+
 export interface StagedTransaction {
   staged_id: string;
   source_document_id: string;
@@ -23,6 +45,11 @@ export interface StagedTransaction {
   external_id?: string | null;
   raw_payload_ref?: string | null;
   provenance?: string | null;
+  item_type?: 'staged' | 'attach';
+  proposal_id?: string;
+  attach_kind?: 'unique' | 'ambiguous' | 'near_miss';
+  candidates?: AttachCandidate[];
+  pdf_description?: string;
 }
 
 export interface SyncStatus {

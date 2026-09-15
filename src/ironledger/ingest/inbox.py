@@ -13,7 +13,7 @@ from ironledger.ingest.errors import ConfigError, IngestPathError
 
 __all__ = ["ALLOWED_SUFFIXES", "load_inbox_root", "resolve_inbox_path"]
 
-ALLOWED_SUFFIXES = frozenset({".csv", ".ofx", ".qfx"})
+ALLOWED_SUFFIXES = frozenset({".csv", ".ofx", ".qfx", ".pdf"})
 
 _ROOTS_FILE = "filesystem-roots.json"
 _INBOX_KEY = "ingest_inbox"

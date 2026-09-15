@@ -389,7 +389,11 @@ def test_contract_19_zero_mcp_dependency():
     assert offenders == []
 
     pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
-    assert 'dependencies = ["ofxtools==1.1.1"]' in pyproject
+    runtime = pyproject.split("[project.optional-dependencies]")[0]
+    assert "ofxtools==1.1.1" in runtime
+    assert "pypdf==6.1.3" in runtime
+    assert "mcp==" not in runtime.lower()
+    assert "from mcp" not in runtime.lower()
 
 
 # 21. python -m ironledger.cli --help lists mcp. --db after mcp parses.

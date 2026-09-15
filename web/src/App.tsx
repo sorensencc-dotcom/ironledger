@@ -98,8 +98,9 @@ export default function App() {
   // Fetch initial data
   const refreshAll = async () => {
     try {
-      const [stg, rls, sm, fresh, sync, h, r, dlq] = await Promise.all([
+      const [stg, proposals, rls, sm, fresh, sync, h, r, dlq] = await Promise.all([
         api.getStaging(statusFilter).catch(() => []),
+        api.getAttachProposals().catch(() => []),
         api.getRules().catch(() => []),
         api.getSafeMode().catch(() => null),
         api.getFreshness().catch(() => null),
@@ -108,7 +109,28 @@ export default function App() {
         api.getReadyz().catch(() => null),
         api.getWebhookDLQ().catch(() => []),
       ]);
-      setStaging(stg);
+      const mappedProposals: StagedTransaction[] = proposals.map((p) => ({
+        staged_id: p.proposal_id,
+        source_document_id: p.source_document_id,
+        source_record_id: p.source_record_id,
+        date: p.date,
+        payee: p.pdf_description,
+        narration: p.kind === 'near_miss' ? 'near-miss suggestion' : 'attach proposal',
+        currency: p.currency,
+        minor_units: p.minor_units,
+        scale: p.scale,
+        postings: [],
+        status: 'pending',
+        confidence_score: null,
+        matched_rule_id: null,
+        notes: null,
+        item_type: 'attach',
+        proposal_id: p.proposal_id,
+        attach_kind: p.kind,
+        candidates: p.candidates,
+        pdf_description: p.pdf_description,
+      }));
+      setStaging([...mappedProposals, ...stg]);
       setRules(rls);
       setSafeMode(sm);
       setFreshness(fresh);
@@ -266,6 +288,10 @@ export default function App() {
 
   // Actions
   const handleApprove = async (stagedId: string) => {
+    const item = staging.find((tx) => tx.staged_id === stagedId);
+    if (item?.item_type === 'attach') {
+      return;
+    }
     try {
       await api.approve(stagedId);
       showNotification(`Transaction ${stagedId.slice(0, 8)} approved`);
@@ -275,7 +301,28 @@ export default function App() {
     }
   };
 
+  const handleConfirmAttach = async (proposalId: string, chosenStagedId: string) => {
+    try {
+      await api.confirmAttach(proposalId, chosenStagedId);
+      showNotification(`Attached ${proposalId.slice(0, 12)}`);
+      refreshAll();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
   const handleReject = async (stagedId: string) => {
+    const item = staging.find((tx) => tx.staged_id === stagedId);
+    if (item?.item_type === 'attach' && item.proposal_id) {
+      try {
+        await api.rejectAttach(item.proposal_id);
+        showNotification(`Rejected attach ${item.proposal_id.slice(0, 12)}`);
+        refreshAll();
+      } catch (err: any) {
+        showNotification(err.message, 'error');
+      }
+      return;
+    }
     try {
       await api.reject(stagedId, 'Rejected from workbench');
       showNotification(`Transaction ${stagedId.slice(0, 8)} rejected`);
@@ -418,6 +465,7 @@ export default function App() {
             <InspectorSidecar
               transaction={activeTx}
               onOpenRuleWizard={handleOpenRuleWizard}
+              onConfirmAttach={handleConfirmAttach}
             />
           </>
         )}

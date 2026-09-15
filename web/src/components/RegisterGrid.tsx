@@ -48,9 +48,8 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const activeItem = transactions[selectedIndex];
-        if (activeItem) {
+        if (activeItem && activeItem.item_type !== 'attach') {
           if (e.ctrlKey || e.metaKey) {
-            // Approve + open rule wizard / learn rule
             onApprove(activeItem.staged_id);
             onOpenRuleWizard(activeItem);
           } else {
@@ -64,7 +63,7 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
       } else if (e.key.toLowerCase() === 'x') {
         e.preventDefault();
         const activeItem = transactions[selectedIndex];
-        if (activeItem) onReject(activeItem.staged_id);
+        if (activeItem && activeItem.item_type !== 'attach') onReject(activeItem.staged_id);
       }
     };
 
@@ -160,6 +159,11 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
               >
                 <div className="col-span-2 font-ui text-xs text-ash tracking-wider">{tx.date}</div>
                 <div className="col-span-3 truncate font-display font-bold text-sm text-white" title={tx.payee}>
+                  {tx.item_type === 'attach' ? (
+                    <span className="text-ember uppercase text-[10px] tracking-wider mr-1">
+                      {tx.attach_kind === 'near_miss' ? 'near-miss' : 'attach'}
+                    </span>
+                  ) : null}
                   {tx.payee || tx.narration || '(Unnamed)'}
                 </div>
                 <div className={`col-span-3 truncate font-serif italic text-xs ${contraLeg.startsWith('Income') ? 'text-gain' : 'text-ember'}`} title={contraLeg}>
@@ -174,6 +178,7 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
                   </span>
                 </div>
                 <div className="col-span-1 flex justify-end space-x-1">
+                  {tx.item_type !== 'attach' && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -184,6 +189,7 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
                   >
                     <Check className="w-3.5 h-3.5" />
                   </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

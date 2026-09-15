@@ -53,6 +53,8 @@ _PREFIX = {
     "rule-add": "rule",
     "rule-disable": "rule-disable",
     "review-session": "review-session",
+    "review-attach-confirm": "attach-confirm",
+    "review-attach-reject": "attach-reject",
     "compile": "authorize",
     "compile recover": "authorize",
     "project": "authorize",
@@ -69,6 +71,8 @@ _DISPLAY = {
     "rule-add": "rule add",
     "rule-disable": "rule disable",
     "review-session": "review-session",
+    "review-attach-confirm": "review attach-confirm",
+    "review-attach-reject": "review attach-reject",
 }
 
 

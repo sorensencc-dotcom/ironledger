@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hmac
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from ironledger.audit import append_audit_event
@@ -14,7 +16,12 @@ from ironledger.conventions import validate_same_currency_balance
 from ironledger.ingest.identity import canonical_payee
 from ironledger.review import state
 from ironledger.review.rules import resolve_rule_row
+from ironledger.review.state import ReviewStateError
+from ironledger.web.errors import GovernanceException
 from ironledger.web.schemas import (
+    AttachCandidateSchema,
+    AttachConfirmRequest,
+    AttachProposalResponse,
     PostingSchema,
     StagedApproveRequest,
     StagedSplitRequest,
@@ -27,6 +34,19 @@ router = APIRouter(prefix="/api/staging", tags=["staging"])
 def get_db(request: Request) -> sqlite3.Connection:
     """Dependency to retrieve database connection from app state."""
     return request.app.state.get_db()
+
+
+def require_operator(request: Request) -> None:
+    op_token = getattr(request.app.state, "op_token", None)
+    if not op_token or not isinstance(op_token, str) or not op_token.strip():
+        return
+    token = request.headers.get("X-IronLedger-Op-Token")
+    if not token or not hmac.compare_digest(token, op_token.strip()):
+        raise GovernanceException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error_code="GOVERNANCE_VALIDATION_ERROR",
+            message="Unauthorized: invalid or missing operator token",
+        )
 
 
 class CategorizeRequest(BaseModel):
@@ -302,4 +322,87 @@ def split_transaction(
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/proposals", response_model=List[AttachProposalResponse])
+def list_attach_proposals(
+    db: sqlite3.Connection = Depends(get_db),
+) -> List[AttachProposalResponse]:
+    rows = db.execute(
+        "SELECT proposal_id, kind, status, staged_input_json, candidate_staged_ids, "
+        " source_document_id, source_record_id "
+        "FROM attach_proposals WHERE status = 'pending' "
+        "ORDER BY created_at_utc ASC"
+    ).fetchall()
+    results: list[AttachProposalResponse] = []
+    for prop_id, kind, status_, payload_raw, cands_raw, sdoc, srec in rows:
+        payload = json.loads(payload_raw)
+        cand_ids = json.loads(cands_raw)
+        candidates: list[AttachCandidateSchema] = []
+        for stx_id in cand_ids:
+            hit = db.execute(
+                "SELECT st.payee, st.proposed_date, sp.minor_units "
+                "FROM staged_transactions st "
+                "JOIN staged_postings sp ON sp.staged_transaction_id = st.staged_transaction_id "
+                " AND sp.role = 'imported' "
+                "WHERE st.staged_transaction_id = ?",
+                (stx_id,),
+            ).fetchone()
+            if hit is None:
+                continue
+            candidates.append(
+                AttachCandidateSchema(
+                    staged_id=stx_id,
+                    payee=hit[0],
+                    date=hit[1],
+                    minor_units=hit[2],
+                )
+            )
+        results.append(
+            AttachProposalResponse(
+                proposal_id=prop_id,
+                kind=kind,
+                status=status_,
+                pdf_description=str(payload.get("payee") or ""),
+                date=str(payload.get("iso_date") or ""),
+                currency=str(payload.get("currency") or "USD"),
+                minor_units=int(payload.get("minor_units") or 0),
+                scale=int(payload.get("scale") or 2),
+                source_document_id=sdoc,
+                source_record_id=srec,
+                candidates=candidates,
+            )
+        )
+    return results
+
+
+@router.post("/proposals/{proposal_id}/confirm")
+def confirm_attach_proposal(
+    proposal_id: str,
+    payload: AttachConfirmRequest,
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    try:
+        state.confirm_attach(db, proposal_id, payload.chosen_staged_id)
+        db.commit()
+    except ReviewStateError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True, "proposal_id": proposal_id, "status": "confirmed"}
+
+
+@router.post("/proposals/{proposal_id}/reject")
+def reject_attach_proposal(
+    proposal_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    try:
+        state.reject_attach(db, proposal_id)
+        db.commit()
+    except ReviewStateError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True, "proposal_id": proposal_id, "status": "rejected"}
 

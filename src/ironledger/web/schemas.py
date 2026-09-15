@@ -94,6 +94,32 @@ class StagedTransactionResponse(BaseModel):
         return v
 
 
+class AttachCandidateSchema(BaseModel):
+    staged_id: str
+    payee: str
+    date: str
+    minor_units: int
+
+
+class AttachProposalResponse(BaseModel):
+    proposal_id: str
+    kind: str
+    status: str
+    pdf_description: str
+    date: str
+    currency: str
+    minor_units: int
+    scale: int
+    source_document_id: str
+    source_record_id: str
+    candidates: List[AttachCandidateSchema]
+    item_type: str = "attach"
+
+
+class AttachConfirmRequest(BaseModel):
+    chosen_staged_id: str
+
+
 class StagedSplitRequest(BaseModel):
     """Request to split a staged transaction across multiple postings."""
 

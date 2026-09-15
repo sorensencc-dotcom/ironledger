@@ -6,13 +6,16 @@ import type { RuleDrift, StagedTransaction } from '../types';
 interface InspectorSidecarProps {
   transaction: StagedTransaction | null;
   onOpenRuleWizard: (stx: StagedTransaction) => void;
+  onConfirmAttach?: (proposalId: string, chosenStagedId: string) => void;
 }
 
 export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
   transaction,
   onOpenRuleWizard,
+  onConfirmAttach,
 }) => {
   const [drift, setDrift] = useState<RuleDrift | null>(null);
+  const [chosenCandidate, setChosenCandidate] = useState<string | null>(null);
 
   useEffect(() => {
     if (transaction?.matched_rule_id) {
@@ -22,7 +25,8 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
     } else {
       setDrift(null);
     }
-  }, [transaction?.matched_rule_id]);
+    setChosenCandidate(null);
+  }, [transaction?.matched_rule_id, transaction?.proposal_id]);
 
   if (!transaction) {
     return (
@@ -67,9 +71,43 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
           Transaction Inspector
         </h3>
         <span className="text-[10px] font-ui font-bold px-2 py-0.5 border border-ember/40 bg-ember/10 text-ember uppercase tracking-wider">
-          {transaction.status}
+          {transaction.item_type === 'attach' ? transaction.attach_kind : transaction.status}
         </span>
       </div>
+
+      {transaction.item_type === 'attach' && (
+        <div className="p-3.5 space-y-2">
+          <p className="text-[11px] font-ui uppercase tracking-wider text-ash">
+            {transaction.attach_kind === 'near_miss' ? 'Near-miss suggestion' : 'Attach evidence'}
+          </p>
+          <p className="text-xs text-bone">PDF: {transaction.pdf_description}</p>
+          <div className="space-y-1">
+            {(transaction.candidates || []).map((c) => (
+              <label key={c.staged_id} className="flex items-center gap-2 text-xs text-bone">
+                <input
+                  type="radio"
+                  name="attach-candidate"
+                  checked={chosenCandidate === c.staged_id}
+                  onChange={() => setChosenCandidate(c.staged_id)}
+                />
+                <span>{c.date} {c.payee} ({c.minor_units})</span>
+              </label>
+            ))}
+          </div>
+          <button
+            type="button"
+            disabled={!chosenCandidate || !transaction.proposal_id || !onConfirmAttach}
+            onClick={() => {
+              if (chosenCandidate && transaction.proposal_id && onConfirmAttach) {
+                onConfirmAttach(transaction.proposal_id, chosenCandidate);
+              }
+            }}
+            className="px-2 py-1 text-[11px] uppercase tracking-wider border border-ember/40 text-ember disabled:opacity-40"
+          >
+            Confirm attach
+          </button>
+        </div>
+      )}
 
       {/* Beancount Syntax Preview Card */}
       <div className="p-3.5 space-y-2">

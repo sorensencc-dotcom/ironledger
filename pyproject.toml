@@ -3,7 +3,10 @@ name = "ironledger"
 version = "0.0.0"
 description = "Local-first, single-operator financial OS. Beancount is the sole accounting authority; SQLite is a disposable projection."
 requires-python = ">=3.12"
-dependencies = ["ofxtools==1.1.1"]
+dependencies = [
+    "ofxtools==1.1.1",
+    "pypdf==6.1.3",
+]
 
 [project.optional-dependencies]
 dev = [

@@ -95,6 +95,50 @@ def test_bad_row_rolls_back_the_whole_file_and_audits_error(env, tmp_path: Path)
     assert conn.execute("SELECT result FROM audit_events").fetchone()[0] == "error"
 
 
+def test_second_csv_with_same_amounts_proposes_attach_instead_of_staging(env, tmp_path: Path):
+    conn, paths = env
+    run_import(conn, FIXTURES / "sample_bank.csv", csv_profile="example-bank",
+               now_utc="2026-09-02T10:00:00Z", **paths)
+    alt = tmp_path / "alt.csv"
+    alt.write_text(
+        "Date,Description,Notes,Amount\n"
+        "2026-08-15,OTHER CAFE,card 1234,-12.99\n"
+        "2026-08-16,OTHER PAYROLL,,2000.00\n"
+        "2026-08-17,OTHER PARENS,,(45.00)\n",
+        encoding="utf-8",
+    )
+    before = conn.execute("SELECT count(*) FROM staged_transactions").fetchone()[0]
+    result = run_import(conn, alt, csv_profile="example-bank",
+                        now_utc="2026-09-02T10:10:00Z", **paths)
+    after = conn.execute("SELECT count(*) FROM staged_transactions").fetchone()[0]
+    proposals = conn.execute("SELECT count(*) FROM attach_proposals").fetchone()[0]
+    assert after == before
+    assert proposals == 3
+    assert result.records_created == 0
+    assert result.short_circuited is False
+
+
+def test_reimport_of_proposal_only_file_short_circuits(env, tmp_path: Path):
+    conn, paths = env
+    run_import(conn, FIXTURES / "sample_bank.csv", csv_profile="example-bank",
+               now_utc="2026-09-02T10:00:00Z", **paths)
+    alt = tmp_path / "alt.csv"
+    alt.write_text(
+        "Date,Description,Notes,Amount\n"
+        "2026-08-15,OTHER CAFE,card 1234,-12.99\n"
+        "2026-08-16,OTHER PAYROLL,,2000.00\n"
+        "2026-08-17,OTHER PARENS,,(45.00)\n",
+        encoding="utf-8",
+    )
+    run_import(conn, alt, csv_profile="example-bank",
+               now_utc="2026-09-02T10:10:00Z", **paths)
+    result = run_import(conn, alt, csv_profile="example-bank",
+                        now_utc="2026-09-02T10:20:00Z", **paths)
+    proposals = conn.execute("SELECT count(*) FROM attach_proposals").fetchone()[0]
+    assert proposals == 3
+    assert result.records_created == 0 and result.short_circuited is True
+
+
 def test_ofx_unresolvable_curdef_audits_error_and_rolls_back(env, tmp_path: Path):
     """An OFX <CURDEF> that ofxtools accepts but IronLedger's pinned ISO-4217
     table rejects (EEK) must surface as a ParseError inside run_import's outer

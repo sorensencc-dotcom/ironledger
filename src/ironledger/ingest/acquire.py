@@ -23,6 +23,8 @@ def detect_mime(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".csv":
         return "text/csv"
+    if suffix == ".pdf":
+        return "application/pdf"
     if suffix in (".ofx", ".qfx"):
         head = path.read_bytes()[:64].lstrip()
         if head.startswith(b"<?xml") or head.upper().startswith(b"OFXHEADER") or head.startswith(b"<?OFX"):
