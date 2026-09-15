@@ -28,6 +28,18 @@ def _visitor_flags(path: Path) -> tuple[bool, bool]:
     return has_div, has_beancount
 
 
+def test_operator_guide_covers_phase15_attach():
+    html = Path("web/public/docs/index.html").read_text(encoding="utf-8")
+    assert "v0.15.0" in html
+    assert "/api/staging/proposals" in html
+    assert "attach-confirm" in html
+    assert "--pdf-profile" in html
+    assert "Confirm attach" in html
+    assert "event_evidence" in html
+    assert "X-IronLedger-Op-Token" in html
+    assert "no-op on attach" in html
+
+
 def test_new_modules_forbid_float_div_and_beancount_import():
     for path in NEW_MODULES:
         has_div, has_beancount = _visitor_flags(path)
