@@ -45,7 +45,7 @@ def create_app(
     app = FastAPI(
         title="IronLedger Operator Workbench",
         description="Local-first Enterprise Operator Workbench API",
-        version="0.11.0",
+        version="0.15.0",
     )
 
     app.add_exception_handler(GovernanceException, governance_exception_handler)

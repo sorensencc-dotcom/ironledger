@@ -98,7 +98,7 @@ export const TopHUD: React.FC<TopHUDProps> = ({
           <h1 className="font-display font-black italic text-sm tracking-wide text-brass flex items-center gap-2 whitespace-nowrap">
             IronLedger
             <span className="text-[9px] px-1.5 py-0.2 bg-black/60 text-ash border border-border font-ui font-bold tracking-widest uppercase not-italic">
-              v0.11.0
+              v0.15.0
             </span>
           </h1>
         </div>
