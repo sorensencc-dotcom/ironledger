@@ -18,7 +18,7 @@ posting for a confirmed match. Never auto-attach. Packaging waits.
 
 <!-- IJFW-MEMORY-START -->
 Memory: `.ijfw/memory/` — brief.md, research.md, handoff.md
-Last: Phase 15 brief locked 2026-09-14. Approach A inbox attach. Wedge PDF text-layer. Risks R1 false attach, R2 date/sign miss.
+Last: Phase 15 shipped 2026-09-15 on main (HEAD e68ef25). Next: real PDF try-on vs SimpleFIN. Handoff: docs/meta/plans/ironledger-phase-15-handoff.md.
 <!-- IJFW-MEMORY-END -->
 
 <!-- IJFW-ROUTING-START -->

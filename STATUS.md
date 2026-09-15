@@ -48,7 +48,7 @@ Phase 15 — Inbox attach + PDF statement wedge: later evidence hangs off an exi
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Operator try-on of one real PDF profile against live SimpleFIN charges (not packaging, not OCR).
+Operator try-on of one real PDF profile against live SimpleFIN charges (not packaging, not OCR). Resume: `docs/meta/plans/ironledger-phase-15-handoff.md`.
 
 
 
