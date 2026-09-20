@@ -37,3 +37,13 @@ web/node_modules/
 
 # Local tools
 .serena/
+
+# Operator-local ingest path (copy from filesystem-roots.example.json)
+config/filesystem-roots.json
+
+# Live ingest payloads — never Git financial artifacts
+evidence/source_documents/
+evidence/source_records/
+
+# Local graft session cache
+graft/

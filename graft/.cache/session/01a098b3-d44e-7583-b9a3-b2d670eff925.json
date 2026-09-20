@@ -1,9 +1,0 @@
-{
-  "lastQuery": "Review the Phase 14 MCP Tool Surface Expansion implementation plan at C:\\Users\\soren\\.gemini\\antigravity\\brain\\29154a88-6281-4fd1-bb9d-4fd8ad8035ca\\implementation_plan.md against the C:\\dev\\IronLedger codebase.\nEvaluate:\n1. Architecture and MCP schema design for: get_capital_gains_summary, list_open_tax_lots, get_unrealized_gains, and preview_lot_disposal.\n2. Invariants: zero floating-point division (ast.Div), exact rational integer arithmetic, zero runtime beancount import.\n3. Strict read-only simulation non-mutation in preview_lot_disposal.\n4. Error handling and dual transport (stdio and HTTP loopback).\nProvide findings categorized as [P1] (critical) or [P2] (advisory) with a gate verdict (PASS or FAIL).",
-  "perAgentQuery": {},
-  "graftReads": 0,
-  "sourceReads": 0,
-  "savedTokens": 0,
-  "injectedPointers": [],
-  "nudges": 0
-}
