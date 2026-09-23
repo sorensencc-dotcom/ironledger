@@ -28,6 +28,7 @@ import type {
   KeyRotationResult,
   SankeyFlowRow,
   HoldingRecord,
+  StagedPortfolioSummary,
   WatchlistData,
   PriceSyncResult,
   AttachProposal,
@@ -509,6 +510,14 @@ export const api = {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.message || err.detail || `Failed to fetch portfolio data: ${res.statusText}`);
     }
+    return res.json();
+  },
+
+  async getStagedPortfolioSummary(): Promise<StagedPortfolioSummary> {
+    const res = await fetch(`${API_BASE}/analytics/portfolio/staged-summary`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to fetch staged portfolio summary: ${res.statusText}`);
     return res.json();
   },
 

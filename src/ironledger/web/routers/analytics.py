@@ -145,6 +145,55 @@ def get_portfolio_data(
         conn.close()
 
 
+@router.get("/portfolio/staged-summary")
+def get_staged_portfolio_summary(
+    conn: sqlite3.Connection = Depends(get_db),
+) -> Dict[str, Any]:
+    """Return staged investment candidates without treating them as holdings."""
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(DISTINCT st.staged_transaction_id),
+                COUNT(DISTINCT CASE WHEN sp.account LIKE 'Assets:%Investments%'
+                                      OR sp.account LIKE 'Assets:%Brokerage%'
+                                    THEN st.staged_transaction_id END)
+            FROM staged_transactions st
+            LEFT JOIN staged_postings sp
+              ON sp.staged_transaction_id = st.staged_transaction_id
+            WHERE st.status = 'pending'
+            """
+        ).fetchone()
+        candidates = conn.execute(
+            """
+            SELECT st.proposed_date, st.payee, sp.account, sp.currency,
+                   sp.minor_units, sp.minor_unit_scale
+            FROM staged_transactions st
+            JOIN staged_postings sp
+              ON sp.staged_transaction_id = st.staged_transaction_id
+            WHERE st.status = 'pending'
+              AND (sp.account LIKE 'Assets:%Investments%'
+                   OR sp.account LIKE 'Assets:%Brokerage%')
+            ORDER BY st.proposed_date DESC, st.staged_transaction_id
+            LIMIT 100
+            """
+        ).fetchall()
+        return {
+            "staged_transaction_count": int(row[0] or 0),
+            "investment_candidate_count": int(row[1] or 0),
+            "candidates": [
+                {
+                    "date": r[0], "payee": r[1], "account": r[2],
+                    "currency": r[3], "minor_units": int(r[4]),
+                    "minor_unit_scale": int(r[5]),
+                }
+                for r in candidates
+            ],
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/watchlist")
 def get_watchlist(
     request: Request,

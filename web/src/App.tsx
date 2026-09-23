@@ -27,6 +27,7 @@ import type {
   FreshnessStatus,
   HealthStatus,
   HoldingRecord,
+  StagedPortfolioSummary,
   MutationEvent,
   Rule,
   SafeModeStatus,
@@ -72,6 +73,7 @@ export default function App() {
   // Analytics & Portfolio State
   const [sankeyFlows, setSankeyFlows] = useState<SankeyFlowRow[]>([]);
   const [portfolioHoldings, setPortfolioHoldings] = useState<HoldingRecord[]>([]);
+  const [stagedPortfolioSummary, setStagedPortfolioSummary] = useState<StagedPortfolioSummary | null>(null);
   const [watchlistData, setWatchlistData] = useState<WatchlistData | null>(null);
   const [loadingWatchlist, setLoadingWatchlist] = useState(false);
   const [sankeyPeriod, setSankeyPeriod] = useState<string>(new Date().toISOString().slice(0, 7));
@@ -237,12 +239,14 @@ export default function App() {
       } else if (activeView === 'analytics') {
         await fetchSankeyForPeriod(sankeyPeriod);
       } else if (activeView === 'portfolio') {
-        const [p, w] = await Promise.all([
+        const [p, w, s] = await Promise.all([
           api.getPortfolioData().catch(() => []),
           api.getWatchlistData().catch(() => null),
+          api.getStagedPortfolioSummary().catch(() => null),
         ]);
         setPortfolioHoldings(p);
         setWatchlistData(w);
+        setStagedPortfolioSummary(s);
       } else if (activeView === 'audit') {
         const [a, m] = await Promise.all([api.getAudit(), api.getMutations()]);
         setAuditLog(a);
@@ -665,7 +669,7 @@ export default function App() {
               </div>
             </div>
 
-            <HoldingsView holdings={portfolioHoldings} />
+            <HoldingsView holdings={portfolioHoldings} stagedSummary={stagedPortfolioSummary} />
 
             <WatchlistPanel
               data={watchlistData}

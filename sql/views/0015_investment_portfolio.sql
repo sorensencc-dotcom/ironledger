@@ -24,16 +24,15 @@ latest_prices AS (
     WHERE rn = 1
 ),
 aggregated_lots AS (
-    -- Aggregate holdings globally across account boundaries
+    -- Open lots already carry normalized quantity and functional cost basis.
     SELECT
-        p.currency AS commodity,
-        SUM(p.minor_units) AS total_units,
-        COALESCE(SUM(p.minor_units), 0) AS total_cost_basis_minor_units,
-        'USD' AS base_currency
-    FROM ledger_postings p
-    WHERE p.account LIKE 'Assets:%Investments:%'
-       OR p.account LIKE 'Assets:%Brokerage:%'
-    GROUP BY p.currency
+        l.commodity,
+        SUM(l.remaining_units_minor) AS total_units,
+        COALESCE(SUM(l.remaining_functional_cost_basis_minor), 0) AS total_cost_basis_minor_units,
+        l.functional_currency AS base_currency
+    FROM open_lots l
+    WHERE l.remaining_units_minor > 0
+    GROUP BY l.commodity, l.functional_currency
 )
 SELECT
     a.commodity,
@@ -43,8 +42,8 @@ SELECT
     COALESCE(lp.price_numerator, 1) AS price_numerator,
     COALESCE(lp.price_denominator, 1) AS price_denominator,
     -- Exact rational calculation with division-by-zero protection: (units * price_numerator) / price_denominator
-    CAST((a.total_units * COALESCE(lp.price_numerator, 1)) / NULLIF(COALESCE(lp.price_denominator, 1), 1) AS INTEGER) AS market_value_minor_units,
-    CAST((a.total_units * COALESCE(lp.price_numerator, 1)) / NULLIF(COALESCE(lp.price_denominator, 1), 1) AS INTEGER) - a.total_cost_basis_minor_units AS unrealized_gain_minor_units
+    CAST((a.total_units * COALESCE(lp.price_numerator, 1)) / NULLIF(COALESCE(lp.price_denominator, 1), 0) AS INTEGER) AS market_value_minor_units,
+    CAST((a.total_units * COALESCE(lp.price_numerator, 1)) / NULLIF(COALESCE(lp.price_denominator, 1), 0) AS INTEGER) - a.total_cost_basis_minor_units AS unrealized_gain_minor_units
 FROM aggregated_lots a
 LEFT JOIN latest_prices lp 
   ON lp.commodity = a.commodity 

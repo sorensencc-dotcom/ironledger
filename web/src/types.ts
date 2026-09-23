@@ -225,6 +225,21 @@ export interface HoldingRecord {
   base_currency: string;
 }
 
+export interface StagedPortfolioSummary {
+  staged_transaction_count: number;
+  investment_candidate_count: number;
+  candidates: StagedInvestmentCandidate[];
+}
+
+export interface StagedInvestmentCandidate {
+  date: string;
+  payee: string;
+  account: string;
+  currency: string;
+  minor_units: number;
+  minor_unit_scale: number;
+}
+
 export interface WebhookSubscription {
   ledger_id: string;
   subscription_id: string;
@@ -398,5 +413,3 @@ export interface PriceSyncResult {
   failed_count: number;
   failed_symbols: string[];
 }
-
-
