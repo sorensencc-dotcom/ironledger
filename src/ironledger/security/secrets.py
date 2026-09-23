@@ -218,8 +218,14 @@ def claim_setup_token(token_b64: str, conn: sqlite3.Connection) -> str:
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.verify_mode = ssl.CERT_REQUIRED
         ctx.check_hostname = True
+        ctx.load_default_certs()
         opener = _make_no_redirect_opener(ssl_context=ctx, pinned_ip=pinned_ip)
-        req = urllib.request.Request(claim_url, method="POST", data=b"")
+        req = urllib.request.Request(
+            claim_url,
+            method="POST",
+            data=b"",
+            headers={"User-Agent": "IronLedger/0.15"},
+        )
         with opener.open(req, timeout=30.0) as resp:
             access_url = resp.read().decode("utf-8").strip()
         store_access_url(access_url)

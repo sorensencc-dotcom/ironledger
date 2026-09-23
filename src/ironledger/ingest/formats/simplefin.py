@@ -104,7 +104,13 @@ def fetch_accounts(
     end_ts = int(end_dt.timestamp())
     url = f"{base}?start-date={start_ts}&end-date={end_ts}"
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
-    req = urllib.request.Request(url, headers={"Authorization": f"Basic {credentials}"})
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "User-Agent": "IronLedger/0.15",
+        },
+    )
     opener = make_no_redirect_opener(ssl_context=_make_tls_context(), pinned_ip=pinned_ip)
     try:
         with opener.open(req, timeout=30.0) as resp:
