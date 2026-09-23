@@ -14,6 +14,8 @@ interface RegisterGridProps {
   onChangeStatusFilter: (status: string) => void;
   searchQuery: string;
   onChangeSearchQuery: (query: string) => void;
+  onScanRules?: () => void;
+  scanningRules?: boolean;
 }
 
 export const RegisterGrid: React.FC<RegisterGridProps> = ({
@@ -28,6 +30,8 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
   onChangeStatusFilter,
   searchQuery,
   onChangeSearchQuery,
+  onScanRules,
+  scanningRules,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +108,14 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
         </div>
 
         <div className="flex items-center space-x-2">
+          <button
+            type="button"
+            onClick={onScanRules}
+            disabled={!onScanRules || scanningRules}
+            className="px-2.5 py-1 text-[11px] font-ui tracking-wider uppercase border border-ember/40 text-ember disabled:opacity-40"
+          >
+            {scanningRules ? 'Scanning…' : 'Scan rules'}
+          </button>
           <input
             type="text"
             placeholder="Filter by payee / narration..."

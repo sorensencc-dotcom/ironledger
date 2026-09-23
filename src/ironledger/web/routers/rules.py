@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from ironledger.conventions import validate_account_name
 from ironledger.ingest.identity import canonical_payee
+from ironledger.review import state
 from ironledger.review.rules import add_rule, disable_rule, list_rules
 from ironledger.web.schemas import (
     RuleCandidateRequest,
@@ -58,8 +59,14 @@ def create_rule(
             importing_account=payload.importing_account,
             priority=payload.priority,
         )
+        matched, total = state.auto_match(db)
         db.commit()
-        return {"success": True, "rule_id": rule_id}
+        return {
+            "success": True,
+            "rule_id": rule_id,
+            "matched": matched,
+            "candidates": total,
+        }
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

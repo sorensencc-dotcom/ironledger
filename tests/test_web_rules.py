@@ -75,6 +75,7 @@ def test_create_and_disable_rule(app_client):
     assert res.status_code == 200
     data = res.json()
     assert data["success"] is True
+    assert "matched" in data
     created_id = data["rule_id"]
 
     # Disable rule

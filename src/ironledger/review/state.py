@@ -129,6 +129,9 @@ def reopen(conn: sqlite3.Connection, stx_id: str, *, now_utc: str | None = None)
     )
 
 
+_UNASSIGNED_CONTRA = "Expenses:Unassigned"
+
+
 def auto_match(
     conn: sqlite3.Connection,
     *,
@@ -142,12 +145,12 @@ def auto_match(
         "  AND imp.role = 'imported' "
         "JOIN staged_postings con ON con.staged_transaction_id = st.staged_transaction_id "
         "  AND con.role = 'contra' "
-        "WHERE st.status = 'pending' AND con.account IS NULL"
+        "WHERE st.status = 'pending' AND (con.account IS NULL OR con.account = ?)"
     )
-    params: tuple = ()
+    params: list = [_UNASSIGNED_CONTRA]
     if importing_account is not None:
         sql += " AND imp.account = ?"
-        params = (importing_account,)
+        params.append(importing_account)
     candidates = conn.execute(sql, params).fetchall()
 
     matched = 0

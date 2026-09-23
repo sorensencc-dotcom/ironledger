@@ -55,6 +55,37 @@ def test_get_staging_list(app_client):
     assert item["status"] == "pending"
 
 
+def test_auto_match_endpoint_retargets_unassigned(app_client):
+    from ironledger.review.rules import add_rule
+
+    client, db_path = app_client
+    conn = connect(str(db_path))
+    add_rule(
+        conn,
+        match_type="exact",
+        pattern="coffee bar",
+        target_account="Expenses:Coffee",
+        now_utc="2026-09-03T10:30:00Z",
+    )
+    conn.execute(
+        "UPDATE staged_postings SET account = 'Expenses:Unassigned' WHERE role = 'contra'"
+    )
+    conn.commit()
+    conn.close()
+
+    res = client.post("/api/staging/auto-match")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["matched"] >= 1
+    assert body["candidates"] >= body["matched"]
+
+    items = client.get("/api/staging").json()
+    coffee = next(tx for tx in items if (tx.get("payee") or "").lower() == "coffee bar")
+    contra = next(p["account"] for p in coffee["postings"] if p["account"] != OFX_IMPORTING_ACCOUNT)
+    assert contra == "Expenses:Coffee"
+    assert coffee["status"] == "categorized"
+
+
 def test_categorize_staged_transaction(app_client):
     client, _ = app_client
     # Get the pending list

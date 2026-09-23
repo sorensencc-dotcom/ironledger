@@ -46,6 +46,7 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [scanningRules, setScanningRules] = useState(false);
 
   const [rules, setRules] = useState<Rule[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
@@ -337,6 +338,29 @@ export default function App() {
     setIsRuleWizardOpen(true);
   };
 
+  const handleScanRules = async () => {
+    setScanningRules(true);
+    try {
+      const res = await api.autoMatch();
+      showNotification(`Scan categorized ${res.matched} of ${res.candidates} rows`);
+      refreshAll();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    } finally {
+      setScanningRules(false);
+    }
+  };
+
+  const handleCategorize = async (stagedId: string, targetAccount: string) => {
+    try {
+      await api.categorize(stagedId, targetAccount);
+      showNotification(`Categorized ${stagedId.slice(0, 8)} as ${targetAccount}`);
+      refreshAll();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  };
+
   const handleRunSimulation = async () => {
     setIsSimulationOpen(true);
     setSimulating(true);
@@ -461,10 +485,14 @@ export default function App() {
               onChangeStatusFilter={setStatusFilter}
               searchQuery={searchQuery}
               onChangeSearchQuery={setSearchQuery}
+              onScanRules={handleScanRules}
+              scanningRules={scanningRules}
             />
             <InspectorSidecar
               transaction={activeTx}
+              rules={rules}
               onOpenRuleWizard={handleOpenRuleWizard}
+              onCategorize={handleCategorize}
               onConfirmAttach={handleConfirmAttach}
             />
           </>
@@ -757,8 +785,9 @@ export default function App() {
         isOpen={isRuleWizardOpen}
         onClose={() => setIsRuleWizardOpen(false)}
         transaction={ruleWizardTx}
-        onRuleCreated={() => {
-          showNotification('Rule created and applied successfully');
+        rules={rules}
+        onRuleCreated={(matched) => {
+          showNotification(`Rule saved, ${matched} rows categorized`);
           refreshAll();
         }}
       />

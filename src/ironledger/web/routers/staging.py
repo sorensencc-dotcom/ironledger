@@ -155,6 +155,21 @@ def list_staged_transactions(
     return results
 
 
+@router.post("/auto-match")
+def auto_match_pending(
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    """Apply categorization rules to pending NULL / Expenses:Unassigned contra rows."""
+    try:
+        matched, total = state.auto_match(db)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"matched": matched, "candidates": total}
+
+
 @router.post("/{stx_id}/categorize")
 def categorize_transaction(
     stx_id: str,

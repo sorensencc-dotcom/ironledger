@@ -114,7 +114,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rev_cat.add_argument("--confirm", default=None)  # accepted, unused; keeps a uniform surface
 
     rev_am = rev_sub.add_parser(
-        "auto-match", help="apply rules to pending NULL-contra rows",
+        "auto-match", help="apply rules to pending NULL or Expenses:Unassigned contra rows",
         description="Authorized action. Phrase: 'auto-match <importing-account|all>'.",
     )
     rev_am.add_argument("--importing-account", default=None)

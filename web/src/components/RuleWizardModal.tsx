@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { X, Wand2, Check, AlertCircle } from 'lucide-react';
 import { api } from '../api';
-import type { StagedTransaction } from '../types';
+import type { Rule, StagedTransaction } from '../types';
+import { AccountTypeahead } from './AccountTypeahead';
 
 interface RuleWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
   transaction: StagedTransaction | null;
-  onRuleCreated: () => void;
+  rules: Rule[];
+  onRuleCreated: (matched: number) => void;
 }
 
 export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
   isOpen,
   onClose,
   transaction,
+  rules,
   onRuleCreated,
 }) => {
   const [matchType, setMatchType] = useState<'exact' | 'prefix' | 'regex'>('exact');
@@ -47,13 +50,13 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
     setSaving(true);
     setError(null);
     try {
-      await api.createRule({
+      const data = await api.createRule({
         match_type: matchType,
         pattern,
         target_account: targetAccount,
         priority: matchType === 'exact' ? 50 : 100,
       });
-      onRuleCreated();
+      onRuleCreated(typeof data?.matched === 'number' ? data.matched : 0);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Failed to save rule');
@@ -133,12 +136,11 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
           {/* Target Account Input */}
           <div className="space-y-1.5">
             <label className="text-[#a89e94] uppercase font-sans font-bold tracking-wider text-[10px]">Target Contra Account</label>
-            <input
-              type="text"
+            <AccountTypeahead
               value={targetAccount}
-              onChange={(e) => setTargetAccount(e.target.value)}
+              onChange={setTargetAccount}
+              rules={rules}
               placeholder="Expenses:Food:Groceries"
-              className="w-full px-3 py-2 rounded-none bg-[#0d0a08] border border-[#3a2e26] text-[#f2ece2] text-xs font-mono focus:outline-none focus:border-[#c4501a]"
             />
           </div>
 

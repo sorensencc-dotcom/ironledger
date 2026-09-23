@@ -90,6 +90,15 @@ export const api = {
     return res.json();
   },
 
+  async autoMatch() {
+    const res = await fetch(`${API_BASE}/staging/auto-match`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to scan rules: ${res.statusText}`);
+    return res.json() as Promise<{ matched: number; candidates: number }>;
+  },
+
   async categorize(stagedId: string, targetAccount: string, notes?: string) {
     const res = await fetch(`${API_BASE}/staging/${stagedId}/categorize`, {
       method: 'POST',
@@ -552,6 +561,4 @@ export const api = {
     return res.json();
   },
 };
-
-
 

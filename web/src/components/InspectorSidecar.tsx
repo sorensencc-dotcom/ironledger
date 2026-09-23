@@ -1,21 +1,28 @@
 import React, { useEffect, useState } from 'react';
 import { Code, Database, PlusCircle, Fingerprint, FileText } from 'lucide-react';
 import { api } from '../api';
-import type { RuleDrift, StagedTransaction } from '../types';
+import type { Rule, RuleDrift, StagedTransaction } from '../types';
+import { AccountTypeahead } from './AccountTypeahead';
+import { isRuleActive } from './accountOptions';
 
 interface InspectorSidecarProps {
   transaction: StagedTransaction | null;
+  rules: Rule[];
   onOpenRuleWizard: (stx: StagedTransaction) => void;
+  onCategorize?: (stagedId: string, targetAccount: string) => void;
   onConfirmAttach?: (proposalId: string, chosenStagedId: string) => void;
 }
 
 export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
   transaction,
+  rules,
   onOpenRuleWizard,
+  onCategorize,
   onConfirmAttach,
 }) => {
   const [drift, setDrift] = useState<RuleDrift | null>(null);
   const [chosenCandidate, setChosenCandidate] = useState<string | null>(null);
+  const [category, setCategory] = useState('');
 
   useEffect(() => {
     if (transaction?.matched_rule_id) {
@@ -26,7 +33,11 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
       setDrift(null);
     }
     setChosenCandidate(null);
-  }, [transaction?.matched_rule_id, transaction?.proposal_id]);
+    const matched = rules.find(
+      (r) => r.rule_id === transaction?.matched_rule_id && isRuleActive(r),
+    );
+    setCategory(matched?.target_account || '');
+  }, [transaction?.matched_rule_id, transaction?.proposal_id, transaction?.staged_id, rules]);
 
   if (!transaction) {
     return (
@@ -105,6 +116,32 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
             className="px-2 py-1 text-[11px] uppercase tracking-wider border border-ember/40 text-ember disabled:opacity-40"
           >
             Confirm attach
+          </button>
+        </div>
+      )}
+
+      {transaction.item_type !== 'attach' && (
+        <div className="p-3.5 space-y-2">
+          <span className="text-[11px] font-ui tracking-wider uppercase font-semibold text-ash">
+            Categorize this row
+          </span>
+          <AccountTypeahead
+            value={category}
+            onChange={setCategory}
+            rules={rules}
+            placeholder="Expenses:Auto"
+          />
+          <button
+            type="button"
+            disabled={!category.trim() || !onCategorize}
+            onClick={() => {
+              if (category.trim() && onCategorize) {
+                onCategorize(transaction.staged_id, category.trim());
+              }
+            }}
+            className="px-2 py-1 text-[11px] uppercase tracking-wider border border-ember/40 text-ember disabled:opacity-40"
+          >
+            Apply to this row
           </button>
         </div>
       )}

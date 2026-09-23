@@ -1,4 +1,4 @@
-"""Phase 2b: review auto-match fills NULL-contra pending rows from rules."""
+"""Phase 2b: review auto-match fills NULL or Expenses:Unassigned contra pending rows from rules."""
 
 from __future__ import annotations
 
@@ -66,6 +66,28 @@ def test_auto_match_fills_and_categorizes(db):
     actions = [r[0] for r in db.execute("SELECT action FROM audit_events ORDER BY seq")]
     assert "review auto-match (matched 1 of 2)" in actions
     assert any(x.startswith("review auto-match (Expenses:Coffee; rule ") for x in actions)
+
+
+def test_auto_match_retargets_unassigned(db):
+    add_rule(db, match_type="exact", pattern="coffee bar", target_account="Expenses:Coffee",
+             now_utc="2026-09-03T09:00:00Z")
+    db.commit()
+    a = _stage(db, 0, "COFFEE BAR", contra="Expenses:Unassigned")
+    b = _stage(db, 1, "GAS STATION", contra="Expenses:Unassigned")
+    matched, candidates = auto_match(db, now_utc="2026-09-03T12:00:00Z")
+    db.commit()
+    assert (matched, candidates) == (1, 2)
+    assert db.execute(
+        "SELECT account FROM staged_postings WHERE staged_transaction_id = ? AND role = 'contra'",
+        (a,),
+    ).fetchone()[0] == "Expenses:Coffee"
+    assert db.execute(
+        "SELECT status FROM staged_transactions WHERE staged_transaction_id = ?", (a,)
+    ).fetchone()[0] == "categorized"
+    assert db.execute(
+        "SELECT account FROM staged_postings WHERE staged_transaction_id = ? AND role = 'contra'",
+        (b,),
+    ).fetchone()[0] == "Expenses:Unassigned"
 
 
 def test_auto_match_skips_already_categorized(db):
