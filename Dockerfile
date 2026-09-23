@@ -14,7 +14,7 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip wheel --no-cache-dir --wheel-dir /build/wheels -e . "fastapi>=0.115.0" "uvicorn>=0.30.0" "pydantic>=2.0.0" "starlette>=0.38.0" "cryptography>=42.0.0" "jsonschema>=4.20.0" "keyring>=24.0.0" "psutil>=5.9.0"
+    && pip wheel --no-cache-dir --wheel-dir /build/wheels -e . "fastapi>=0.115.0" "uvicorn>=0.30.0" "pydantic>=2.0.0" "starlette>=0.38.0" "cryptography>=42.0.0" "jsonschema>=4.20.0" "keyring>=24.0.0" "psutil>=5.9.0" "beancount==3.2.3"
 
 # Stage 2: Minimal Distroless / Hardened Runtime
 FROM python:3.12-slim-bookworm AS runtime

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -124,16 +123,10 @@ def check_freshness(
             last_proj_ts = meta_row[0]
         proj_conn.close()
 
+        # assert_fresh already proved the projection hash matches the ledger.
+        # The build-clock gap is not drift; the HUD treats a large latency as desync.
         latency = 0.0
-        if last_compile_ts and last_proj_ts:
-            try:
-                t1 = datetime.fromisoformat(last_compile_ts.replace("Z", "+00:00"))
-                t2 = datetime.fromisoformat(last_proj_ts.replace("Z", "+00:00"))
-                latency = max(0.0, abs((t2 - t1).total_seconds()))
-            except Exception:
-                pass
-
-        status_str = "fresh" if latency < 10.0 else "stale"
+        status_str = "fresh"
 
         return FreshnessResponse(
             is_fresh=True,

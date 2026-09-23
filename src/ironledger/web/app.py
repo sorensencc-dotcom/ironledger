@@ -66,16 +66,22 @@ def create_app(
 
     if db_path is None:
         db_path = os.environ.get("IRONLEDGER_DB_PATH", "ironledger.db")
-    if projection_db_path is None:
-        projection_db_path = os.environ.get("IRONLEDGER_PROJECTION_DB_PATH")
     if config_dir is None:
         config_dir = os.environ.get("IRONLEDGER_CONFIG_DIR")
 
     resolved_db_path = Path(db_path).resolve()
+    ledger_dir = Path(
+        os.environ.get("IRONLEDGER_LEDGER_DIR") or (resolved_db_path.parent / "ledger")
+    ).resolve()
+    projection_dir = Path(
+        os.environ.get("IRONLEDGER_PROJECTION_DIR") or (resolved_db_path.parent / "projection")
+    ).resolve()
+    if projection_db_path is None:
+        projection_db_path = os.environ.get("IRONLEDGER_PROJECTION_DB_PATH")
     resolved_proj_path = (
         Path(projection_db_path).resolve()
         if projection_db_path
-        else resolved_db_path.parent / "projection.db"
+        else (projection_dir / "projection.sqlite").resolve()
     )
     resolved_config_dir = (
         Path(config_dir).resolve() if config_dir else resolved_db_path.parent / "config"
@@ -88,6 +94,8 @@ def create_app(
         return connect(resolved_proj_path)
 
     app.state.db_path = resolved_db_path
+    app.state.ledger_dir = ledger_dir
+    app.state.projection_dir = projection_dir
     app.state.projection_db_path = resolved_proj_path
     app.state.config_dir = resolved_config_dir
     app.state.get_db = get_db

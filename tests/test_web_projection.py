@@ -73,12 +73,27 @@ def test_search_empty_query_rejected(app_client):
     assert res.status_code == 400
 
 
+def test_create_app_binds_ledger_next_to_the_database(tmp_path, monkeypatch):
+    for key in (
+        "IRONLEDGER_DB_PATH",
+        "IRONLEDGER_LEDGER_DIR",
+        "IRONLEDGER_PROJECTION_DIR",
+        "IRONLEDGER_PROJECTION_DB_PATH",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    db = tmp_path / "ironledger.db"
+    app = create_app(db_path=db)
+    assert app.state.ledger_dir == (tmp_path / "ledger").resolve()
+    assert app.state.projection_dir == (tmp_path / "projection").resolve()
+    assert app.state.projection_db_path == (tmp_path / "projection" / "projection.sqlite").resolve()
+
+
 def test_projection_freshness(app_client):
     client, _, _, _ = app_client
     res = client.get("/api/projection/freshness")
     assert res.status_code == 200
     fresh = res.json()
     assert fresh["is_fresh"] is True
-    assert "status" in fresh
-    assert fresh["status"] in ("fresh", "stale", "critical")
+    assert fresh["status"] == "fresh"
+    assert fresh["latency_seconds"] == 0
 

@@ -21,11 +21,7 @@ def run_web(
 ) -> None:
     """Start the FastAPI backend service and serve the Operator Workbench SPA."""
     resolved_db = Path(db_path).resolve()
-    resolved_proj = (
-        Path(projection_db_path).resolve()
-        if projection_db_path
-        else resolved_db.parent / 'projection.db'
-    )
+    resolved_proj = Path(projection_db_path).resolve() if projection_db_path else None
     resolved_config = (
         Path(config_dir).resolve() if config_dir else resolved_db.parent / 'config'
     )
