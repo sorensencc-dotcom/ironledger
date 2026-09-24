@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { TopHUD } from './components/TopHUD';
 import { Sidebar, ActiveView } from './components/Sidebar';
 import { RegisterGrid } from './components/RegisterGrid';
@@ -97,6 +97,7 @@ export default function App() {
 
   const [compiling, setCompiling] = useState(false);
   const [notification, setNotification] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const pollingRef = useRef(false);
 
   // Fetch initial data
   const refreshAll = async () => {
@@ -149,6 +150,8 @@ export default function App() {
   useEffect(() => {
     refreshAll();
     const interval = setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
       try {
         const [fresh, sync, h, r, dlq] = await Promise.all([
           api.getFreshness().catch(() => null),
@@ -162,10 +165,12 @@ export default function App() {
         if (h) setHealth(h);
         if (r) setReadiness(r);
         if (dlq) setWebhookDLQ(dlq);
-      } catch {}
+      } catch {} finally {
+        pollingRef.current = false;
+      }
     }, 5000);
     return () => clearInterval(interval);
-  }, [statusFilter]);
+  }, []);
 
   const fetchSankeyForPeriod = async (period: string) => {
     setLoadingAnalytics(true);
@@ -432,7 +437,7 @@ export default function App() {
   };
 
   // Filter staging items by search query
-  const filteredStaging = staging.filter((tx) => {
+  const filteredStaging = useMemo(() => staging.filter((tx) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -440,7 +445,7 @@ export default function App() {
       (tx.narration && tx.narration.toLowerCase().includes(q)) ||
       tx.postings.some((p) => p.account.toLowerCase().includes(q))
     );
-  });
+  }), [staging, searchQuery]);
 
   const activeTx = filteredStaging[selectedIndex] || null;
 

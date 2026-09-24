@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, X, Split, AlertCircle } from 'lucide-react';
 import type { StagedTransaction } from '../types';
 
@@ -34,6 +34,12 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
   scanningRules,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const rowHeight = 44;
+  const visibleCount = 40;
+  const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
+  const endIndex = Math.min(transactions.length, startIndex + visibleCount + 10);
+  const visibleTransactions = transactions.slice(startIndex, endIndex);
 
   // Keyboard navigation
   useEffect(() => {
@@ -137,14 +143,17 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
       </div>
 
       {/* Virtual / Scrollable Table Body */}
-      <div className="flex-1 overflow-y-auto divide-y divide-[rgba(154,144,136,0.08)] relative z-10">
+      <div className="flex-1 overflow-y-auto divide-y divide-[rgba(154,144,136,0.08)] relative z-10" onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}>
         {transactions.length === 0 ? (
           <div className="p-12 text-center text-ash flex flex-col items-center justify-center space-y-2">
             <AlertCircle className="w-6 h-6 text-rust" />
             <p className="font-serif italic text-sm">No staged transactions matching criteria.</p>
           </div>
         ) : (
-          transactions.map((tx, idx) => {
+          <>
+          <div style={{ height: startIndex * rowHeight }} />
+          {visibleTransactions.map((tx, visibleIndex) => {
+            const idx = startIndex + visibleIndex;
             const isSelected = idx === selectedIndex;
             const contraLeg = tx.postings.find((p) => p.account && !p.account.startsWith('Assets:Bank'))?.account || '—';
             const scale = tx.scale || 2;
@@ -225,7 +234,9 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
                 </div>
               </div>
             );
-          })
+          })}
+          <div style={{ height: Math.max(0, (transactions.length - endIndex) * rowHeight) }} />
+          </>
         )}
       </div>
 

@@ -39,6 +39,9 @@ const API_BASE = '/api';
 
 let cachedCsrfToken: string | null = null;
 
+const request = (input: RequestInfo | URL, init: RequestInit = {}) =>
+  fetch(input, { ...init, signal: init.signal ?? AbortSignal.timeout(15000) });
+
 const getHeaders = (extra: Record<string, string> = {}) => {
   const token = localStorage.getItem('ironledger_op_token') || 'd0-localhost-token';
   const ledgerId = localStorage.getItem('ironledger_active_ledger') || 'default';
@@ -373,19 +376,19 @@ export const api = {
 
   // Health & Metrics
   async getHealthz(): Promise<HealthStatus> {
-    const res = await fetch('/healthz');
+    const res = await request('/healthz');
     if (!res.ok) throw new Error('Health check failed');
     return res.json();
   },
 
   async getReadyz(): Promise<HealthStatus> {
-    const res = await fetch('/readyz');
+    const res = await request('/readyz');
     if (!res.ok) throw new Error('Readiness probe failed');
     return res.json();
   },
 
   async getMetricsRaw(): Promise<string> {
-    const res = await fetch('/metrics');
+    const res = await request('/metrics');
     if (!res.ok) throw new Error('Failed to scrape metrics');
     return res.text();
   },
@@ -570,4 +573,3 @@ export const api = {
     return res.json();
   },
 };
-
