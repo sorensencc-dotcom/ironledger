@@ -10,6 +10,7 @@ from ironledger.web.app import create_app
 
 
 def _client(tmp_path: Path, token: str | None) -> TestClient:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     db_path = tmp_path / "ironledger.db"
     conn = connect(str(db_path))
     migrations.migrate(conn)

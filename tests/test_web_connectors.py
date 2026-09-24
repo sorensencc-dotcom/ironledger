@@ -34,7 +34,10 @@ def client(tmp_path: Path):
     conn.close()
 
     app = create_app(db_path=db_path)
-    return TestClient(app)
+    app.state.op_token = "test-token"
+    client = TestClient(app)
+    client.headers.update({"X-IronLedger-Op-Token": "test-token"})
+    return client
 
 
 def test_list_connector_providers(client: TestClient):

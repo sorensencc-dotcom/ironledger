@@ -67,6 +67,8 @@ def e2e_env(tmp_path: Path):
     app.state.ledger_dir = ledger_dir
     app.state.projection_dir = proj_dir
     client = TestClient(app)
+    app.state.op_token = "valid-operator-token"
+    client.headers.update({"X-IronLedger-Op-Token": "valid-operator-token"})
 
     return {
         "client": client,
@@ -211,4 +213,3 @@ def test_full_phase5_operator_workflow(e2e_env) -> None:
     audit_resp = client.get("/api/system/audit")
     assert audit_resp.status_code == 200
     assert len(audit_resp.json()["events"]) > 0
-
