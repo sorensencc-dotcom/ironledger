@@ -166,6 +166,7 @@ def categorize_transaction(
     stx_id: str,
     payload: CategorizeRequest,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Assign target contra account to a staged transaction."""
     target_acc = payload.target_account or payload.contra_account
@@ -185,6 +186,7 @@ def approve_transaction(
     stx_id: str,
     payload: Optional[StagedApproveRequest] = None,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Approve a staged transaction for compilation."""
     try:
@@ -203,6 +205,7 @@ def reject_transaction(
     stx_id: str,
     payload: Optional[RejectRequest] = None,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Reject a staged transaction."""
     try:
@@ -220,6 +223,7 @@ def split_transaction(
     stx_id: str,
     payload: StagedSplitRequest,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Split the contra leg of a staged transaction into multiple postings."""
     try:
