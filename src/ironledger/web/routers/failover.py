@@ -18,6 +18,7 @@ from ironledger.security.rotation import (
     KeyRotationError,
     TenantKeyRotationEngine,
 )
+from ironledger.web.auth import require_operator
 
 router = APIRouter(prefix="/api/v1", tags=["Failover & High Availability"])
 
@@ -93,6 +94,7 @@ def get_failover_status(
 def post_heartbeat(
     req: HeartbeatRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ) -> dict[str, Any]:
     """Record heartbeat timestamp for a registered cluster node."""
     success = HeartbeatMonitor.record_heartbeat(conn, req.node_id)
@@ -106,6 +108,7 @@ def post_heartbeat(
 def post_promote_leader(
     req: PromotionRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ) -> dict[str, Any]:
     """Manually or automatically promote a candidate node to cluster PRIMARY."""
     promoted, lease = HeartbeatMonitor.check_and_promote(
@@ -135,6 +138,7 @@ def post_promote_leader(
 def post_rotate_key(
     req: KeyRotationRequest,
     conn: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ) -> dict[str, Any]:
     """Execute zero-downtime tenant KEK rotation and re-wrap all stored secrets."""
     try:

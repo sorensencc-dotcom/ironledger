@@ -17,6 +17,7 @@ from ironledger.web.schemas import (
     RuleCandidateResponse,
     RuleDriftResponse,
 )
+from ironledger.web.auth import require_operator
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 
@@ -32,7 +33,6 @@ class CreateRulePayload(BaseModel):
     account: Optional[str] = None
     importing_account: Optional[str] = None
     priority: int = 100
-    active: bool = True
 
 
 @router.get("", response_model=List[dict])
@@ -45,6 +45,7 @@ def get_rules(db: sqlite3.Connection = Depends(get_db)):
 def create_rule(
     payload: CreateRulePayload,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Create a new categorization rule."""
     target_acc = payload.target_account or payload.account
@@ -76,6 +77,7 @@ def create_rule(
 def disable_rule_endpoint(
     rule_id: str,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Disable an active rule."""
     try:

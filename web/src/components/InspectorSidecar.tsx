@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Code, Database, PlusCircle, Fingerprint, FileText } from 'lucide-react';
 import { api } from '../api';
 import type { Rule, RuleDrift, StagedTransaction } from '../types';
@@ -13,6 +13,114 @@ interface InspectorSidecarProps {
   onConfirmAttach?: (proposalId: string, chosenStagedId: string) => void;
 }
 
+const WIDTH_KEY = 'ironledger.inspectorWidth';
+const DEFAULT_WIDTH = 336;
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 720;
+
+function clampWidth(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_WIDTH;
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(n)));
+}
+
+function useInspectorWidth() {
+  const [width, setWidth] = useState(() => {
+    try {
+      const raw = localStorage.getItem(WIDTH_KEY);
+      if (raw == null || raw === '') return DEFAULT_WIDTH;
+      return clampWidth(Number(raw));
+    } catch {
+      return DEFAULT_WIDTH;
+    }
+  });
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  const persistWidth = (next: number) => {
+    setWidth(next);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(next));
+    } catch {
+      /* private mode */
+    }
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { x: e.clientX, width };
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    setWidth(clampWidth(drag.current.width + drag.current.x - e.clientX));
+  };
+  const finish = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    const next = clampWidth(drag.current.width + drag.current.x - e.clientX);
+    drag.current = null;
+    persistWidth(next);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(next));
+    } catch {
+      /* private mode */
+    }
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const next = clampWidth(width + (e.key === 'ArrowLeft' ? 16 : -16));
+    persistWidth(next);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(next));
+    } catch {
+      /* private mode */
+    }
+  };
+
+  return { width, onPointerDown, onPointerMove, onPointerUp: finish, onPointerCancel: finish, onKeyDown };
+}
+
+function InspectorFrame({
+  width,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+  onKeyDown,
+  children,
+}: {
+  width: number;
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative h-full shrink-0" style={{ width }}>
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="vertical"
+        aria-valuenow={width}
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={MAX_WIDTH}
+        aria-label="Resize transaction inspector"
+        className="absolute inset-y-0 left-0 z-20 w-2 cursor-col-resize touch-none hover:bg-ember/50"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onKeyDown={onKeyDown}
+      />
+      {children}
+    </div>
+  );
+}
+
 export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
   transaction,
   rules,
@@ -20,6 +128,7 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
   onCategorize,
   onConfirmAttach,
 }) => {
+  const frame = useInspectorWidth();
   const [drift, setDrift] = useState<RuleDrift | null>(null);
   const [chosenCandidate, setChosenCandidate] = useState<string | null>(null);
   const [category, setCategory] = useState('');
@@ -41,9 +150,11 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
 
   if (!transaction) {
     return (
-      <aside className="w-84 border-l border-[rgba(154,144,136,0.12)] bg-[#140f0c] p-6 text-ash font-serif italic text-xs flex items-center justify-center select-none shrink-0 text-center">
+      <InspectorFrame {...frame}>
+      <aside className="h-full w-full border-l border-[rgba(154,144,136,0.12)] bg-[#140f0c] p-6 text-ash font-serif italic text-xs flex items-center justify-center select-none text-center">
         Select a transaction from the inbox to inspect its provenance and Beancount postings.
       </aside>
+      </InspectorFrame>
     );
   }
 
@@ -74,7 +185,8 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
   const evidenceBasename = evidenceRef ? evidenceRef.split(/[\\/]/).pop() || evidenceRef : '';
 
   return (
-    <aside className="w-84 border-l border-[rgba(154,144,136,0.12)] bg-[#140f0c] flex flex-col divide-y divide-[rgba(154,144,136,0.1)] shrink-0 overflow-y-auto select-none">
+    <InspectorFrame {...frame}>
+    <aside className="h-full w-full min-w-0 border-l border-[rgba(154,144,136,0.12)] bg-[#140f0c] flex flex-col divide-y divide-[rgba(154,144,136,0.1)] overflow-y-auto select-none">
       {/* Inspector Header */}
       <div className="p-3 bg-[#1e1713] flex items-center justify-between border-b border-[rgba(139,58,26,0.2)]">
         <h3 className="font-ui font-bold text-xs text-white uppercase tracking-[0.2em] flex items-center gap-2">
@@ -296,25 +408,26 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
 
           <div className="flex justify-between pt-1 uppercase tracking-wider">
             <span className="text-ash">Document ID:</span>
-            <span className="text-bone truncate max-w-[150px] font-mono text-[10px]" title={transaction.source_document_id}>
+            <span className="text-bone min-w-0 flex-1 text-right truncate font-mono text-[10px]" title={transaction.source_document_id}>
               {transaction.source_document_id}
             </span>
           </div>
           <div className="flex justify-between uppercase tracking-wider">
             <span className="text-ash">Record ID:</span>
-            <span className="text-bone truncate max-w-[150px] font-mono text-[10px]" title={transaction.source_record_id}>
+            <span className="text-bone min-w-0 flex-1 text-right truncate font-mono text-[10px]" title={transaction.source_record_id}>
               {transaction.source_record_id}
             </span>
           </div>
           <div className="flex justify-between uppercase tracking-wider">
             <span className="text-ash">Staged ID:</span>
-            <span className="text-ember truncate max-w-[150px] font-mono text-[10px]" title={transaction.staged_id}>
+            <span className="text-ember min-w-0 flex-1 text-right truncate font-mono text-[10px]" title={transaction.staged_id}>
               {transaction.staged_id}
             </span>
           </div>
         </div>
       </div>
     </aside>
+    </InspectorFrame>
   );
 };
 

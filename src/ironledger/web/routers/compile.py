@@ -18,6 +18,7 @@ from ironledger.compile.render import render_ledger
 from ironledger.compile.writer import compile_approved
 from ironledger.project.activate import rebuild_projection
 from ironledger.web.schemas import CompileRequest, CompileResponse
+from ironledger.web.auth import require_operator
 
 router = APIRouter(prefix="/api", tags=["compile"])
 
@@ -100,6 +101,7 @@ def trigger_project_rebuild(
     request: Request,
     payload: Optional[dict[str, Any]] = None,
     db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
 ):
     """Rebuild SQLite projection from plaintext ledger on disk."""
     app_state = request.app.state
@@ -116,6 +118,13 @@ def trigger_project_rebuild(
             ledger_dir = Path(payload["ledger_dir"]).resolve()
         if "projection_dir" in payload and payload["projection_dir"]:
             projection_dir = Path(payload["projection_dir"]).resolve()
+
+    configured_ledger_dir = Path(getattr(app_state, "ledger_dir", Path("ledger"))).resolve()
+    configured_projection_dir = Path(getattr(app_state, "projection_dir", Path("projection"))).resolve()
+    if not ledger_dir.is_relative_to(configured_ledger_dir):
+        raise HTTPException(status_code=400, detail="ledger_dir must remain inside the configured ledger directory")
+    if not projection_dir.is_relative_to(configured_projection_dir):
+        raise HTTPException(status_code=400, detail="projection_dir must remain inside the configured projection directory")
 
     try:
         require_governed_authorization(

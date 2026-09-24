@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
-import hmac
 import json
 import sqlite3
 import uuid
@@ -13,6 +12,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from pydantic import BaseModel
 
 from ironledger.web.errors import GovernanceException
+from ironledger.web.auth import require_operator as require_operator_auth
 
 router = APIRouter(prefix="/api/connectors", tags=["connectors"])
 
@@ -22,16 +22,7 @@ def get_db(request: Request) -> sqlite3.Connection:
 
 
 def require_operator(request: Request) -> None:
-    op_token = getattr(request.app.state, "op_token", None)
-    if not op_token or not isinstance(op_token, str) or not op_token.strip():
-        return
-    token = request.headers.get("X-IronLedger-Op-Token")
-    if not token or not hmac.compare_digest(token, op_token.strip()):
-        raise GovernanceException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            error_code="GOVERNANCE_VALIDATION_ERROR",
-            message="Unauthorized: invalid or missing operator token",
-        )
+    require_operator_auth(request, governance_error=True)
 
 
 def get_active_ledger_id(request: Request, db: sqlite3.Connection) -> str:

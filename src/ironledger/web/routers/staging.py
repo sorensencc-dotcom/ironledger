@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hmac
 import json
 import sqlite3
 import uuid
@@ -18,6 +17,7 @@ from ironledger.review import state
 from ironledger.review.rules import resolve_rule_row
 from ironledger.review.state import ReviewStateError
 from ironledger.web.errors import GovernanceException
+from ironledger.web.auth import require_operator as require_operator_auth
 from ironledger.web.schemas import (
     AttachCandidateSchema,
     AttachConfirmRequest,
@@ -37,16 +37,7 @@ def get_db(request: Request) -> sqlite3.Connection:
 
 
 def require_operator(request: Request) -> None:
-    op_token = getattr(request.app.state, "op_token", None)
-    if not op_token or not isinstance(op_token, str) or not op_token.strip():
-        return
-    token = request.headers.get("X-IronLedger-Op-Token")
-    if not token or not hmac.compare_digest(token, op_token.strip()):
-        raise GovernanceException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            error_code="GOVERNANCE_VALIDATION_ERROR",
-            message="Unauthorized: invalid or missing operator token",
-        )
+    require_operator_auth(request, governance_error=True)
 
 
 class CategorizeRequest(BaseModel):
