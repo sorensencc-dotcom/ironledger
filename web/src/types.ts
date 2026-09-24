@@ -10,6 +10,7 @@ export interface AttachCandidate {
   payee: string;
   date: string;
   minor_units: number;
+  category_account?: string | null;
 }
 
 export interface AttachProposal {
@@ -38,6 +39,7 @@ export interface StagedTransaction {
   minor_units: number;
   scale: number;
   postings: Posting[];
+  category_account?: string | null;
   status: 'pending' | 'categorized' | 'approved' | 'rejected';
   confidence_score: number | null;
   matched_rule_id: string | null;

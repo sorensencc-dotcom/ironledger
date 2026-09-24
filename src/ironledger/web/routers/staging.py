@@ -351,7 +351,9 @@ def list_attach_proposals(
         candidates: list[AttachCandidateSchema] = []
         for stx_id in cand_ids:
             hit = db.execute(
-                "SELECT st.payee, st.proposed_date, sp.minor_units "
+                "SELECT st.payee, st.proposed_date, sp.minor_units, "
+                " (SELECT account FROM staged_postings WHERE staged_transaction_id = st.staged_transaction_id "
+                "  AND role = 'contra' LIMIT 1) "
                 "FROM staged_transactions st "
                 "JOIN staged_postings sp ON sp.staged_transaction_id = st.staged_transaction_id "
                 " AND sp.role = 'imported' "
@@ -366,6 +368,9 @@ def list_attach_proposals(
                     payee=hit[0],
                     date=hit[1],
                     minor_units=hit[2],
+                    category_account=(
+                        hit[3] if hit[3] and hit[3] != 'Expenses:Unassigned' else None
+                    ),
                 )
             )
         results.append(

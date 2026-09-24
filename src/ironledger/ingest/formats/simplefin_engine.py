@@ -14,7 +14,7 @@ from ironledger.ingest.errors import ParseError
 __all__ = ["parse_amount", "simplefin_external_id", "ingest_simplefin_payload"]
 
 _AMOUNT_GRAMMAR = re.compile(r"^[+-]?\d+(\.\d{1,2})?$")
-_FALLBACK_PREFIX = "Assets:Unassigned:SimpleFIN_"
+_FALLBACK_PREFIX = "Assets:Unassigned:SimpleFIN-"
 
 
 def parse_amount(amount_str: str) -> int:

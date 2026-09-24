@@ -45,7 +45,7 @@ def test_unassigned_account_fallback(db):
     conn, tmp = db
     ingest_simplefin_payload(conn, PAYLOAD, evidence_path=tmp / "ev.raw", account_map={})
     row = conn.execute("SELECT account FROM staged_postings WHERE role='imported'").fetchone()
-    assert row["account"] == "Assets:Unassigned:SimpleFIN_acct1"
+    assert row["account"] == "Assets:Unassigned:SimpleFIN-acct1"
 
 
 def test_multi_transaction_payload(db):

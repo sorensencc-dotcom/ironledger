@@ -136,7 +136,7 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
       <div className="grid grid-cols-12 px-4 py-2 border-b border-[rgba(139,58,26,0.2)] bg-[#140f0c] text-[11px] font-ui text-ash uppercase tracking-[0.2em] select-none shrink-0 relative z-10">
         <div className="col-span-2">Date</div>
         <div className="col-span-3">Payee</div>
-        <div className="col-span-3">Contra Account</div>
+        <div className="col-span-3">Category / Subcategory</div>
         <div className="col-span-2 text-right">Amount</div>
         <div className="col-span-1 text-center">Match</div>
         <div className="col-span-1 text-right">Actions</div>
@@ -155,7 +155,12 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
           {visibleTransactions.map((tx, visibleIndex) => {
             const idx = startIndex + visibleIndex;
             const isSelected = idx === selectedIndex;
-            const contraLeg = tx.postings.find((p) => p.account && !p.account.startsWith('Assets:Bank'))?.account || '—';
+            const categoryAccount = tx.category_account || tx.postings.find((p) =>
+              /^(Expenses|Income|Equity):/.test(p.account) && !p.account.endsWith(':Unassigned'),
+            )?.account;
+            const categoryParts = categoryAccount?.split(':') || [];
+            const category = categoryParts[1] || 'Uncategorized';
+            const subcategory = categoryParts.slice(2).join(' / ');
             const scale = tx.scale || 2;
             const rawAmount = tx.minor_units / 10 ** scale;
             const isNegative = tx.minor_units < 0;
@@ -187,8 +192,13 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
                   ) : null}
                   {tx.payee || tx.narration || '(Unnamed)'}
                 </div>
-                <div className={`col-span-3 truncate font-serif italic text-xs ${contraLeg.startsWith('Income') ? 'text-gain' : 'text-ember'}`} title={contraLeg}>
-                  {contraLeg}
+                <div className="col-span-3 min-w-0 font-serif italic text-xs" title={categoryAccount || 'Uncategorized'}>
+                  <div className={categoryAccount?.startsWith('Income:') ? 'text-gain' : 'text-ember'}>
+                    {category}
+                  </div>
+                  <div className="truncate text-[10px] text-ash not-italic">
+                    {subcategory || (categoryAccount ? 'No subcategory' : 'Needs categorization')}
+                  </div>
                 </div>
                 <div className={`col-span-2 text-right font-ui font-extrabold text-sm ${isNegative ? 'text-loss-bright' : 'text-gain-bright'}`}>
                   {amountFormatted} <span className="text-ash font-normal text-[10px] tracking-wider uppercase">{tx.currency}</span>

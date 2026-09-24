@@ -124,6 +124,7 @@ export default function App() {
         minor_units: p.minor_units,
         scale: p.scale,
         postings: [],
+        category_account: p.candidates[0]?.category_account,
         status: 'pending',
         confidence_score: null,
         matched_rule_id: null,

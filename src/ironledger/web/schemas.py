@@ -99,6 +99,7 @@ class AttachCandidateSchema(BaseModel):
     payee: str
     date: str
     minor_units: int
+    category_account: Optional[str] = None
 
 
 class AttachProposalResponse(BaseModel):

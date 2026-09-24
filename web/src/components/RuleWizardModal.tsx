@@ -29,9 +29,17 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
 
   useEffect(() => {
     if (transaction && isOpen) {
+      const candidateStagedId = transaction.item_type === 'attach'
+        ? transaction.candidates?.[0]?.staged_id
+        : transaction.staged_id;
+      if (!candidateStagedId) {
+        setError('No staged transaction candidate is available for this rule.');
+        setLoadingCandidate(false);
+        return;
+      }
       setLoadingCandidate(true);
       setError(null);
-      api.generateCandidate(transaction.staged_id, matchType)
+      api.generateCandidate(candidateStagedId, matchType)
         .then((res) => {
           setPattern(res.suggested_pattern);
           if (res.target_account && res.target_account !== 'Expenses:Unallocated') {
