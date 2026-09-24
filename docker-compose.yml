@@ -6,7 +6,7 @@ services:
     container_name: ironledger-workbench
     restart: always
     ports:
-      - "8000:8000"
+      - "${IRONLEDGER_HOST_PORT:-8000}:8000"
     volumes:
       # Repo root is /data. The image defaults to /app/data and /app/config,
       # which are not this mount — CLI imports on the host would be invisible.

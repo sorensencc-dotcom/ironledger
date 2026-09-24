@@ -52,6 +52,5 @@ Operator try-on of one real PDF profile against live SimpleFIN charges (not pack
 
 ## Local Workbench Runtime
 - Compose default: `http://127.0.0.1:8000`.
-- Current Windows fallback: `http://127.0.0.1:8765` (host port `8765` mapped to container port `8000`; port 8000 is administratively reserved on this machine).
-
+- Current Windows fallback: `http://127.0.0.1:8765` via `IRONLEDGER_HOST_PORT=8765 docker compose up -d` (host port `8765` mapped to container port `8000`; port 8000 is administratively reserved on this machine).
 
