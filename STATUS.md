@@ -50,5 +50,8 @@ Phase 15 — Inbox attach + PDF statement wedge: later evidence hangs off an exi
 ## Next Action
 Operator try-on of one real PDF profile against live SimpleFIN charges (not packaging, not OCR). Resume: `docs/meta/plans/ironledger-phase-15-handoff.md`.
 
+## Local Workbench Runtime
+- Compose default: `http://127.0.0.1:8000`.
+- Current Windows fallback: `http://127.0.0.1:8765` (host port `8765` mapped to container port `8000`; port 8000 is administratively reserved on this machine).
 
 

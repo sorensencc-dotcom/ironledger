@@ -27,7 +27,7 @@ docker compose logs -f
 docker compose down
 ```
 
-The workbench UI will be accessible at **`http://localhost:8000`** (or `http://127.0.0.1:8000`). Local database files (`ironledger.db`, `projection.db`, `evidence/`) are mounted directly from the repository root for host persistence.
+The workbench UI is normally accessible at **`http://localhost:8000`** (or `http://127.0.0.1:8000`). On this Windows host, port 8000 is reserved; the current local fallback is **`http://127.0.0.1:8765`**, mapped to the container's port 8000. Local database files (`ironledger.db`, `projection.db`, `evidence/`) are mounted directly from the repository root for host persistence.
 
 ### 2. Direct CLI Execution
 
