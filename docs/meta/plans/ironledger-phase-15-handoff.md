@@ -1,6 +1,6 @@
 # Phase 15 handoff — inbox attach + PDF wedge
 
-**Status:** Shipped on local `main`. Packaging waits.  
+**Status:** Shipped on local `main`. PDF try-on deferred; packaging waits.  
 **Date:** 2026-09-15  
 **HEAD:** `e68ef25` (`fix(web): bump workbench HUD version to v0.15.0`)  
 **Feature:** `926f4c5` (`feat(ingest): Phase 15 inbox attach + PDF wedge`)  
@@ -53,7 +53,7 @@ Match key: imported-leg `minor_units` + account + currency + integer calendar-da
 
 ## Suggested next steps (ranked)
 
-### 1. Do now — real PDF try-on (product)
+### 1. Deferred — real PDF try-on (product)
 
 This is the Phase 15 exit in the world. Not more MIME types.
 
@@ -75,11 +75,15 @@ Fail R2: posted-date vs SimpleFIN-date skew or sign flip produced a duplicate pe
 
 If it fails, tune the **profile** (sign, window, regex). Do not add OCR or a new format.
 
-### 2. Do next if try-on passes — second real profile
+### 2. Deferred — second real profile
 
 A checking PDF or a second card. Still text-layer. Still inbox attach. Still no packaging.
 
-### 3. Optional engineering (only after try-on, or if it blocks try-on)
+### 3. Next work should come from SimpleFIN/CSV operator needs
+
+Prioritize staging, rule, import, and workbench issues that affect the currently supported SimpleFIN and CSV paths.
+
+### 4. Optional engineering (only after try-on, or if it blocks try-on)
 
 - Version is hardcoded in `web/src/components/TopHUD.tsx`, `src/ironledger/web/app.py`, and `scripts/build-docs.py`. It drifted to v0.11.0 once; a single constant would stop that.
 - Workbench static is `COPY web/dist/` into the image. After a UI change: `cd web && npm run build` then `docker compose up -d --build`. `web/dist/` is gitignored except `web/dist/docs/index.html`.

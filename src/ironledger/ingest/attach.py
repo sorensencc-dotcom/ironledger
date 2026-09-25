@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import asdict
 from datetime import date
 
 from ironledger.ingest.stage import StagedInput
+from ironledger.ingest.identity import canonical_payee
 
 __all__ = ["assign_proposals"]
 
 _MATCH_STATUSES = ("pending", "categorized", "approved")
+_PAYEE_TOKEN = re.compile(r"[a-z0-9]+")
 
 
 def assign_proposals(
@@ -87,7 +90,7 @@ def _classify(
     target = date.fromisoformat(staged.iso_date)
     flipped = -staged.minor_units
     rows = conn.execute(
-        "SELECT st.staged_transaction_id, st.proposed_date, sp.minor_units "
+        "SELECT st.staged_transaction_id, st.proposed_date, sp.minor_units, st.payee "
         "FROM staged_transactions st "
         "JOIN staged_postings sp ON sp.staged_transaction_id = st.staged_transaction_id "
         "WHERE sp.role = 'imported' AND sp.account = ? AND sp.currency = ? "
@@ -106,14 +109,34 @@ def _classify(
     exact: list[str] = []
     near: list[str] = []
     seen: set[str] = set()
-    for stx_id, proposed_date, minor in rows:
+    candidates: list[tuple[str, int, int, bool]] = []
+    for stx_id, proposed_date, minor, payee in rows:
         if stx_id in seen:
             continue
         seen.add(stx_id)
         delta = abs((date.fromisoformat(proposed_date) - target).days)
         in_window = delta <= window_days
-        if minor == staged.minor_units and in_window:
-            exact.append(stx_id)
-        elif in_window or minor == staged.minor_units:
-            near.append(stx_id)
+        if in_window or minor == staged.minor_units:
+            candidates.append((stx_id, delta, minor, _payees_match(staged.payee, payee)))
+    exact_candidates = [c for c in candidates if c[2] == staged.minor_units and c[1] <= window_days]
+    if exact_candidates:
+        best_payee = max(c[3] for c in exact_candidates)
+        ranked = [c for c in exact_candidates if c[3] == best_payee]
+        nearest = min(c[1] for c in ranked)
+        exact = [c[0] for c in ranked if c[1] == nearest]
+    elif candidates:
+        best_payee = max(c[3] for c in candidates)
+        ranked = [c for c in candidates if c[3] == best_payee]
+        nearest = min(c[1] for c in ranked)
+        near = [c[0] for c in ranked if c[1] == nearest]
     return exact, near
+
+
+def _payees_match(left: str, right: str) -> bool:
+    left_canonical = canonical_payee(left)
+    right_canonical = canonical_payee(right)
+    if left_canonical == right_canonical:
+        return True
+    left_tokens = set(_PAYEE_TOKEN.findall(left_canonical))
+    right_tokens = set(_PAYEE_TOKEN.findall(right_canonical))
+    return bool(left_tokens & right_tokens)
