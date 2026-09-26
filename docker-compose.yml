@@ -10,6 +10,17 @@ services:
     volumes:
       # Repo root is /data. The image defaults to /app/data and /app/config,
       # which are not this mount — CLI imports on the host would be invisible.
+      #
+      # WARNING: this container and the host `ironledger` CLI share the same
+      # ironledger.db through this bind mount. SQLite's WAL journal mode
+      # (this app's default) is documented as unsafe over non-local
+      # filesystems, and a Docker Desktop bind mount on Windows behaves like
+      # one for locking purposes. Writing from both sides at once corrupted
+      # this database once already (2026-09-24, recovered via `sqlite3
+      # .recover`; see .recovery-work/, git-ignored). The CLI now warns
+      # (src/ironledger/cli/compose_guard.py) when it detects this service
+      # running, but the safe pattern is: `docker compose down` before host
+      # CLI writes, or `docker compose exec ironledger ironledger ...`.
       - .:/data
     environment:
       - PYTHONUNBUFFERED=1

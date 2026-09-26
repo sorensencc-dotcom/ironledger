@@ -378,11 +378,58 @@ def _needs_operational_db(args) -> bool:
     return False
 
 
+# Commands that write to ironledger.db (or compile the beancount ledger).
+# See compose_guard.py: these are the ones at risk if `docker compose` is
+# also holding the same bind-mounted file open.
+_READ_ONLY_INVOCATIONS = {
+    ("compile", "status"),
+    ("review", "list"),
+    ("review", "show"),
+    ("rule", "list"),
+    ("fitid-trust", "list"),
+    ("project", "status"),
+    ("search", None),
+    ("balances", None),
+    ("mcp", None),
+}
+
+
+def _is_mutating_invocation(args) -> bool:
+    sub = getattr(
+        args,
+        "compile_command",
+        getattr(
+            args,
+            "review_command",
+            getattr(
+                args,
+                "rule_command",
+                getattr(args, "fitid_command", getattr(args, "project_command", None)),
+            ),
+        ),
+    )
+    if (args.command, sub) in _READ_ONLY_INVOCATIONS:
+        return False
+    if args.command == "project" and sub is None:
+        return True  # bare `project` rebuilds the projection db
+    return args.command in {
+        "compile", "import", "review", "rule", "fitid-trust", "web",
+    } or (args.command == "sync" and getattr(args, "sync_command", None) in {"poll"}) or (
+        args.command == "sync"
+        and getattr(args, "sync_command", None) == "auth"
+        and getattr(args, "sync_auth_command", None) == "claim"
+    ) or (args.command == "prices" and getattr(args, "prices_command", None) == "poll")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     if _needs_operational_db(args) and not _require_db(args):
         return 2
+    if _is_mutating_invocation(args):
+        from ironledger.cli.compose_guard import warn_if_compose_running
+
+        warn_if_compose_running()
     if args.command == "compile":
         comp_cmd = getattr(args, "compile_command", None)
         if comp_cmd is None:
