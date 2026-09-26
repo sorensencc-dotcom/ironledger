@@ -41,11 +41,17 @@ def test_operator_guide_covers_phase15_attach():
 
 
 def test_workbench_version_badge_is_phase15():
+    version = Path("VERSION").read_text(encoding="utf-8").strip()
     hud = Path("web/src/components/TopHUD.tsx").read_text(encoding="utf-8")
     app = Path("src/ironledger/web/app.py").read_text(encoding="utf-8")
-    assert "v0.15.0" in hud
+    docs = Path("scripts/build-docs.py").read_text(encoding="utf-8")
+    assert "v0.15.0" not in hud
     assert "v0.11.0" not in hud
-    assert 'version="0.15.0"' in app
+    assert 'version="0.15.0"' not in app
+    assert "v0.15.0" not in docs
+    assert version == "0.15.0"
+    assert "health?.version" in hud
+    assert "version=APP_VERSION" in app
     assert 'version="0.11.0"' not in app
 
 

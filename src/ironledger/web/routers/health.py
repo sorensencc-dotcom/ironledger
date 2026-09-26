@@ -14,9 +14,9 @@ def get_db(request: Request) -> sqlite3.Connection:
 
 
 @router.get("/healthz", status_code=status.HTTP_200_OK)
-def liveness_probe() -> dict[str, str]:
+def liveness_probe(request: Request) -> dict[str, str]:
     """Liveness probe returning 200 OK if service process is active."""
-    return {"status": "ok", "service": "ironledger"}
+    return {"status": "ok", "service": "ironledger", "version": request.app.state.version}
 
 
 @router.get("/readyz", status_code=status.HTTP_200_OK)

@@ -4,6 +4,8 @@
 from __future__ import annotations
 from pathlib import Path
 
+VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text(encoding="utf-8").strip()
+
 DOCS_HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
@@ -55,7 +57,7 @@ DOCS_HTML_TEMPLATE = """<!DOCTYPE html>
         <span class="font-bold text-sm tracking-wide text-slate-100 flex items-center gap-2">
           IronLedger
           <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono">
-            v0.15.0 &bull; Inbox Attach + PDF Wedge
+            v__IRONLEDGER_VERSION__ &bull; Inbox Attach + PDF Wedge
           </span>
         </span>
       </div>
@@ -105,7 +107,7 @@ DOCS_HTML_TEMPLATE = """<!DOCTYPE html>
     <main class="flex-1 p-6 md:p-10 max-w-4xl overflow-y-auto space-y-14">
       <section class="space-y-4 border-b border-slate-800 pb-8">
         <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-indigo-950/80 border border-indigo-800/60 text-indigo-300 font-mono text-xs">
-          <span>Operator Guide</span> &bull; <span>v0.15.0</span> &bull; <span>Inbox Attach + PDF Wedge</span>
+          <span>Operator Guide</span> &bull; <span>v__IRONLEDGER_VERSION__</span> &bull; <span>Inbox Attach + PDF Wedge</span>
         </div>
         <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white">IronLedger Operator Guide &amp; Reference</h1>
         <p class="text-base text-slate-400 leading-relaxed">
@@ -113,7 +115,7 @@ DOCS_HTML_TEMPLATE = """<!DOCTYPE html>
           Phase 15 treats a later statement row as more evidence on an existing economic event. Confirm attach. Do not create a second posting.
         </p>
         <div class="p-4 rounded-lg bg-amber-950/40 border border-amber-800/60 space-y-2">
-          <h2 class="text-sm font-semibold text-amber-200 font-mono uppercase tracking-wider">v0.15.0 &mdash; what changed</h2>
+          <h2 class="text-sm font-semibold text-amber-200 font-mono uppercase tracking-wider">v__IRONLEDGER_VERSION__ &mdash; what changed</h2>
           <ul class="list-disc list-inside text-xs text-slate-300 space-y-1 pl-1">
             <li>Inbox can show <strong>attach</strong> and <strong>near-miss</strong> proposals next to ordinary pending rows.</li>
             <li>PDF bank/card statements (text layer) import through <code>--pdf-profile</code>. Inbox suffixes: <code>.csv</code> <code>.ofx</code> <code>.qfx</code> <code>.pdf</code>.</li>
@@ -295,7 +297,7 @@ python -m ironledger.cli compile --confirm "authorize compile"</pre>
       </section>
 
       <footer class="pt-8 border-t border-slate-800 text-xs text-slate-500 font-mono flex items-center justify-between">
-        <div>IronLedger local-first financial OS &bull; v0.15.0</div>
+        <div>IronLedger local-first financial OS &bull; v__IRONLEDGER_VERSION__</div>
         <div>Beancount authority &bull; SQLite projection &bull; Inbox attach</div>
       </footer>
     </main>
@@ -309,8 +311,9 @@ def build_documentation(target_path: Path | None = None) -> Path:
     if target_path is None:
         target_path = repo_root / "web" / "public" / "docs" / "index.html"
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    target_path.write_text(DOCS_HTML_TEMPLATE, encoding="utf-8")
-    print(f"Documentation generated at {target_path} ({len(DOCS_HTML_TEMPLATE)} bytes)")
+    rendered = DOCS_HTML_TEMPLATE.replace("__IRONLEDGER_VERSION__", VERSION)
+    target_path.write_text(rendered, encoding="utf-8")
+    print(f"Documentation generated at {target_path} ({len(rendered)} bytes)")
     return target_path
 
 

@@ -1,6 +1,7 @@
 """Test suite for /healthz and /readyz probes."""
 
 import sqlite3
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,6 +25,7 @@ def test_liveness_probe(client):
     data = response.json()
     assert data["status"] == "ok"
     assert data["service"] == "ironledger"
+    assert data["version"] == Path("VERSION").read_text(encoding="utf-8").strip()
 
 
 def test_readiness_probe_healthy(client):

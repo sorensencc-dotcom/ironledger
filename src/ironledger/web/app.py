@@ -21,6 +21,8 @@ from ironledger.web.routers import analytics, compile, connectors, failover, fed
 
 __all__ = ["create_app"]
 
+APP_VERSION = (Path(__file__).resolve().parents[3] / "VERSION").read_text(encoding="utf-8").strip()
+
 
 class NoCacheHtmlMiddleware(BaseHTTPMiddleware):
     """Ensure HTML entrypoints are never cached stale by web browsers."""
@@ -45,7 +47,7 @@ def create_app(
     app = FastAPI(
         title="IronLedger Operator Workbench",
         description="Local-first Enterprise Operator Workbench API",
-        version="0.15.0",
+        version=APP_VERSION,
     )
 
     app.add_exception_handler(GovernanceException, governance_exception_handler)
@@ -101,6 +103,7 @@ def create_app(
     app.state.get_db = get_db
     app.state.get_projection_db = get_projection_db
     app.state.op_token = os.environ.get("IRONLEDGER_OP_TOKEN")
+    app.state.version = APP_VERSION
 
     # Include routers
     app.include_router(health.router)
