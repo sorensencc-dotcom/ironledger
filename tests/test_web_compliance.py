@@ -11,6 +11,11 @@ from ironledger.db import migrations
 from ironledger.db.connection import connect
 from ironledger.web.app import create_app
 
+
+def test_docker_runtime_installs_multipart_parser():
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    assert '"python-multipart>=0.0.9"' in dockerfile
+
 OP_TOKEN = "test-operator-token"
 
 
