@@ -31,7 +31,7 @@ interface TopHUDProps {
   isSyncing: boolean;
 }
 
-export const TopHUD: React.FC<TopHUDProps> = ({
+const TopHUDImpl: React.FC<TopHUDProps> = ({
   activeView,
   onSelectView,
   safeMode,
@@ -259,3 +259,5 @@ export const TopHUD: React.FC<TopHUDProps> = ({
     </header>
   );
 };
+
+export const TopHUD = React.memo(TopHUDImpl);

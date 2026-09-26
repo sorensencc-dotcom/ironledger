@@ -18,7 +18,7 @@ interface RegisterGridProps {
   scanningRules?: boolean;
 }
 
-export const RegisterGrid: React.FC<RegisterGridProps> = ({
+const RegisterGridImpl: React.FC<RegisterGridProps> = ({
   transactions,
   selectedIndex,
   onSelectIndex,
@@ -266,4 +266,6 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
     </div>
   );
 };
+
+export const RegisterGrid = React.memo(RegisterGridImpl);
 

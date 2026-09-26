@@ -40,7 +40,7 @@ interface SidebarProps {
   dlqCount?: number;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+const SidebarImpl: React.FC<SidebarProps> = ({
   activeView,
   onSelectView,
   pendingCount,
@@ -177,3 +177,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </aside>
   );
 };
+
+export const Sidebar = React.memo(SidebarImpl);
