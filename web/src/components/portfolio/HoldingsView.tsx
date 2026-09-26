@@ -21,7 +21,7 @@ export const HoldingsView: React.FC<{ holdings: HoldingRecord[]; stagedSummary?:
 
   return (
     <div className="bg-[#1a1410] border border-[#2c2420] rounded-none p-4 font-mono relative overflow-hidden">
-      <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+      <div className="ghost-watermark text-[5rem] top-3 right-3 select-none pointer-events-none">
         HOLDINGS
       </div>
 

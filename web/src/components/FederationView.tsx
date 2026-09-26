@@ -89,9 +89,10 @@ export const FederationView: React.FC<FederationViewProps> = ({ onNotify }) => {
     <div className="space-y-6 font-mono relative">
       {/* Top Header & Actions */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#1a1410] border border-[#2c2420] p-6 rounded-none shadow-lg relative overflow-hidden">
-        <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+        <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
           FEDERATION
         </div>
+        <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '220px', height: '220px', background: 'radial-gradient(circle, rgba(139,58,26,0.22), transparent 70%)', filter: 'blur(28px)', pointerEvents: 'none', zIndex: 0 }} />
 
         <div className="relative z-10">
           <div className="flex items-center gap-3">
@@ -335,7 +336,7 @@ export const FederationView: React.FC<FederationViewProps> = ({ onNotify }) => {
       {inspectingEvent && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50 select-none">
           <div className="bg-[#1a1410] border border-[#3a2e26] rounded-none max-w-xl w-full p-6 space-y-4 shadow-2xl relative overflow-hidden">
-            <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[5rem] top-3 right-3 select-none pointer-events-none">
               EVENT
             </div>
 
@@ -376,7 +377,7 @@ export const FederationView: React.FC<FederationViewProps> = ({ onNotify }) => {
       {showTenantModal && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 z-50 select-none">
           <div className="bg-[#1a1410] border border-[#3a2e26] rounded-none max-w-md w-full p-6 space-y-4 shadow-2xl relative overflow-hidden">
-            <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[5rem] top-3 right-3 select-none pointer-events-none">
               TENANT
             </div>
 

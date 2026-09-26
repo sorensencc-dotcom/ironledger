@@ -21,7 +21,7 @@ export const SimulationModal: React.FC<SimulationModalProps> = ({
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none font-sans">
       <div className="w-full max-w-2xl bg-[#1a1410] border border-[#3a2e26] rounded-none shadow-2xl overflow-hidden flex flex-col max-h-[85vh] relative">
         {/* Ghost Watermark */}
-        <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+        <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
           SAFE
         </div>
 
