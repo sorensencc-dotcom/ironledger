@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from decimal import Decimal
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ironledger.conventions import (
@@ -265,4 +266,146 @@ class CompileResponse(BaseModel):
     entries_compiled: int = 0
     postings_compiled: int = 0
     diff_preview: Optional[str] = None
+
+
+class TaxTermSummary(BaseModel):
+    realized_gain_minor: int
+    realized_gain_display: str
+    proceeds_minor: int
+    proceeds_display: str
+    cost_basis_minor: int
+    cost_basis_display: str
+
+
+class CapitalGainsSummaryResponse(BaseModel):
+    ledger_id: str
+    functional_currency: str
+    tax_year: Optional[int]
+    term_filter: Literal["ALL", "SHORT_TERM", "LONG_TERM"]
+    total_realized_gain_minor: int
+    total_realized_gain_display: str
+    total_proceeds_minor: int
+    total_proceeds_display: str
+    total_cost_basis_minor: int
+    total_cost_basis_display: str
+    short_term: TaxTermSummary
+    long_term: TaxTermSummary
+    disposal_count: int
+
+
+class OpenTaxLotResponse(BaseModel):
+    lot_key: str
+    account: str
+    commodity: str
+    acquisition_date: str
+    remaining_units_minor: int
+    unit_scale: int
+    quantity_display: str
+    functional_currency: str
+    unit_cost_numerator: int
+    unit_cost_denominator: int
+    current_basis_minor: int
+    current_basis_display: str
+    market_price_numerator: Optional[int]
+    market_price_denominator: Optional[int]
+    market_value_minor: Optional[int]
+    market_value_display: Optional[str]
+    unrealized_gain_loss_minor: Optional[int]
+    unrealized_gain_loss_display: Optional[str]
+    lot_label: Optional[str]
+
+
+class OpenTaxLotsResponse(BaseModel):
+    lots: List[OpenTaxLotResponse]
+    count: int
+
+
+class UnrealizedPositionResponse(BaseModel):
+    commodity: str
+    total_units_minor: int
+    unit_scale: int
+    quantity_display: str
+    functional_currency: str
+    cost_basis_minor: int
+    cost_basis_display: str
+    latest_price_numerator: int
+    latest_price_denominator: int
+    latest_price_display: str
+    market_value_minor: int
+    market_value_display: str
+    unrealized_gain_minor: int
+    unrealized_gain_display: str
+
+
+class UnrealizedGainsResponse(BaseModel):
+    ledger_id: str
+    functional_currency: str
+    total_cost_basis_minor: int
+    total_cost_basis_display: str
+    total_market_value_minor: int
+    total_market_value_display: str
+    total_unrealized_gain_minor: int
+    total_unrealized_gain_display: str
+    positions: List[UnrealizedPositionResponse]
+
+
+class DisposalPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ledger_id: str = "default"
+    commodity: str = Field(min_length=1)
+    quantity: Decimal | str
+    proceeds_rate: Decimal | str
+    strategy: Literal["FIFO", "LIFO", "HIFO"] = "FIFO"
+    disposal_date: Optional[str] = None
+    account: Optional[str] = None
+
+
+class DisposalAllocationResponse(BaseModel):
+    open_lot_key: str
+    acquisition_date: str
+    disposal_date: str
+    units_disposed_minor: int
+    units_disposed_display: str
+    holding_period_days: int
+    term_classification: Literal["SHORT_TERM", "LONG_TERM"]
+    functional_proceeds_minor: int
+    functional_proceeds_display: str
+    functional_cost_basis_minor: int
+    functional_cost_basis_display: str
+    functional_realized_gain_minor: int
+    functional_realized_gain_display: str
+
+
+class RemainingTaxLotResponse(BaseModel):
+    lot_key: str
+    account: str
+    commodity: str
+    acquisition_date: str
+    remaining_units_minor: int
+    remaining_units_display: str
+    remaining_basis_minor: int
+    remaining_basis_display: str
+
+
+class DisposalPreviewResponse(BaseModel):
+    simulation_status: Literal["SUCCESS"]
+    ledger_id: str
+    commodity: str
+    strategy: Literal["FIFO", "LIFO", "HIFO"]
+    disposal_date: str
+    units_disposed_minor: int
+    units_disposed_display: str
+    total_proceeds_minor: int
+    total_proceeds_display: str
+    total_cost_basis_minor: int
+    total_cost_basis_display: str
+    total_realized_gain_minor: int
+    total_realized_gain_display: str
+    short_term_gain_minor: int
+    short_term_gain_display: str
+    long_term_gain_minor: int
+    long_term_gain_display: str
+    allocations: List[DisposalAllocationResponse]
+    remaining_lots: List[RemainingTaxLotResponse]
 

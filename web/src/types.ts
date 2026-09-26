@@ -416,3 +416,92 @@ export interface PriceSyncResult {
   failed_count: number;
   failed_symbols: string[];
 }
+
+export type TaxTerm = 'ALL' | 'SHORT_TERM' | 'LONG_TERM';
+
+export interface TaxTermSummary {
+  realized_gain_minor: number;
+  realized_gain_display: string;
+  proceeds_minor: number;
+  proceeds_display: string;
+  cost_basis_minor: number;
+  cost_basis_display: string;
+}
+
+export interface CapitalGainsSummary {
+  ledger_id: string;
+  functional_currency: string;
+  tax_year: number | null;
+  term_filter: TaxTerm;
+  total_realized_gain_minor: number;
+  total_realized_gain_display: string;
+  total_proceeds_minor: number;
+  total_proceeds_display: string;
+  total_cost_basis_minor: number;
+  total_cost_basis_display: string;
+  short_term: TaxTermSummary;
+  long_term: TaxTermSummary;
+  disposal_count: number;
+}
+
+export interface OpenTaxLot {
+  lot_key: string;
+  account: string;
+  commodity: string;
+  acquisition_date: string;
+  remaining_units_minor: number;
+  unit_scale: number;
+  quantity_display: string;
+  functional_currency: string;
+  current_basis_minor: number;
+  current_basis_display: string;
+  market_value_display: string | null;
+  unrealized_gain_loss_display: string | null;
+}
+
+export interface OpenTaxLots { lots: OpenTaxLot[]; count: number }
+
+export interface UnrealizedPosition {
+  commodity: string;
+  quantity_display: string;
+  functional_currency: string;
+  cost_basis_display: string;
+  latest_price_display: string;
+  market_value_display: string;
+  unrealized_gain_minor: number;
+  unrealized_gain_display: string;
+}
+
+export interface UnrealizedGains {
+  ledger_id: string;
+  functional_currency: string;
+  total_cost_basis_display: string;
+  total_market_value_display: string;
+  total_unrealized_gain_minor: number;
+  total_unrealized_gain_display: string;
+  positions: UnrealizedPosition[];
+}
+
+export interface DisposalPreviewRequest {
+  ledger_id?: string;
+  commodity: string;
+  quantity: string;
+  proceeds_rate: string;
+  strategy: 'FIFO' | 'LIFO' | 'HIFO';
+  disposal_date?: string;
+  account?: string;
+}
+
+export interface DisposalPreview {
+  simulation_status: 'SUCCESS';
+  commodity: string;
+  strategy: 'FIFO' | 'LIFO' | 'HIFO';
+  disposal_date: string;
+  units_disposed_display: string;
+  total_proceeds_display: string;
+  total_cost_basis_display: string;
+  total_realized_gain_minor: number;
+  total_realized_gain_display: string;
+  short_term_gain_display: string;
+  long_term_gain_display: string;
+}

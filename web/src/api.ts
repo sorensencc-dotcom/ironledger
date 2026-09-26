@@ -32,6 +32,12 @@ import type {
   WatchlistData,
   PriceSyncResult,
   AttachProposal,
+  CapitalGainsSummary,
+  DisposalPreview,
+  DisposalPreviewRequest,
+  OpenTaxLots,
+  TaxTerm,
+  UnrealizedGains,
 } from './types';
 
 
@@ -61,6 +67,40 @@ const generateIdempotencyKey = (prefix: string = 'key') => {
 };
 
 export const api = {
+  async getCapitalGainsSummary(params: { tax_year?: string; term?: TaxTerm; account?: string; commodity?: string } = {}): Promise<CapitalGainsSummary> {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value) query.set(key, value); });
+    const res = await fetch(`${API_BASE}/tax/capital-gains-summary?${query}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch capital gains: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getOpenTaxLots(params: { account?: string; commodity?: string } = {}): Promise<OpenTaxLots> {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => { if (value) query.set(key, value); });
+    const res = await fetch(`${API_BASE}/tax/open-lots?${query}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch open tax lots: ${res.statusText}`);
+    return res.json();
+  },
+
+  async getUnrealizedGains(commodity?: string): Promise<UnrealizedGains> {
+    const query = commodity ? `?commodity=${encodeURIComponent(commodity)}` : '';
+    const res = await fetch(`${API_BASE}/tax/unrealized-gains${query}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch unrealized gains: ${res.statusText}`);
+    return res.json();
+  },
+
+  async previewLotDisposal(payload: DisposalPreviewRequest): Promise<DisposalPreview> {
+    const res = await fetch(`${API_BASE}/tax/preview-disposal`, {
+      method: 'POST', headers: getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to preview disposal: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
   // Staging
   async getAttachProposals(): Promise<AttachProposal[]> {
     const res = await fetch(`${API_BASE}/staging/proposals`, { headers: getHeaders() });
