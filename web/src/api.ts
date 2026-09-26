@@ -217,7 +217,22 @@ export const api = {
       headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ target_account: targetAccount, notes }),
     });
-    if (!res.ok) throw new Error(`Failed to categorize: ${res.statusText}`);
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to categorize: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async reopen(stagedId: string) {
+    const res = await fetch(`${API_BASE}/staging/${stagedId}/reopen`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to reopen: ${res.statusText}`);
+    }
     return res.json();
   },
 

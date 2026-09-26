@@ -218,6 +218,22 @@ def reject_transaction(
     return {"success": True, "staged_id": stx_id, "status": "rejected"}
 
 
+@router.post("/{stx_id}/reopen")
+def reopen_transaction(
+    stx_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    """Return a categorized or rejected transaction to pending review."""
+    try:
+        state.reopen(db, stx_id)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True, "staged_id": stx_id, "status": "pending"}
+
+
 @router.post("/{stx_id}/split")
 def split_transaction(
     stx_id: str,

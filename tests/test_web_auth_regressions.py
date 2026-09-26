@@ -31,6 +31,7 @@ def test_mutation_endpoints_fail_closed_without_or_with_wrong_token(tmp_path: Pa
         ("post", "/api/staging/stx-missing/categorize", {"target_account": "Expenses:Coffee"}),
         ("post", "/api/staging/stx-missing/approve", None),
         ("post", "/api/staging/stx-missing/reject", None),
+        ("post", "/api/staging/stx-missing/reopen", None),
         ("post", "/api/staging/stx-missing/split", {"postings": []}),
         ("post", "/api/v1/failover/heartbeat", {"node_id": "node-1"}),
         ("post", "/api/v1/failover/promote", {"cluster_id": "default", "candidate_node_id": "node-1"}),

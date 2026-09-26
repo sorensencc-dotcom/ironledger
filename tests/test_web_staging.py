@@ -142,6 +142,23 @@ def test_reject_staged_transaction(app_client):
     assert rej_data["status"] == "rejected"
 
 
+def test_reopen_rejected_transaction_then_categorize(app_client):
+    client, _ = app_client
+    stx_id = client.get("/api/staging").json()[0]["staged_id"]
+    assert client.post(f"/api/staging/{stx_id}/reject", json={}).status_code == 200
+
+    reopen_res = client.post(f"/api/staging/{stx_id}/reopen")
+    assert reopen_res.status_code == 200
+    assert reopen_res.json()["status"] == "pending"
+
+    categorize_res = client.post(
+        f"/api/staging/{stx_id}/categorize",
+        json={"target_account": "Expenses:CreditCardPayment"},
+    )
+    assert categorize_res.status_code == 200
+    assert categorize_res.json()["status"] == "categorized"
+
+
 def test_split_staged_transaction(app_client):
     client, _ = app_client
     res = client.get("/api/staging")

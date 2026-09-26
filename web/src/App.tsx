@@ -365,6 +365,10 @@ export default function App() {
 
   const handleCategorize = async (stagedId: string, targetAccount: string) => {
     try {
+      const transaction = staging.find((tx) => tx.staged_id === stagedId);
+      if (transaction?.status === 'rejected') {
+        await api.reopen(stagedId);
+      }
       await api.categorize(stagedId, targetAccount);
       showNotification(`Categorized ${stagedId.slice(0, 8)} as ${targetAccount}`);
       refreshAll();
