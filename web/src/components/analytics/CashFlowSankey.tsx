@@ -64,16 +64,22 @@ export const CashFlowSankey: React.FC<{
       const svg = d3.select(svgRef.current);
       svg.selectAll("*").remove();
 
-      // Render flow links
+      // Render flow links, colored by sign: income-side flows green, expense-side flows red
       svg
         .append("g")
         .attr("fill", "none")
-        .attr("stroke-opacity", 0.35)
+        .attr("stroke-opacity", 0.45)
         .selectAll<SVGPathElement, SLink>("path")
         .data(links)
         .join("path")
         .attr("d", sankeyLinkHorizontal())
-        .attr("stroke", "#8B3A1A")
+        .attr("stroke", (d: SLink) => {
+          const target = d.target as unknown as SNode;
+          const source = d.source as unknown as SNode;
+          if (target.name?.startsWith("Expenses")) return "#b8412f";
+          if (source.name?.startsWith("Income")) return "#5a9e6f";
+          return "#B8922A";
+        })
         .attr("stroke-width", (d: SLink) => Math.max(1, d.width ?? 0));
 
       // Render node blocks
