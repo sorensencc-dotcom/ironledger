@@ -102,10 +102,11 @@ def generate_candidate(
         "WHERE st.staged_transaction_id = ?",
         (payload.staged_id,),
     ).fetchone()
-    if not row:
+    if not row and not payload.payee:
         raise HTTPException(status_code=404, detail="Staged transaction not found")
 
-    payee, narration, contra_account = row
+    payee = payload.payee if payload.payee is not None else row[0]
+    contra_account = row[2] if row else None
     canon_p = canonical_payee(payee)
 
     if payload.pattern_type == "prefix":

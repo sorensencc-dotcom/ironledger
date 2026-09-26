@@ -78,13 +78,28 @@ def test_unique_hit_writes_one_proposal_and_no_new_staged_row():
     assert json.loads(cands) == [existing]
 
 
-def test_two_hits_in_window_are_one_ambiguous_proposal():
+def test_nearest_hit_in_window_is_unique():
     conn = _conn()
     _doc(conn, "sf", 2)
     _doc(conn, "pdf", 1)
-    a = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-5000, payee="A"))
-    b = _stage(conn, _input(rec="sf:1", date="2026-09-02", minor=-5000, payee="B"))
-    incoming = _input(rec="pdf:0", date="2026-09-01", minor=-5000, payee="PDF")
+    a = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-5000, payee="MERCHANT A"))
+    b = _stage(conn, _input(rec="sf:1", date="2026-09-02", minor=-5000, payee="MERCHANT B"))
+    incoming = _input(rec="pdf:0", date="2026-09-01", minor=-5000, payee="MERCHANT")
+    assign_proposals(conn, source_document_id="pdf", rows=((incoming, 3),), now_utc=TS)
+    kind, cands = conn.execute(
+        "SELECT kind, candidate_staged_ids FROM attach_proposals WHERE source_record_id='pdf:0'"
+    ).fetchone()
+    assert kind == "unique"
+    assert json.loads(cands) == [a]
+
+
+def test_same_date_hits_remain_ambiguous():
+    conn = _conn()
+    _doc(conn, "sf", 2)
+    _doc(conn, "pdf", 1)
+    a = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-5000, payee="MERCHANT A"))
+    b = _stage(conn, _input(rec="sf:1", date="2026-09-01", minor=-5000, payee="MERCHANT B"))
+    incoming = _input(rec="pdf:0", date="2026-09-01", minor=-5000, payee="MERCHANT")
     assign_proposals(conn, source_document_id="pdf", rows=((incoming, 3),), now_utc=TS)
     kind, cands = conn.execute(
         "SELECT kind, candidate_staged_ids FROM attach_proposals WHERE source_record_id='pdf:0'"
@@ -98,8 +113,8 @@ def test_two_pdf_rows_cannot_claim_the_same_event():
     _doc(conn, "sf", 1)
     _doc(conn, "pdf", 2)
     existing = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-2000, payee="ONCE"))
-    r0 = _input(rec="pdf:0", date="2026-09-01", minor=-2000, payee="PDF0")
-    r1 = _input(rec="pdf:1", date="2026-09-01", minor=-2000, payee="PDF1")
+    r0 = _input(rec="pdf:0", date="2026-09-01", minor=-2000, payee="ONCE PDF0")
+    r1 = _input(rec="pdf:1", date="2026-09-01", minor=-2000, payee="ONCE PDF1")
     assign_proposals(conn, source_document_id="pdf", rows=((r0, 3), (r1, 3)), now_utc=TS)
     claimed = conn.execute(
         "SELECT source_record_id, candidate_staged_ids FROM attach_proposals WHERE source_document_id='pdf'"
@@ -116,8 +131,8 @@ def test_date_outside_window_is_near_miss():
     conn = _conn()
     _doc(conn, "sf", 1)
     _doc(conn, "pdf", 1)
-    existing = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-800, payee="OLD"))
-    incoming = _input(rec="pdf:0", date="2026-09-06", minor=-800, payee="PDF")
+    existing = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-800, payee="MERCHANT"))
+    incoming = _input(rec="pdf:0", date="2026-09-06", minor=-800, payee="MERCHANT PDF")
     assign_proposals(conn, source_document_id="pdf", rows=((incoming, 3),), now_utc=TS)
     kind, cands = conn.execute(
         "SELECT kind, candidate_staged_ids FROM attach_proposals WHERE source_record_id='pdf:0'"
@@ -130,8 +145,8 @@ def test_sign_flip_in_window_is_near_miss():
     conn = _conn()
     _doc(conn, "sf", 1)
     _doc(conn, "pdf", 1)
-    existing = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-1500, payee="CHG"))
-    incoming = _input(rec="pdf:0", date="2026-09-01", minor=1500, payee="PDF")
+    existing = _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-1500, payee="MERCHANT"))
+    incoming = _input(rec="pdf:0", date="2026-09-01", minor=1500, payee="MERCHANT PDF")
     assign_proposals(conn, source_document_id="pdf", rows=((incoming, 3),), now_utc=TS)
     kind, cands = conn.execute(
         "SELECT kind, candidate_staged_ids FROM attach_proposals WHERE source_record_id='pdf:0'"
@@ -144,9 +159,33 @@ def test_reassign_does_not_duplicate_proposals():
     conn = _conn()
     _doc(conn, "sf", 1)
     _doc(conn, "pdf", 1)
-    _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-100, payee="X"))
-    incoming = _input(rec="pdf:0", date="2026-09-01", minor=-100, payee="Y")
+    _stage(conn, _input(rec="sf:0", date="2026-09-01", minor=-100, payee="MERCHANT X"))
+    incoming = _input(rec="pdf:0", date="2026-09-01", minor=-100, payee="MERCHANT Y")
     assign_proposals(conn, source_document_id="pdf", rows=((incoming, 3),), now_utc=TS)
     assign_proposals(conn, source_document_id="pdf", rows=((incoming, 3),), now_utc=TS)
     n = conn.execute("SELECT count(*) FROM attach_proposals").fetchone()[0]
     assert n == 1
+
+
+def test_different_same_amount_payee_is_not_a_candidate():
+    conn = _conn()
+    _doc(conn, "sf", 2)
+    _doc(conn, "pdf", 1)
+    holiday_inn = _stage(conn, _input(
+        rec="sf:0", date="2026-09-06", minor=-1000,
+        payee="HOLIDAY INN JOHNSTOWN PA",
+    ))
+    sunpass = _stage(conn, _input(
+        rec="sf:1", date="2026-03-27", minor=-1000,
+        payee="SUNPASS*ACC18237778 888-865-5352 FL",
+    ))
+    incoming = _input(
+        rec="pdf:0", date="2026-04-13", minor=-1000,
+        payee="SUNPASS*ACC18237778 888-865-5352 FL",
+    )
+    assign_proposals(conn, source_document_id="pdf", rows=((incoming, 365),), now_utc=TS)
+    cands = conn.execute(
+        "SELECT candidate_staged_ids FROM attach_proposals WHERE source_record_id='pdf:0'"
+    ).fetchone()[0]
+    assert json.loads(cands) == [sunpass]
+    assert holiday_inn not in json.loads(cands)

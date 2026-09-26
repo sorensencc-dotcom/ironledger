@@ -21,7 +21,7 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
 }) => {
   const [matchType, setMatchType] = useState<'exact' | 'prefix' | 'regex'>('exact');
   const [pattern, setPattern] = useState('');
-  const [targetAccount, setTargetAccount] = useState('Expenses:Groceries');
+  const [targetAccount, setTargetAccount] = useState('');
   const [retroMatches, setRetroMatches] = useState<number | null>(null);
   const [loadingCandidate, setLoadingCandidate] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -29,6 +29,10 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
 
   useEffect(() => {
     if (transaction && isOpen) {
+      setPattern('');
+      setTargetAccount('');
+      setRetroMatches(null);
+      setError(null);
       const candidateStagedId = transaction.item_type === 'attach'
         ? transaction.candidates?.[0]?.staged_id
         : transaction.staged_id;
@@ -38,8 +42,7 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
         return;
       }
       setLoadingCandidate(true);
-      setError(null);
-      api.generateCandidate(candidateStagedId, matchType)
+      api.generateCandidate(candidateStagedId, matchType, transaction.item_type === 'attach' ? transaction.payee : undefined)
         .then((res) => {
           setPattern(res.suggested_pattern);
           if (res.target_account && res.target_account !== 'Expenses:Unallocated') {

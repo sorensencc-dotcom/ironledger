@@ -178,6 +178,7 @@ class RuleCandidateRequest(BaseModel):
 
     staged_id: str
     pattern_type: str = "exact"
+    payee: Optional[str] = None
 
 
 class RuleCandidateResponse(BaseModel):

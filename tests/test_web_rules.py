@@ -87,6 +87,27 @@ def test_create_and_disable_rule(app_client):
     assert dis_data["success"] is True
 
 
+def test_create_nested_subcategory_rule(app_client):
+    client, _, _ = app_client
+    res = client.post(
+        "/api/rules",
+        json={
+            "match_type": "prefix",
+            "pattern": "streaming service",
+            "target_account": "Expenses:Business:Subscriptions:Streaming",
+            "priority": 40,
+        },
+    )
+    assert res.status_code == 200
+    rule_id = res.json()["rule_id"]
+    rules = client.get("/api/rules").json()
+    assert any(
+        rule["rule_id"] == rule_id
+        and rule["target_account"] == "Expenses:Business:Subscriptions:Streaming"
+        for rule in rules
+    )
+
+
 def test_generate_rule_candidate(app_client):
     client, _, _ = app_client
     # Get staged transactions
@@ -101,6 +122,23 @@ def test_generate_rule_candidate(app_client):
     assert "target_account" in cand_data
     assert "retroactive_matches" in cand_data
     assert cand_data["retroactive_matches"] >= 1
+
+
+def test_generate_rule_candidate_uses_supplied_attach_payee(app_client):
+    client, _, _ = app_client
+    response = client.post(
+        "/api/rules/candidate",
+        json={
+            "staged_id": "not-a-staged-row",
+            "pattern_type": "exact",
+            "payee": "SUNPASS*ACC18237778 888-865-5352 FL",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["suggested_pattern"] == "sunpass*acc18237778 888-865-5352 fl"
+    assert data["target_account"] == "Expenses:Unallocated"
 
 
 def test_rule_drift_endpoint(app_client):

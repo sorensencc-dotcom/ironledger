@@ -98,7 +98,7 @@ export const RegisterGrid: React.FC<RegisterGridProps> = ({
       {/* Table Toolbar */}
       <div className="h-11 px-4 border-b border-[rgba(139,58,26,0.25)] bg-[#201813] flex items-center justify-between gap-3 text-xs shrink-0 relative z-10">
         <div className="flex items-center space-x-1.5 font-ui tracking-wider uppercase">
-          {['all', 'pending', 'categorized', 'approved', 'rejected'].map((st) => (
+          {['all', 'uncategorized', 'pending', 'categorized', 'approved', 'rejected'].map((st) => (
             <button
               key={st}
               onClick={() => onChangeStatusFilter(st === 'all' ? '' : st)}

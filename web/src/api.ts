@@ -162,7 +162,10 @@ export const api = {
       headers: getHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`Failed to create rule: ${res.statusText}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => null) as { detail?: string } | null;
+      throw new Error(body?.detail || `Failed to create rule: ${res.statusText}`);
+    }
     return res.json();
   },
 
@@ -175,11 +178,11 @@ export const api = {
     return res.json();
   },
 
-  async generateCandidate(stagedId: string, patternType: 'exact' | 'prefix' | 'regex' = 'exact') {
+  async generateCandidate(stagedId: string, patternType: 'exact' | 'prefix' | 'regex' = 'exact', payee?: string) {
     const res = await fetch(`${API_BASE}/rules/candidate`, {
       method: 'POST',
       headers: getHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ staged_id: stagedId, pattern_type: patternType }),
+      body: JSON.stringify({ staged_id: stagedId, pattern_type: patternType, ...(payee ? { payee } : {}) }),
     });
     if (!res.ok) throw new Error(`Failed to generate candidate: ${res.statusText}`);
     return res.json();

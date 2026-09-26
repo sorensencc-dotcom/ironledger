@@ -25,7 +25,7 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
   const filtered = useMemo(() => filterAccountOptions(options, value), [options, value]);
   const query = value.trim();
   const queryIsNew =
-    query.length > 0 && !options.some((o) => o.account.toLowerCase() === query.toLowerCase());
+    query.includes(':') && !options.some((o) => o.account.toLowerCase() === query.toLowerCase());
   const rows = queryIsNew
     ? [{ account: query, patterns: ['new account'], isNew: true as const }, ...filtered.map((o) => ({ ...o, isNew: false as const }))]
     : filtered.map((o) => ({ ...o, isNew: false as const }));
@@ -92,8 +92,11 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
       {open && rows.length > 0 && (
         <ul
           role="listbox"
-          className="absolute z-30 mt-0.5 w-full max-h-48 overflow-y-auto bg-[#1a1410] border border-[#3a2e26] shadow-xl"
+          className="absolute bottom-full z-30 mb-1 w-full max-h-48 overflow-y-auto bg-[#1a1410] border border-[#3a2e26] shadow-xl"
         >
+          <li className="sticky top-0 z-10 px-3 py-1.5 bg-[#241c16] border-b border-[#3a2e26] text-[10px] text-[#7a6e65] font-sans uppercase tracking-wider">
+            {filtered.length} existing categor{filtered.length === 1 ? 'y' : 'ies'} · ↑↓ navigate · Enter select
+          </li>
           {rows.map((row, idx) => (
             <li key={`${row.account}-${idx}`}>
               <button

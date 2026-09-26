@@ -103,7 +103,7 @@ export default function App() {
   const refreshAll = async () => {
     try {
       const [stg, proposals, rls, sm, fresh, sync, h, r, dlq] = await Promise.all([
-        api.getStaging(statusFilter).catch(() => []),
+        api.getStaging().catch(() => []),
         api.getAttachProposals().catch(() => []),
         api.getRules().catch(() => []),
         api.getSafeMode().catch(() => null),
@@ -439,6 +439,11 @@ export default function App() {
 
   // Filter staging items by search query
   const filteredStaging = useMemo(() => staging.filter((tx) => {
+    const categoryAccount = tx.category_account || tx.postings.find((p) =>
+      /^(Expenses|Income|Equity):/.test(p.account) && !p.account.endsWith(':Unassigned'),
+    )?.account;
+    if (statusFilter === 'uncategorized' && categoryAccount) return false;
+    if (statusFilter && statusFilter !== 'uncategorized' && tx.status !== statusFilter) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -446,7 +451,7 @@ export default function App() {
       (tx.narration && tx.narration.toLowerCase().includes(q)) ||
       tx.postings.some((p) => p.account.toLowerCase().includes(q))
     );
-  }), [staging, searchQuery]);
+  }), [staging, searchQuery, statusFilter]);
 
   const activeTx = filteredStaging[selectedIndex] || null;
 
