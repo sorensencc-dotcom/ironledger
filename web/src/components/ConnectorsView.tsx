@@ -91,9 +91,10 @@ export const ConnectorsView: React.FC<ConnectorsViewProps> = ({
 
   return (
     <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono text-xs bg-[#0d0a08] relative">
-      <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+      <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
         CONNECTORS
       </div>
+      <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(139,58,26,0.22), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
 
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">

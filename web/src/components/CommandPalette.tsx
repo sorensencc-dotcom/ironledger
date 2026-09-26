@@ -174,7 +174,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-start justify-center pt-24 p-4 font-sans select-none">
       <div className="w-full max-w-xl bg-[#1a1410] border border-[#3a2e26] rounded-none shadow-2xl overflow-hidden relative">
         {/* Ghost Watermark */}
-        <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+        <div className="ghost-watermark text-[5rem] top-3 right-3 select-none pointer-events-none">
           COMMAND
         </div>
 

@@ -464,6 +464,47 @@ export default function App() {
 
   const activeTx = filteredStaging[selectedIndex] || null;
 
+  const ACCOUNT_GROUP_ORDER = ['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'];
+
+  const balanceGroups = useMemo(() => {
+    const byType = new Map<string, BalanceItem[]>();
+    for (const b of balances) {
+      const type = b.account.split(':')[0] || 'Other';
+      if (!byType.has(type)) byType.set(type, []);
+      byType.get(type)!.push(b);
+    }
+    const orderedTypes = [
+      ...ACCOUNT_GROUP_ORDER.filter((t) => byType.has(t)),
+      ...Array.from(byType.keys()).filter((t) => !ACCOUNT_GROUP_ORDER.includes(t)),
+    ];
+
+    const currencyCounts = new Map<string, number>();
+    for (const b of balances) currencyCounts.set(b.currency, (currencyCounts.get(b.currency) || 0) + 1);
+    const primaryCurrency = Array.from(currencyCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const otherCurrencyCount = currencyCounts.size - (primaryCurrency ? 1 : 0);
+
+    const totalFor = (type: string) => {
+      const items = (byType.get(type) || []).filter((b) => b.currency === primaryCurrency);
+      if (items.length === 0) return null;
+      const scale = items[0].scale;
+      const minorUnits = items.reduce((sum, b) => sum + b.minor_units, 0);
+      return { minorUnits, scale, currency: primaryCurrency! };
+    };
+
+    return {
+      groups: orderedTypes.map((type) => ({ type, items: byType.get(type)! })),
+      totalAssets: totalFor('Assets'),
+      totalLiabilities: totalFor('Liabilities'),
+      primaryCurrency,
+      otherCurrencyCount,
+    };
+  }, [balances]);
+
+  const formatAmount = (minorUnits: number, scale: number) => {
+    const raw = minorUnits / 10 ** scale;
+    return minorUnits < 0 ? `-${Math.abs(raw).toFixed(scale)}` : `+${raw.toFixed(scale)}`;
+  };
+
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0d0a08] text-[#f2ece2] overflow-hidden font-sans">
       {/* Top HUD */}
@@ -572,9 +613,10 @@ export default function App() {
 
         {activeView === 'rules' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
-            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
               RULES
             </div>
+            <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(184,146,42,0.18), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
             <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <h2 className="text-base font-serif font-bold text-[#f2ece2]">Categorization Rules</h2>
               <span className="text-xs text-[#7a6e65] font-mono">{rules.length} active rules</span>
@@ -597,32 +639,90 @@ export default function App() {
         )}
 
         {activeView === 'balances' && (
-          <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
-            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+          <div className="flex-1 p-6 overflow-y-auto space-y-5 font-mono bg-[#0d0a08] relative">
+            <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
               BALANCES
             </div>
+            <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(90,158,111,0.22), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
+
             <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
-              <h2 className="text-base font-serif font-bold text-[#f2ece2]">Account Balances & Chart</h2>
+              <h2 className="text-base font-serif font-bold text-[#f2ece2]">Account Balances</h2>
               <span className="text-xs text-[#7a6e65] font-mono">{balances.length} accounts</span>
             </div>
-            <div className="divide-y divide-[#2c2420]/60 text-xs bg-[#1a1410] border border-[#2c2420] rounded-none p-3 relative z-10">
-              {balances.map((b) => (
-                <div key={b.account} className="py-2.5 flex items-center justify-between hover:bg-[#241c16]/50 transition-colors px-2">
-                  <span className="text-[#a89e94]">{b.account}</span>
-                  <span className="font-bold text-[#f2ece2] font-mono">
-                    {b.formatted_amount} <span className="text-[#7a6e65] text-[10px]">{b.currency}</span>
-                  </span>
+
+            {(balanceGroups.totalAssets || balanceGroups.totalLiabilities) && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 relative z-10">
+                {balanceGroups.totalAssets && (
+                  <div className="bg-[#1a1410] border border-[#2c2420] border-l-[3px] border-l-gain p-3 space-y-1">
+                    <div className="text-[10px] uppercase tracking-[0.15em] text-ash">Total Assets</div>
+                    <div className="text-lg font-serif font-bold text-gain-bright">
+                      {formatAmount(balanceGroups.totalAssets.minorUnits, balanceGroups.totalAssets.scale)}
+                      <span className="text-[10px] text-ash ml-1 font-mono">{balanceGroups.totalAssets.currency}</span>
+                    </div>
+                  </div>
+                )}
+                {balanceGroups.totalLiabilities && (
+                  <div className="bg-[#1a1410] border border-[#2c2420] border-l-[3px] border-l-loss p-3 space-y-1">
+                    <div className="text-[10px] uppercase tracking-[0.15em] text-ash">Total Liabilities</div>
+                    <div className="text-lg font-serif font-bold text-loss-bright">
+                      {formatAmount(balanceGroups.totalLiabilities.minorUnits, balanceGroups.totalLiabilities.scale)}
+                      <span className="text-[10px] text-ash ml-1 font-mono">{balanceGroups.totalLiabilities.currency}</span>
+                    </div>
+                  </div>
+                )}
+                {balanceGroups.totalAssets && balanceGroups.totalLiabilities && (
+                  <div className={`bg-[#1a1410] border border-[#2c2420] border-l-[3px] p-3 space-y-1 ${
+                    balanceGroups.totalAssets.minorUnits + balanceGroups.totalLiabilities.minorUnits >= 0 ? 'border-l-gain' : 'border-l-loss'
+                  }`}>
+                    <div className="text-[10px] uppercase tracking-[0.15em] text-ash">Net</div>
+                    <div className={`text-lg font-serif font-bold ${
+                      balanceGroups.totalAssets.minorUnits + balanceGroups.totalLiabilities.minorUnits >= 0 ? 'text-gain-bright' : 'text-loss-bright'
+                    }`}>
+                      {formatAmount(balanceGroups.totalAssets.minorUnits + balanceGroups.totalLiabilities.minorUnits, balanceGroups.totalAssets.scale)}
+                      <span className="text-[10px] text-ash ml-1 font-mono">{balanceGroups.primaryCurrency}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {balanceGroups.otherCurrencyCount > 0 && (
+              <p className="text-[10px] text-ash italic relative z-10">
+                Totals shown in {balanceGroups.primaryCurrency}; {balanceGroups.otherCurrencyCount} other currenc{balanceGroups.otherCurrencyCount === 1 ? 'y' : 'ies'} held, not summed above.
+              </p>
+            )}
+
+            <div className="space-y-4 relative z-10">
+              {balanceGroups.groups.map(({ type, items }) => (
+                <div key={type}>
+                  <h3 className="text-[11px] font-ui uppercase tracking-[0.2em] text-ash mb-1.5">{type}</h3>
+                  <div className="divide-y divide-[#2c2420]/60 text-xs bg-[#1a1410] border border-[#2c2420] rounded-none">
+                    {items.map((b) => {
+                      const isNegative = b.minor_units < 0;
+                      return (
+                        <div key={b.account} className="py-2.5 flex items-center justify-between hover:bg-[#241c16]/50 transition-colors px-2">
+                          <span className="text-[#a89e94]">{b.account}</span>
+                          <span className={`font-bold font-mono ${isNegative ? 'text-loss-bright' : 'text-gain-bright'}`}>
+                            {b.formatted_amount} <span className="text-[#7a6e65] text-[10px]">{b.currency}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
+              {balanceGroups.groups.length === 0 && (
+                <div className="py-12 text-center text-ash text-xs font-serif italic">No account balances yet.</div>
+              )}
             </div>
           </div>
         )}
 
         {activeView === 'analytics' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
-            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
               FLOWS
             </div>
+            <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(90,158,111,0.22), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
             <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <div>
                 <h2 className="text-base font-serif font-bold text-[#f2ece2]">Cash Flow &amp; Sankey Visualizer</h2>
@@ -672,9 +772,10 @@ export default function App() {
 
         {activeView === 'portfolio' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono bg-[#0d0a08] relative">
-            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
               PORTFOLIO
             </div>
+            <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(90,158,111,0.22), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
             <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <div>
                 <h2 className="text-base font-serif font-bold text-[#f2ece2]">Multi-Asset Portfolio &amp; Watchlist</h2>
@@ -707,9 +808,10 @@ export default function App() {
 
         {activeView === 'audit' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-4 font-mono bg-[#0d0a08] relative">
-            <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
               AUDIT
             </div>
+            <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(139,58,26,0.22), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
             <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <div>
                 <h2 className="text-base font-serif font-bold text-[#f2ece2]">Meta-Ledger & Audit Trail</h2>

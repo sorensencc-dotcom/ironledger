@@ -80,7 +80,7 @@ export const RuleWizardModal: React.FC<RuleWizardModalProps> = ({
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 select-none">
       <div className="w-full max-w-lg bg-[#1a1410] border border-[#3a2e26] rounded-none shadow-2xl overflow-hidden font-sans relative">
         {/* Ghost Watermark */}
-        <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+        <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
           RULES
         </div>
 

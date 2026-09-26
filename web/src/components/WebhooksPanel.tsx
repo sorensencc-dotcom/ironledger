@@ -79,9 +79,10 @@ export const WebhooksPanel: React.FC<WebhooksPanelProps> = ({
 
   return (
     <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono text-xs bg-[#0d0a08] relative">
-      <div className="ghost-watermark text-[6rem] -top-8 -right-4 select-none pointer-events-none">
+      <div className="ghost-watermark text-[6rem] top-4 right-3 select-none pointer-events-none">
         OUTBOX
       </div>
+      <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(139,58,26,0.22), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
 
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
@@ -281,7 +282,7 @@ export const WebhooksPanel: React.FC<WebhooksPanelProps> = ({
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4 font-sans select-none">
           <div className="bg-[#1a1410] border border-[#3a2e26] rounded-none max-w-md w-full p-5 space-y-4 shadow-2xl relative overflow-hidden">
-            <div className="ghost-watermark text-[5rem] -top-6 -right-4 select-none pointer-events-none">
+            <div className="ghost-watermark text-[5rem] top-3 right-3 select-none pointer-events-none">
               WEBHOOK
             </div>
 
