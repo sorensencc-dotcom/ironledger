@@ -1,9 +1,15 @@
 # ledger/
 
-Beancount is the sole accounting authority. This directory holds the canonical
-ledger. It is written only by the compiler (Phase 3) through an atomic
-temporary-file-to-rename operation, and only from operator-approved staged
-transactions.
+Beancount is the sole accounting authority. This directory documents the
+canonical ledger layout. It is written only by the compiler (Phase 3) through
+an atomic temporary-file-to-rename operation, and only from operator-approved
+staged transactions.
+
+**Real ground truth lives in `ledger-vault/` (sibling directory, own git repo,
+own private remote), not here.** This repo (public-eventually) never tracks
+real financial data; `IRONLEDGER_LEDGER_DIR` points at `ledger-vault/` (see
+`docker-compose.yml`). This directory keeps only `README.md` and a static
+sample `prices.beancount`.
 
 ## Layout
 

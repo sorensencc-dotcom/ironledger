@@ -14,7 +14,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - IRONLEDGER_DB_PATH=/data/ironledger.db
-      - IRONLEDGER_LEDGER_DIR=/data/ledger
+      - IRONLEDGER_LEDGER_DIR=/data/ledger-vault
       - IRONLEDGER_PROJECTION_DIR=/data/projection
       - IRONLEDGER_PROJECTION_DB_PATH=/data/projection/projection.sqlite
       - PYTHONPATH=/data/src

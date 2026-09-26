@@ -47,3 +47,19 @@ evidence/source_records/
 
 # Local graft session cache
 graft/
+
+# Local DB corruption recovery scratch (sqlite3 tools + dumps, never Git financial artifacts)
+.recovery-work/
+
+# Local pytest fixture scratch (Windows readonly-attr tests leave undeletable files here)
+pytest-local-tmp/
+
+# Local compiled projection cache — derived, rebuildable from ledger/ + sqlite
+projection/
+
+# Local staging scratch (container run ids from ingest sandbox)
+ledger/.staging/
+
+# Real ledger ground truth — split to a separate private repo (nested .git),
+# never tracked here so this repo can go public. See ledger-vault/README.md.
+/ledger-vault/
