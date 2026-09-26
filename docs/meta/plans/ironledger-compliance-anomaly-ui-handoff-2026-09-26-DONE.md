@@ -1,6 +1,6 @@
 # Handoff — compliance + anomaly web UI — DONE, next steps only
 
-Repo: `C:\dev\IronLedger`, branch `main`, HEAD `1c5876b` (pushed).
+Repo: `C:\dev\IronLedger`, branch `main`, feature commit `1c5876b` (pushed to `origin/main`).
 Prior handoff this closes: `ironledger-compliance-anomaly-ui-handoff-2026-09-26.md`.
 
 ## What shipped (verified: full test suite + build, not live docker)
