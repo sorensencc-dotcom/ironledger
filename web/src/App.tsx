@@ -15,6 +15,8 @@ import { CashFlowSankey } from './components/analytics/CashFlowSankey';
 import { HoldingsView } from './components/portfolio/HoldingsView';
 import { WatchlistPanel } from './components/portfolio/WatchlistPanel';
 import { TaxPanel } from './components/TaxPanel';
+import { CompliancePanel } from './components/CompliancePanel';
+import { AnomalyPanel } from './components/AnomalyPanel';
 import { api } from './api';
 
 import type {
@@ -656,6 +658,10 @@ export default function App() {
         )}
 
         {activeView === 'gains' && <TaxPanel />}
+
+        {activeView === 'compliance' && <CompliancePanel />}
+
+        {activeView === 'anomaly' && <AnomalyPanel />}
 
         {activeView === 'portfolio' && (
           <div className="flex-1 p-6 overflow-y-auto space-y-6 font-mono bg-[#0d0a08] relative">

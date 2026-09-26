@@ -505,3 +505,80 @@ export interface DisposalPreview {
   short_term_gain_display: string;
   long_term_gain_display: string;
 }
+
+export type ComplianceFramework = 'SOC2_TYPE2' | 'ISO27001' | 'SOX' | 'CUSTOM';
+
+export interface ComplianceBundleGenerateRequest {
+  ledger_id?: string;
+  framework: ComplianceFramework;
+  period_start_utc: string;
+  period_end_utc: string;
+}
+
+export interface ComplianceBundle {
+  ledger_id: string;
+  bundle_id: string;
+  framework: ComplianceFramework;
+  period_start_utc: string;
+  period_end_utc: string;
+  merkle_root_hex: string;
+  sealed_archive_sha256: string;
+  record_count: number;
+  manifest: Record<string, unknown>;
+}
+
+export interface ComplianceBundleVerification {
+  is_valid: boolean;
+  bundle_id: string;
+  ledger_id: string;
+  framework: ComplianceFramework;
+  merkle_root_hex: string;
+  sealed_archive_sha256: string;
+  record_count: number;
+  manifest: Record<string, unknown>;
+}
+
+export type AnomalyRuleType = 'DUPLICATE_CHARGE' | 'VELOCITY_SPIKE' | 'RATIONAL_OUTLIER' | 'UNUSUAL_PAYEE';
+export type AnomalySeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type AnomalyResolution = 'DISMISSED' | 'CONFIRMED_FRAUD' | 'RESOLVED_VALID';
+
+export interface AnomalyFinding {
+  flag_id: string;
+  ledger_id: string;
+  staged_transaction_id: string;
+  rule_type: AnomalyRuleType;
+  severity: AnomalySeverity;
+  score_numerator: number;
+  score_denominator: number;
+  details: Record<string, unknown>;
+  created_at_utc: string;
+}
+
+export interface AnomalyScanResult {
+  ledger_id: string;
+  scanned_count: number;
+  findings: AnomalyFinding[];
+}
+
+export interface AnomalyFlag {
+  flag_id: string;
+  staged_transaction_id: string;
+  rule_type: AnomalyRuleType;
+  severity: AnomalySeverity;
+  score_numerator: number;
+  score_denominator: number;
+  resolution_status: AnomalyResolution | null;
+  created_at_utc: string;
+}
+
+export interface AnomalyFlagsList {
+  ledger_id: string;
+  flags: AnomalyFlag[];
+  count: number;
+}
+
+export interface AnomalyResolveRequest {
+  resolution_status: AnomalyResolution;
+  actor: string;
+  reason?: string;
+}

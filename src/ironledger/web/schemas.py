@@ -409,3 +409,90 @@ class DisposalPreviewResponse(BaseModel):
     allocations: List[DisposalAllocationResponse]
     remaining_lots: List[RemainingTaxLotResponse]
 
+class ComplianceBundleGenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ledger_id: str = "default"
+    framework: Literal["SOC2_TYPE2", "ISO27001", "SOX", "CUSTOM"]
+    period_start_utc: str
+    period_end_utc: str
+
+
+class ComplianceBundleResponse(BaseModel):
+    ledger_id: str
+    bundle_id: str
+    framework: str
+    period_start_utc: str
+    period_end_utc: str
+    merkle_root_hex: str
+    sealed_archive_sha256: str
+    record_count: int
+    manifest: dict[str, Any]
+
+
+class ComplianceBundleVerifyResponse(BaseModel):
+    is_valid: bool
+    bundle_id: str
+    ledger_id: str
+    framework: str
+    merkle_root_hex: str
+    sealed_archive_sha256: str
+    record_count: int
+    manifest: dict[str, Any]
+
+
+class AnomalyScanRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ledger_id: str = "default"
+    rules: Optional[List[Literal["DUPLICATE_CHARGE", "VELOCITY_SPIKE", "RATIONAL_OUTLIER", "UNUSUAL_PAYEE"]]] = None
+
+
+class AnomalyFindingResponse(BaseModel):
+    flag_id: str
+    ledger_id: str
+    staged_transaction_id: str
+    rule_type: str
+    severity: str
+    score_numerator: int
+    score_denominator: int
+    details: dict[str, Any]
+    created_at_utc: str
+
+
+class AnomalyScanResponse(BaseModel):
+    ledger_id: str
+    scanned_count: int
+    findings: List[AnomalyFindingResponse]
+
+
+class AnomalyFlagResponse(BaseModel):
+    flag_id: str
+    staged_transaction_id: str
+    rule_type: str
+    severity: str
+    score_numerator: int
+    score_denominator: int
+    resolution_status: Optional[str]
+    created_at_utc: str
+
+
+class AnomalyFlagsListResponse(BaseModel):
+    ledger_id: str
+    flags: List[AnomalyFlagResponse]
+    count: int
+
+
+class AnomalyResolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    resolution_status: Literal["DISMISSED", "CONFIRMED_FRAUD", "RESOLVED_VALID"]
+    actor: str = Field(min_length=1)
+    reason: str = ""
+
+
+class AnomalyResolveResponse(BaseModel):
+    success: bool
+    flag_id: str
+    resolution_status: str
+

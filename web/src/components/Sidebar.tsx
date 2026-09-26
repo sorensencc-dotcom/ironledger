@@ -11,6 +11,8 @@ import {
   ShieldAlert,
   TrendingUp,
   PieChart,
+  FileCheck,
+  AlertTriangle,
 } from 'lucide-react';
 
 export type ActiveView =
@@ -26,6 +28,8 @@ export type ActiveView =
   | 'metrics'
   | 'federation'
   | 'failover'
+  | 'compliance'
+  | 'anomaly'
   | 'settings';
 
 interface SidebarProps {
@@ -98,6 +102,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'failover' as ActiveView,
       label: 'Failover & Cluster HA',
       icon: ShieldAlert,
+    },
+    {
+      id: 'compliance' as ActiveView,
+      label: 'Compliance Bundles',
+      icon: FileCheck,
+    },
+    {
+      id: 'anomaly' as ActiveView,
+      label: 'Anomaly Flags',
+      icon: AlertTriangle,
     },
     {
       id: 'metrics' as ActiveView,

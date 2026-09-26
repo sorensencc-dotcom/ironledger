@@ -17,7 +17,7 @@ from starlette.responses import Response
 from ironledger.db.connection import connect
 from ironledger.observability.middleware import MetricsMiddleware
 from ironledger.web.errors import GovernanceException, governance_exception_handler
-from ironledger.web.routers import analytics, compile, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, tax, webhooks
+from ironledger.web.routers import analytics, anomaly, compile, compliance, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, tax, webhooks
 
 __all__ = ["create_app"]
 
@@ -88,6 +88,9 @@ def create_app(
     resolved_config_dir = (
         Path(config_dir).resolve() if config_dir else resolved_db_path.parent / "config"
     )
+    compliance_bundle_dir = Path(
+        os.environ.get("IRONLEDGER_COMPLIANCE_BUNDLE_DIR") or (resolved_db_path.parent / "compliance-bundles")
+    ).resolve()
 
     def get_db() -> sqlite3.Connection:
         return connect(resolved_db_path)
@@ -100,6 +103,7 @@ def create_app(
     app.state.projection_dir = projection_dir
     app.state.projection_db_path = resolved_proj_path
     app.state.config_dir = resolved_config_dir
+    app.state.compliance_bundle_dir = compliance_bundle_dir
     app.state.get_db = get_db
     app.state.get_projection_db = get_projection_db
     app.state.op_token = os.environ.get("IRONLEDGER_OP_TOKEN")
@@ -120,6 +124,8 @@ def create_app(
     app.include_router(failover.router)
     app.include_router(analytics.router)
     app.include_router(tax.router)
+    app.include_router(compliance.router)
+    app.include_router(anomaly.router)
 
     if static_dir is None:
         env_static = os.environ.get("IRONLEDGER_STATIC_DIR")

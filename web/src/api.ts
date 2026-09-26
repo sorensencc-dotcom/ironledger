@@ -38,6 +38,13 @@ import type {
   OpenTaxLots,
   TaxTerm,
   UnrealizedGains,
+  ComplianceBundle,
+  ComplianceBundleGenerateRequest,
+  ComplianceBundleVerification,
+  AnomalyRuleType,
+  AnomalyFlagsList,
+  AnomalyScanResult,
+  AnomalyResolveRequest,
 } from './types';
 
 
@@ -97,6 +104,67 @@ export const api = {
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
       throw new Error(error.detail || `Failed to preview disposal: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // Compliance
+  async generateComplianceBundle(payload: ComplianceBundleGenerateRequest): Promise<ComplianceBundle> {
+    const res = await fetch(`${API_BASE}/compliance/bundles`, {
+      method: 'POST', headers: getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to generate compliance bundle: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async verifyComplianceBundle(archive: File, expectedMerkleRoot?: string, expectedSha256?: string): Promise<ComplianceBundleVerification> {
+    const query = new URLSearchParams();
+    if (expectedMerkleRoot) query.set('expected_merkle_root', expectedMerkleRoot);
+    if (expectedSha256) query.set('expected_sha256', expectedSha256);
+    const form = new FormData();
+    form.append('archive', archive);
+    const res = await fetch(`${API_BASE}/compliance/bundles/verify?${query}`, {
+      method: 'POST', headers: getHeaders(), body: form,
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to verify compliance bundle: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  // Anomaly
+  async getAnomalyFlags(params: { ledgerId?: string; status?: string } = {}): Promise<AnomalyFlagsList> {
+    const query = new URLSearchParams();
+    if (params.ledgerId) query.set('ledger_id', params.ledgerId);
+    if (params.status) query.set('status', params.status);
+    const res = await fetch(`${API_BASE}/anomaly/flags?${query}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch anomaly flags: ${res.statusText}`);
+    return res.json();
+  },
+
+  async scanAnomalies(ledgerId: string = 'default', rules?: AnomalyRuleType[]): Promise<AnomalyScanResult> {
+    const res = await fetch(`${API_BASE}/anomaly/scan`, {
+      method: 'POST', headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ ledger_id: ledgerId, rules: rules ?? null }),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to scan for anomalies: ${res.statusText}`);
+    }
+    return res.json();
+  },
+
+  async resolveAnomalyFlag(flagId: string, payload: AnomalyResolveRequest, ledgerId: string = 'default'): Promise<{ success: boolean; flag_id: string; resolution_status: string }> {
+    const res = await fetch(`${API_BASE}/anomaly/flags/${flagId}/resolve?ledger_id=${encodeURIComponent(ledgerId)}`, {
+      method: 'POST', headers: getHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Failed to resolve anomaly flag: ${res.statusText}`);
     }
     return res.json();
   },
