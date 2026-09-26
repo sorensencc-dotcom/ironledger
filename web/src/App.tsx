@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TopHUD } from './components/TopHUD';
 import { Sidebar, ActiveView } from './components/Sidebar';
 import { RegisterGrid } from './components/RegisterGrid';
@@ -294,13 +294,16 @@ export default function App() {
     loadViewData();
   }, [activeView]);
 
+  const handleOpenCommandPalette = useCallback(() => setIsCommandPaletteOpen(true), []);
+  const noopOpenSplit = useCallback(() => {}, []);
+
   const showNotification = (msg: string, type: 'success' | 'error' = 'success') => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 3500);
   };
 
   // Actions
-  const handleApprove = async (stagedId: string) => {
+  const handleApprove = useCallback(async (stagedId: string) => {
     const item = staging.find((tx) => tx.staged_id === stagedId);
     if (item?.item_type === 'attach') {
       return;
@@ -312,9 +315,9 @@ export default function App() {
     } catch (err: any) {
       showNotification(err.message, 'error');
     }
-  };
+  }, [staging]);
 
-  const handleConfirmAttach = async (proposalId: string, chosenStagedId: string) => {
+  const handleConfirmAttach = useCallback(async (proposalId: string, chosenStagedId: string) => {
     try {
       await api.confirmAttach(proposalId, chosenStagedId);
       showNotification(`Attached ${proposalId.slice(0, 12)}`);
@@ -322,9 +325,9 @@ export default function App() {
     } catch (err: any) {
       showNotification(err.message, 'error');
     }
-  };
+  }, []);
 
-  const handleReject = async (stagedId: string) => {
+  const handleReject = useCallback(async (stagedId: string) => {
     const item = staging.find((tx) => tx.staged_id === stagedId);
     if (item?.item_type === 'attach' && item.proposal_id) {
       try {
@@ -343,14 +346,14 @@ export default function App() {
     } catch (err: any) {
       showNotification(err.message, 'error');
     }
-  };
+  }, [staging]);
 
-  const handleOpenRuleWizard = (stx: StagedTransaction) => {
+  const handleOpenRuleWizard = useCallback((stx: StagedTransaction) => {
     setRuleWizardTx(stx);
     setIsRuleWizardOpen(true);
-  };
+  }, []);
 
-  const handleScanRules = async () => {
+  const handleScanRules = useCallback(async () => {
     setScanningRules(true);
     try {
       const res = await api.autoMatch();
@@ -361,9 +364,9 @@ export default function App() {
     } finally {
       setScanningRules(false);
     }
-  };
+  }, []);
 
-  const handleCategorize = async (stagedId: string, targetAccount: string) => {
+  const handleCategorize = useCallback(async (stagedId: string, targetAccount: string) => {
     try {
       const transaction = staging.find((tx) => tx.staged_id === stagedId);
       if (transaction?.status === 'rejected') {
@@ -375,9 +378,9 @@ export default function App() {
     } catch (err: any) {
       showNotification(err.message, 'error');
     }
-  };
+  }, []);
 
-  const handleRunSimulation = async () => {
+  const handleRunSimulation = useCallback(async () => {
     setIsSimulationOpen(true);
     setSimulating(true);
     try {
@@ -389,9 +392,9 @@ export default function App() {
     } finally {
       setSimulating(false);
     }
-  };
+  }, []);
 
-  const handleTriggerCompile = async () => {
+  const handleTriggerCompile = useCallback(async () => {
     setCompiling(true);
     try {
       const res = await api.compile(false, 'authorize compile');
@@ -402,9 +405,9 @@ export default function App() {
     } finally {
       setCompiling(false);
     }
-  };
+  }, []);
 
-  const handleTriggerSync = async () => {
+  const handleTriggerSync = useCallback(async () => {
     setSyncing(true);
     try {
       const res = await api.pollSync();
@@ -415,7 +418,7 @@ export default function App() {
     } finally {
       setSyncing(false);
     }
-  };
+  }, []);
 
   const handleTriggerConnectorSync = async (providerId: string) => {
     try {
@@ -473,7 +476,7 @@ export default function App() {
         health={health}
         readiness={readiness}
         onOpenSimulation={handleRunSimulation}
-        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onOpenCommandPalette={handleOpenCommandPalette}
         onTriggerCompile={handleTriggerCompile}
         onTriggerSync={handleTriggerSync}
         isCompiling={compiling}
@@ -500,7 +503,7 @@ export default function App() {
               onSelectIndex={setSelectedIndex}
               onApprove={handleApprove}
               onReject={handleReject}
-              onOpenSplit={() => {}}
+              onOpenSplit={noopOpenSplit}
               onOpenRuleWizard={handleOpenRuleWizard}
               statusFilter={statusFilter}
               onChangeStatusFilter={setStatusFilter}

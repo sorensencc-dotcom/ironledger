@@ -121,7 +121,7 @@ function InspectorFrame({
   );
 }
 
-export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
+const InspectorSidecarImpl: React.FC<InspectorSidecarProps> = ({
   transaction,
   rules,
   onOpenRuleWizard,
@@ -430,4 +430,6 @@ export const InspectorSidecar: React.FC<InspectorSidecarProps> = ({
     </InspectorFrame>
   );
 };
+
+export const InspectorSidecar = React.memo(InspectorSidecarImpl);
 
