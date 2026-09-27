@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, X, Split, AlertCircle } from 'lucide-react';
 import type { StagedTransaction } from '../types';
+import { humanizePayee } from '../lib/text';
 
 interface RegisterGridProps {
   transactions: StagedTransaction[];
@@ -184,13 +185,13 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
                 }`}
               >
                 <div className="col-span-2 font-ui text-xs text-ash tracking-wider">{tx.date}</div>
-                <div className="col-span-3 truncate font-display font-bold text-sm text-white" title={tx.payee}>
+                <div className="col-span-3 truncate font-serif font-bold text-sm text-white" title={tx.payee}>
                   {tx.item_type === 'attach' ? (
                     <span className="text-ember uppercase text-[10px] tracking-wider mr-1">
                       {tx.attach_kind === 'near_miss' ? 'near-miss' : 'attach'}
                     </span>
                   ) : null}
-                  {tx.payee || tx.narration || '(Unnamed)'}
+                  {tx.payee ? humanizePayee(tx.payee) : (tx.narration || '(Unnamed)')}
                 </div>
                 <div className="col-span-3 min-w-0 font-serif italic text-xs" title={categoryAccount || 'Uncategorized'}>
                   <div className={categoryAccount?.startsWith('Income:') ? 'text-gain' : 'text-ember'}>
