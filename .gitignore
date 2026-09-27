@@ -7,11 +7,8 @@ build/
 dist/
 
 # Local SQLite projection and WAL artifacts are never Git financial artifacts
-*.db
-*.db-wal
-*.db-shm
-*.sqlite
-*.sqlite3
+*.db*
+*.sqlite*
 *.lock
 
 # Secrets never enter the tree
@@ -64,12 +61,9 @@ ledger/.staging/
 # never tracked here so this repo can go public. See ledger-vault/README.md.
 /ledger-vault/
 
-# Personal CSV import profiles keyed by real card-last-4 digits — kept locally
-# and backed up in ledger-vault/config/csv-profiles/, never tracked here.
-config/csv-profiles/bilt-palladium.json
-config/csv-profiles/chase-freedom.json
-config/csv-profiles/amex-blue.json
-config/csv-profiles/amex-bonvoy.json
-config/csv-profiles/amex-delta-skymiles.json
-config/csv-profiles/amex-gold.json
-config/csv-profiles/amex-hilton-aspire.json
+# Personal CSV and PDF import profiles keyed by real card-last-4 digits — kept locally
+# and backed up in ledger-vault/config/, never tracked here.
+config/csv-profiles/*.json
+!config/csv-profiles/example-*.json
+config/pdf-profiles/*.json
+!config/pdf-profiles/example-*.json

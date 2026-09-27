@@ -26,7 +26,7 @@ Every number in section 4 comes from a test run executed against `HEAD` `93269f6
 | Commit author | All 35 commits authored `Iron-Hammer <iron-hammer@ironledger.local>` (repo-local config). `backup/pre-author-rewrite-20260908` holds the pre-rewrite tip `4abb71f`. |
 | Compiler version | `ironledger.compile.beancheck.COMPILER_VERSION = "0.1.0"` |
 | `beancount` Python dep | None on the runtime path. Optional extra `dev` pins `beancount==3.2.3` for the `bean-check` CLI. `src/ironledger` does not `import beancount`. |
-| `bean-check` on this host | `Beancount 3.2.3` (`C:\Users\soren\AppData\Roaming\Python\Python314\Scripts\bean-check.EXE`). That Scripts dir is not on the default user `PATH`; the evidence run prepended it. |
+| `bean-check` on this host | `Beancount 3.2.3` (`%APPDATA%\Python\Python314\Scripts\bean-check.EXE`). That Scripts dir is not on the default user `PATH`; the evidence run prepended it. |
 
 ### 2.1 What shipped
 
@@ -68,7 +68,7 @@ Recorded in `docs/meta/ironledger-dependency-posture.md` (Phase 3 amendment). Su
 From `C:\dev\IronLedger`:
 
 ```powershell
-$env:PATH = "C:\Users\soren\AppData\Roaming\Python\Python314\Scripts;" + $env:PATH
+$env:PATH = "$env:APPDATA\Python\Python314\Scripts;" + $env:PATH
 $env:PYTHONPATH='src'; python -m pytest -q
 ```
 
@@ -122,7 +122,7 @@ These are the honest leftovers. None are unreviewed surprises; they were either 
 4. **No live bank-file compile, no production ledger, no Git publication of `ledger/`.** Same focused-suite posture as Phases 1, 2a, and 2b.
 5. **Item 11 is "named tests exist and contain asserts", not a full restatement of spec §11.** The recovery suite itself is the behavioral evidence.
 6. **No remote, Iron-Hammer author.** Reconcile identity before the repo ever gains a remote. Do not push.
-7. **Default user `PATH` does not include the Python user Scripts dir.** `bean-check` is installed; the evidence run had to prepend `C:\Users\soren\AppData\Roaming\Python\Python314\Scripts`. A later shell without that prefix will skip item 6 again. Optional follow-up: add that dir to the user PATH.
+7. **Default user `PATH` does not include the Python user Scripts dir.** `bean-check` is installed; the evidence run had to prepend `%APPDATA%\Python\Python314\Scripts`. A later shell without that prefix will skip item 6 again. Optional follow-up: add that dir to the user PATH.
 
 Closed in this evidence session: live `bean-check` (spec §14 item 6) against `beancount 3.2.3`. Renderer output is valid Beancount.
 
