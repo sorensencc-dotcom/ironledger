@@ -76,7 +76,16 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
       });
     };
     updatePosition();
-    const closeOnScroll = () => setOpen(false);
+    // Ignore scrolls that originate inside the menu itself (e.g. scrolling
+    // its own overflow-y-auto list to reach an option below the fold) —
+    // only close on a scroll happening elsewhere on the page.
+    const closeOnScroll = (ev: Event) => {
+      const target = ev.target as Node | null;
+      if (target instanceof Element && target.closest('[data-account-typeahead-menu]')) {
+        return;
+      }
+      setOpen(false);
+    };
     window.addEventListener('scroll', closeOnScroll, true);
     window.addEventListener('resize', updatePosition);
     return () => {

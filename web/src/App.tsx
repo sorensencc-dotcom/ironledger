@@ -379,7 +379,7 @@ export default function App() {
     } catch (err: any) {
       showNotification(err.message, 'error');
     }
-  }, []);
+  }, [staging]);
 
   const handleRunSimulation = useCallback(async () => {
     setIsSimulationOpen(true);
