@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, X, Split, AlertCircle } from 'lucide-react';
-import type { StagedTransaction } from '../types';
+import type { Rule, StagedTransaction } from '../types';
 import { humanizePayee } from '../lib/text';
+import { getCategoryAccount } from '../lib/staging';
+import { AccountTypeahead } from './AccountTypeahead';
 
 interface RegisterGridProps {
   transactions: StagedTransaction[];
@@ -11,6 +13,8 @@ interface RegisterGridProps {
   onReject: (stagedId: string) => void;
   onOpenSplit: (stx: StagedTransaction) => void;
   onOpenRuleWizard: (stx: StagedTransaction) => void;
+  onCategorize?: (stagedId: string, targetAccount: string) => void;
+  rules: Rule[];
   statusFilter: string;
   onChangeStatusFilter: (status: string) => void;
   searchQuery: string;
@@ -18,6 +22,45 @@ interface RegisterGridProps {
   onScanRules?: () => void;
   scanningRules?: boolean;
 }
+
+interface RegisterCategoryCellProps {
+  categoryAccount?: string;
+  rules: Rule[];
+  onApply?: (account: string) => void;
+}
+
+// Inline categorize control for a staging row: lets an operator retarget the
+// posting account and commit it without leaving the row for the inspector,
+// mirroring InspectorSidecar's "Categorize this row" + "Apply" pattern.
+const RegisterCategoryCellImpl: React.FC<RegisterCategoryCellProps> = ({ categoryAccount, rules, onApply }) => {
+  const [value, setValue] = useState(categoryAccount || '');
+
+  useEffect(() => {
+    setValue(categoryAccount || '');
+  }, [categoryAccount]);
+
+  const dirty = value.trim() !== '' && value.trim() !== (categoryAccount || '');
+
+  return (
+    <div className="col-span-3 min-w-0 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex-1 min-w-0">
+        <AccountTypeahead value={value} onChange={setValue} rules={rules} placeholder="Expenses:Auto" />
+      </div>
+      {dirty && onApply && (
+        <button
+          type="button"
+          onClick={() => onApply(value.trim())}
+          title="Apply category"
+          className="shrink-0 p-1.5 border border-ember/40 text-ember hover:bg-ember/10 transition-colors"
+        >
+          <Check className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+const RegisterCategoryCell = React.memo(RegisterCategoryCellImpl);
 
 const RegisterGridImpl: React.FC<RegisterGridProps> = ({
   transactions,
@@ -27,6 +70,8 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
   onReject,
   onOpenSplit,
   onOpenRuleWizard,
+  onCategorize,
+  rules,
   statusFilter,
   onChangeStatusFilter,
   searchQuery,
@@ -36,7 +81,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const rowHeight = 44;
+  const rowHeight = 56;
   const visibleCount = 40;
   const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
   const endIndex = Math.min(transactions.length, startIndex + visibleCount + 10);
@@ -156,12 +201,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
           {visibleTransactions.map((tx, visibleIndex) => {
             const idx = startIndex + visibleIndex;
             const isSelected = idx === selectedIndex;
-            const categoryAccount = tx.category_account || tx.postings.find((p) =>
-              /^(Expenses|Income|Equity):/.test(p.account) && !p.account.endsWith(':Unassigned'),
-            )?.account;
-            const categoryParts = categoryAccount?.split(':') || [];
-            const category = categoryParts[1] || 'Uncategorized';
-            const subcategory = categoryParts.slice(2).join(' / ');
+            const categoryAccount = getCategoryAccount(tx);
             const scale = tx.scale || 2;
             const rawAmount = tx.minor_units / 10 ** scale;
             const isNegative = tx.minor_units < 0;
@@ -193,14 +233,11 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
                   ) : null}
                   {tx.payee ? humanizePayee(tx.payee) : (tx.narration || '(Unnamed)')}
                 </div>
-                <div className="col-span-3 min-w-0 font-serif italic text-xs" title={categoryAccount || 'Uncategorized'}>
-                  <div className={categoryAccount?.startsWith('Income:') ? 'text-gain' : 'text-ember'}>
-                    {category}
-                  </div>
-                  <div className="truncate text-[10px] text-ash not-italic">
-                    {subcategory || (categoryAccount ? 'No subcategory' : 'Needs categorization')}
-                  </div>
-                </div>
+                <RegisterCategoryCell
+                  categoryAccount={categoryAccount}
+                  rules={rules}
+                  onApply={onCategorize ? (account) => onCategorize(tx.staged_id, account) : undefined}
+                />
                 <div className={`col-span-2 text-right font-ui font-extrabold text-sm ${isNegative ? 'text-loss-bright' : 'text-gain-bright'}`}>
                   {amountFormatted} <span className="text-ash font-normal text-[10px] tracking-wider uppercase">{tx.currency}</span>
                 </div>

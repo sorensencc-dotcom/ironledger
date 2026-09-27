@@ -18,6 +18,7 @@ import { TaxPanel } from './components/TaxPanel';
 import { CompliancePanel } from './components/CompliancePanel';
 import { AnomalyPanel } from './components/AnomalyPanel';
 import { api } from './api';
+import { getCategoryAccount } from './lib/staging';
 
 import type {
   AuditEvent,
@@ -448,9 +449,7 @@ export default function App() {
 
   // Filter staging items by search query
   const filteredStaging = useMemo(() => staging.filter((tx) => {
-    const categoryAccount = tx.category_account || tx.postings.find((p) =>
-      /^(Expenses|Income|Equity):/.test(p.account) && !p.account.endsWith(':Unassigned'),
-    )?.account;
+    const categoryAccount = getCategoryAccount(tx);
     if (statusFilter === 'uncategorized' && categoryAccount) return false;
     if (statusFilter && statusFilter !== 'uncategorized' && tx.status !== statusFilter) return false;
     if (!searchQuery.trim()) return true;
@@ -546,6 +545,8 @@ export default function App() {
               onReject={handleReject}
               onOpenSplit={noopOpenSplit}
               onOpenRuleWizard={handleOpenRuleWizard}
+              onCategorize={handleCategorize}
+              rules={rules}
               statusFilter={statusFilter}
               onChangeStatusFilter={setStatusFilter}
               searchQuery={searchQuery}
