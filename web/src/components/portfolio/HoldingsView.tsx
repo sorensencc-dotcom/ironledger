@@ -1,6 +1,22 @@
 import React from "react";
 import type { StagedPortfolioSummary } from "../../types";
 
+// Bank/broker feeds hand us shouty, all-caps memo text (e.g. "REDEMPTION FROM CORE
+// ACCOUNT FIDELITY GOVERNMENT CASH RESERVES (FDRXX)"). Title-case it for display,
+// leaving parenthetical codes/tickers (which are reliably wrapped in parens in this
+// data) untouched rather than guessing which bare short words are acronyms.
+function humanizePayee(raw: string): string {
+  if (!raw) return raw;
+  return raw
+    .split(" ")
+    .map((word) => {
+      if (/^\(.+\)$/.test(word)) return word;
+      const lower = word.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
 export interface HoldingRecord {
   commodity: string;
   total_units: number;
@@ -47,15 +63,15 @@ export const HoldingsView: React.FC<{ holdings: HoldingRecord[]; stagedSummary?:
         )}
         {(stagedSummary?.candidates?.length ?? 0) > 0 && (
           <div className="mb-4 border border-[#2c2420] bg-[#130f0c] p-3">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#b8922a]">Investment candidates</div>
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#b8922a] font-sans">Investment candidates</div>
             <div className="max-h-64 overflow-y-auto">
               {stagedSummary!.candidates.slice(0, 20).map((candidate, index) => (
                 <div key={`${candidate.date}-${candidate.payee}-${index}`} className="flex items-center justify-between gap-3 border-t border-[#2c2420] py-2 text-[11px]">
                   <div className="min-w-0">
-                    <div className="truncate text-[#f2ece2]">{candidate.payee || 'Unnamed transaction'}</div>
-                    <div className="text-[#7a6e65]">{candidate.date} · {candidate.account}</div>
+                    <div className="truncate font-serif italic text-[#f2ece2]">{candidate.payee ? humanizePayee(candidate.payee) : 'Unnamed transaction'}</div>
+                    <div className="text-[#7a6e65] font-mono text-[10px] mt-0.5">{candidate.date} · {candidate.account}</div>
                   </div>
-                  <div className="shrink-0 text-[#a89e94]">{(candidate.minor_units / 10 ** candidate.minor_unit_scale).toFixed(2)} {candidate.currency}</div>
+                  <div className="shrink-0 text-[#a89e94] font-mono">{(candidate.minor_units / 10 ** candidate.minor_unit_scale).toFixed(2)} {candidate.currency}</div>
                 </div>
               ))}
             </div>
