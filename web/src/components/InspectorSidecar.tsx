@@ -4,6 +4,7 @@ import { api } from '../api';
 import type { Rule, RuleDrift, StagedTransaction } from '../types';
 import { AccountTypeahead } from './AccountTypeahead';
 import { isRuleActive } from './accountOptions';
+import { humanizePayee } from '../lib/text';
 
 interface InspectorSidecarProps {
   transaction: StagedTransaction | null;
@@ -213,7 +214,7 @@ const InspectorSidecarImpl: React.FC<InspectorSidecarProps> = ({
                   checked={chosenCandidate === c.staged_id}
                   onChange={() => setChosenCandidate(c.staged_id)}
                 />
-                <span>{c.date} {c.payee} ({c.minor_units})</span>
+                <span>{c.date} {humanizePayee(c.payee)} ({c.minor_units})</span>
               </label>
             ))}
           </div>

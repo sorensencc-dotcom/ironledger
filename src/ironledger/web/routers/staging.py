@@ -103,6 +103,7 @@ def list_staged_transactions(
                         currency=p_curr,
                         minor_units=p_units,
                         scale=p_scale,
+                        role=p_role,
                     )
                 )
 

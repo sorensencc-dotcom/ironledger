@@ -3,6 +3,7 @@ export interface Posting {
   currency: string;
   minor_units: number;
   scale: number;
+  role?: string | null;
 }
 
 export interface AttachCandidate {
