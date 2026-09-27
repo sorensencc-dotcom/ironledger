@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Rule } from '../types';
 import { accountOptionsFromRules, filterAccountOptions } from './accountOptions';
 
@@ -10,6 +11,9 @@ interface AccountTypeaheadProps {
   disabled?: boolean;
 }
 
+const MENU_MARGIN = 4;
+const MENU_MAX_HEIGHT = 192;
+
 export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
   value,
   onChange,
@@ -19,7 +23,9 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const options = useMemo(() => accountOptionsFromRules(rules), [rules]);
   const filtered = useMemo(() => filterAccountOptions(options, value), [options, value]);
@@ -36,13 +42,48 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
 
   useEffect(() => {
     const onDoc = (ev: MouseEvent) => {
-      if (!wrapRef.current?.contains(ev.target as Node)) {
-        setOpen(false);
-      }
+      const target = ev.target as HTMLElement;
+      if (wrapRef.current?.contains(target)) return;
+      if (target?.closest('[data-account-typeahead-menu]')) return;
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
+
+  // Render the suggestion list in a portal, positioned in fixed coordinates
+  // against the input's own bounding box. AccountTypeahead is used both in a
+  // tall side panel (room to open upward) and inline in a scrolling table
+  // row (where opening upward can run out of room near the top of the
+  // scroll area) — pick whichever side has more space instead of a fixed
+  // direction, so the menu is never clipped by a scrollable ancestor.
+  useLayoutEffect(() => {
+    if (!open || !inputRef.current) return;
+    const updatePosition = () => {
+      if (!inputRef.current) return;
+      const rect = inputRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const openUp = spaceBelow < MENU_MAX_HEIGHT && spaceAbove > spaceBelow;
+      setMenuStyle({
+        position: 'fixed',
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.max(120, Math.min(MENU_MAX_HEIGHT, (openUp ? spaceAbove : spaceBelow) - MENU_MARGIN * 2)),
+        ...(openUp
+          ? { bottom: window.innerHeight - rect.top + MENU_MARGIN }
+          : { top: rect.bottom + MENU_MARGIN }),
+      });
+    };
+    updatePosition();
+    const closeOnScroll = () => setOpen(false);
+    window.addEventListener('scroll', closeOnScroll, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', closeOnScroll, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open]);
 
   const pick = (account: string) => {
     onChange(account);
@@ -74,6 +115,7 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
   return (
     <div ref={wrapRef} className="relative">
       <input
+        ref={inputRef}
         type="text"
         role="combobox"
         aria-expanded={open}
@@ -87,12 +129,14 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
           setOpen(true);
         }}
         onKeyDown={onKeyDown}
-        className="w-full px-3 py-2 rounded-none bg-[#0d0a08] border border-[#3a2e26] text-[#f2ece2] text-xs font-mono focus:outline-none focus:border-[#c4501a] disabled:opacity-50"
+        className="w-full px-3 py-2 rounded-[4px] bg-[#0d0a08] border border-[#3a2e26] text-[#f2ece2] text-xs font-mono focus:outline-none focus:border-[#c4501a] disabled:opacity-50"
       />
-      {open && rows.length > 0 && (
+      {open && rows.length > 0 && createPortal(
         <ul
           role="listbox"
-          className="absolute bottom-full z-30 mb-1 w-full max-h-48 overflow-y-auto bg-[#1a1410] border border-[#3a2e26] shadow-xl"
+          data-account-typeahead-menu
+          style={menuStyle}
+          className="z-[9999] overflow-y-auto bg-[#1a1410] border border-[#3a2e26] shadow-xl rounded-[4px]"
         >
           <li className="sticky top-0 z-10 px-3 py-1.5 bg-[#241c16] border-b border-[#3a2e26] text-[10px] text-[#7a6e65] font-sans uppercase tracking-wider">
             {filtered.length} existing categor{filtered.length === 1 ? 'y' : 'ies'} · ↑↓ navigate · Enter select
@@ -117,7 +161,8 @@ export const AccountTypeahead: React.FC<AccountTypeaheadProps> = ({
               </button>
             </li>
           ))}
-        </ul>
+        </ul>,
+        document.body,
       )}
     </div>
   );

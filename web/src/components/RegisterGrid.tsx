@@ -51,7 +51,7 @@ const RegisterCategoryCellImpl: React.FC<RegisterCategoryCellProps> = ({ categor
           type="button"
           onClick={() => onApply(value.trim())}
           title="Apply category"
-          className="shrink-0 p-1.5 border border-ember/40 text-ember hover:bg-ember/10 transition-colors"
+          className="shrink-0 p-1.5 rounded-[4px] border border-ember/40 text-ember hover:bg-ember/10 transition-colors"
         >
           <Check className="w-3.5 h-3.5" />
         </button>
@@ -81,7 +81,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const rowHeight = 56;
+  const rowHeight = 64;
   const visibleCount = 40;
   const startIndex = Math.max(0, Math.floor(scrollTop / rowHeight) - 5);
   const endIndex = Math.min(transactions.length, startIndex + visibleCount + 10);
@@ -225,7 +225,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
                 }`}
               >
                 <div className="col-span-2 font-ui text-xs text-ash tracking-wider">{tx.date}</div>
-                <div className="col-span-3 truncate font-serif font-bold text-sm text-white" title={tx.payee}>
+                <div className="col-span-3 min-w-0 line-clamp-2 break-words font-serif font-bold text-xs text-white" title={tx.payee}>
                   {tx.item_type === 'attach' ? (
                     <span className="text-ember uppercase text-[10px] tracking-wider mr-1">
                       {tx.attach_kind === 'near_miss' ? 'near-miss' : 'attach'}
