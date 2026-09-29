@@ -287,25 +287,29 @@ def parse_email_receipt(raw_eml: str | bytes) -> ParsedItemizedOrder:
                     )
                 )
 
-    if not subtotal_minor:
+    if lines:
         subtotal_minor = sum(l.total_price_minor for l in lines)
-    if not total_minor:
         total_minor = subtotal_minor + tax_minor + shipping_minor - discount_minor
+    else:
+        if total_minor:
+            subtotal_minor = total_minor - tax_minor - shipping_minor + discount_minor
+        else:
+            total_minor = subtotal_minor + tax_minor + shipping_minor - discount_minor
 
-    # If no lines were parsed, create single line from total
-    if not lines and total_minor > 0:
-        lines.append(
-            ParsedOrderLine(
-                line_index=0,
-                item_title=unwrapped.original_subject or f"{merchant} Purchase",
-                item_description=f"Source: {unwrapped.forwarder_account}",
-                quantity=1,
-                unit_price_minor=total_minor,
-                total_price_minor=total_minor,
-                proposed_account="Expenses:Uncategorized",
-                confidence_score=50,
+        if subtotal_minor > 0 or total_minor > 0:
+            line_amt = subtotal_minor if subtotal_minor > 0 else total_minor
+            lines.append(
+                ParsedOrderLine(
+                    line_index=0,
+                    item_title=unwrapped.original_subject or f"{merchant} Purchase",
+                    item_description=f"Source: {unwrapped.forwarder_account}",
+                    quantity=1,
+                    unit_price_minor=line_amt,
+                    total_price_minor=line_amt,
+                    proposed_account="Expenses:Uncategorized",
+                    confidence_score=50,
+                )
             )
-        )
 
     order_id = "ord_" + hashlib.sha256(f"{merchant}:{merchant_order_ref}:{unwrapped.original_date}:{total_minor}".encode("utf-8")).hexdigest()[:16]
 

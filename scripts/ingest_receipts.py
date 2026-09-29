@@ -13,6 +13,7 @@ import sqlite3
 
 from ironledger.db.connection import connect
 from ironledger.db.migrations import migrate
+from ironledger.ingest.acquire import acquire
 from ironledger.ingest.formats.email_receipt_engine import parse_email_receipt
 from ironledger.ingest.split_linker import propose_splits_for_order
 
@@ -51,7 +52,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    if not args.receipts-dir.exists() if hasattr(args, "receipts-dir") else not args.receipts_dir.exists():
+    if not args.receipts_dir.exists():
         print(f"Error: receipts directory not found: {args.receipts_dir}", file=sys.stderr)
         return 1
 
@@ -102,7 +103,9 @@ def main() -> int:
                 cur = conn.execute("SELECT COUNT(*) FROM split_proposals WHERE order_id = ?", (order.order_id,))
                 props_before = cur.fetchone()[0]
 
-                proposal_id = propose_splits_for_order(conn, order)
+                ev_dir = Path(args.db).resolve().parent / "evidence"
+                acq = acquire(conn, file_path, evidence_dir=ev_dir, provenance="email_receipt")
+                proposal_id = propose_splits_for_order(conn, order, acq.source_document_id)
 
                 cur = conn.execute("SELECT COUNT(*) FROM split_proposals WHERE order_id = ?", (order.order_id,))
                 props_after = cur.fetchone()[0]
