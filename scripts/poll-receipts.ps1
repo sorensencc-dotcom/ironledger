@@ -10,7 +10,7 @@
 param(
     [string]$DbPath = "ironledger.db",
     [string]$ReceiptsDir = "inbox/receipts",
-    [string]$AddLabel = "IronLedger-Processed",
+    [string]$AddLabel = "IronLedger/Processed",
     [string]$RemoveLabel = ""
 )
 

@@ -96,7 +96,9 @@ def main() -> int:
 
             # Ingest into SQLite database
             try:
-                # Count proposals before
+                cur = conn.execute("SELECT 1 FROM itemized_orders WHERE order_id = ?", (order.order_id,))
+                already_exists = cur.fetchone() is not None
+
                 cur = conn.execute("SELECT COUNT(*) FROM split_proposals WHERE order_id = ?", (order.order_id,))
                 props_before = cur.fetchone()[0]
 
@@ -107,10 +109,13 @@ def main() -> int:
 
                 if props_after > props_before:
                     split_proposals_created += (props_after - props_before)
-                orders_inserted += 1
+
+                if not already_exists:
+                    orders_inserted += 1
 
                 if idx <= 10 or idx % 500 == 0 or idx == len(eml_files):
-                    print(f"[{idx}/{len(eml_files)}] Ingested {order.merchant} order {order.order_id} (${order.total_minor_units / 100:.2f}) - {len(order.lines)} lines")
+                    status_lbl = "Existing" if already_exists else "Ingested"
+                    print(f"[{idx}/{len(eml_files)}] [{status_lbl}] {order.merchant} order {order.order_id} (${order.total_minor_units / 100:.2f}) - {len(order.lines)} lines")
 
             except Exception as exc:
                 print(f"[{idx}/{len(eml_files)}] DB error for {file_path.name}: {exc}", file=sys.stderr)
@@ -123,7 +128,8 @@ def main() -> int:
         print(f"  Successfully parsed:    {parsed_count}")
         print(f"  Parse skips/errors:     {parse_errors}")
         if not args.dry_run:
-            print(f"  Orders stored in DB:    {orders_inserted}")
+            print(f"  Newly inserted orders:  {orders_inserted}")
+            print(f"  Existing orders checked:{parsed_count - orders_inserted}")
             print(f"  Split proposals matched:{split_proposals_created}")
             print(f"  Database path:          {Path(args.db).resolve()}")
 

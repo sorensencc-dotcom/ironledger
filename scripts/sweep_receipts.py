@@ -72,8 +72,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--add-label",
-        default=None,
-        help="Optional Gmail label to add after downloading (e.g. 'IronLedger-Processed')",
+        default="IronLedger/Processed",
+        help="Gmail label to add after downloading and exclude on subsequent sweeps (default: 'IronLedger/Processed')",
     )
     parser.add_argument(
         "--remove-label",
@@ -108,8 +108,13 @@ def main() -> int:
         needs_write = bool(args.add_label or args.remove_label)
         mail.select('"[Gmail]/All Mail"', readonly=not needs_write)
 
-        print(f"Executing search: {args.query}")
-        escaped_query = args.query.replace("\\", "\\\\").replace('"', '\\"')
+        # Automatically exclude already-processed emails if label exclusion is not in query
+        query = args.query
+        if args.add_label and f"-label:{args.add_label}" not in query and f'-label:"{args.add_label}"' not in query:
+            query = f'({query}) -label:"{args.add_label}"'
+
+        print(f"Executing search: {query}")
+        escaped_query = query.replace("\\", "\\\\").replace('"', '\\"')
         status, data = mail.uid("SEARCH", "X-GM-RAW", f'"{escaped_query}"')
         if status != "OK" or not data or not data[0]:
             print("No matching messages found.")
