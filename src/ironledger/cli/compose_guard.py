@@ -51,7 +51,7 @@ def compose_service_running(service: str = "ironledger") -> bool:
     )
 
 
-def warn_if_compose_running(*, stream=sys.stderr) -> bool:
+def warn_if_compose_running(*, stream=None) -> bool:
     """Print a loud warning if the compose service shares this host's DB file.
 
     Returns True if a warning was printed, purely so callers/tests can assert
@@ -59,13 +59,17 @@ def warn_if_compose_running(*, stream=sys.stderr) -> bool:
     """
     if not compose_service_running():
         return False
-    print(
-        "WARNING: docker compose service 'ironledger' appears to be running "
-        "and shares this host's ironledger.db via bind mount. Writing from "
-        "both the host CLI and the container at once risks corrupting the "
-        "database (this happened once, 2026-09-24). Stop compose first "
-        "(`docker compose down`) or run this command inside the container "
-        "(`docker compose exec ironledger ironledger ...`).",
-        file=stream,
-    )
+    target = stream if stream is not None else sys.stderr
+    try:
+        print(
+            "WARNING: docker compose service 'ironledger' appears to be running "
+            "and shares this host's ironledger.db via bind mount. Writing from "
+            "both the host CLI and the container at once risks corrupting the "
+            "database (this happened once, 2026-09-24). Stop compose first "
+            "(`docker compose down`) or run this command inside the container "
+            "(`docker compose exec ironledger ironledger ...`).",
+            file=target,
+        )
+    except (ValueError, OSError):
+        pass
     return True

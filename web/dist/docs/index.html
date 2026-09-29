@@ -49,7 +49,7 @@
         <span class="font-bold text-sm tracking-wide text-slate-100 flex items-center gap-2">
           IronLedger
           <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800 font-mono">
-            v0.15.0 &bull; Inbox Attach + PDF Wedge
+            v0.17.0 &bull; Multi-Leg Splitter &amp; Receipts Engine
           </span>
         </span>
       </div>
@@ -67,16 +67,18 @@
       <nav class="space-y-1 text-xs">
         <a href="#tutorial" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors">1. Quickstart Tutorial</a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
-          <li><a href="#tutorial-step1" class="hover:text-indigo-400">&bull; Step 1: Ingest Statements</a></li>
-          <li><a href="#tutorial-step2" class="hover:text-indigo-400">&bull; Step 2: Import a PDF Statement</a></li>
-          <li><a href="#tutorial-step3" class="hover:text-indigo-400">&bull; Step 3: Confirm Attach</a></li>
-          <li><a href="#tutorial-step4" class="hover:text-indigo-400">&bull; Step 4: Review Remaining Pending</a></li>
+          <li><a href="#tutorial-step1" class="hover:text-indigo-400">&bull; Step 1: Ingest Bank Statements</a></li>
+          <li><a href="#tutorial-step2" class="hover:text-indigo-400">&bull; Step 2: Forward Receipts via Email</a></li>
+          <li><a href="#tutorial-step3" class="hover:text-indigo-400">&bull; Step 3: Ingest Amazon / Venmo CSV</a></li>
+          <li><a href="#tutorial-step4" class="hover:text-indigo-400">&bull; Step 4: Preview &amp; Confirm Splits</a></li>
+          <li><a href="#tutorial-step5" class="hover:text-indigo-400">&bull; Step 5: Compile Multi-Leg Ledger</a></li>
         </ul>
         <a href="#how-to" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">2. How-To Guides</a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
-          <li><a href="#how-to-attach" class="hover:text-indigo-400">&bull; Inbox Attach</a></li>
-          <li><a href="#how-to-pdf" class="hover:text-indigo-400">&bull; PDF Text-Layer Profiles</a></li>
-          <li><a href="#how-to-review" class="hover:text-indigo-400">&bull; Staging vs Attach Rows</a></li>
+          <li><a href="#how-to-splits" class="hover:text-indigo-400">&bull; Multi-Leg Order Splits</a></li>
+          <li><a href="#how-to-email-relay" class="hover:text-indigo-400">&bull; Multi-Account Email Forwarding</a></li>
+          <li><a href="#how-to-subscriptions" class="hover:text-indigo-400">&bull; Subscriptions &amp; Price Jumps</a></li>
+          <li><a href="#how-to-attach" class="hover:text-indigo-400">&bull; Inbox Attach &amp; PDF Ingest</a></li>
           <li><a href="#how-to-portfolio" class="hover:text-indigo-400">&bull; Multi-Asset Portfolio &amp; Pricing</a></li>
           <li><a href="#how-to-sankey" class="hover:text-indigo-400">&bull; Cash Flow &amp; Sankey Analysis</a></li>
           <li><a href="#how-to-compliance" class="hover:text-indigo-400">&bull; Compliance Audit Bundles</a></li>
@@ -84,14 +86,16 @@
         <a href="#reference" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">3. Technical Reference</a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
           <li><a href="#ref-api" class="hover:text-indigo-400">&bull; REST API Catalog</a></li>
+          <li><a href="#ref-mcp" class="hover:text-indigo-400">&bull; MCP Tool Catalog</a></li>
           <li><a href="#ref-cli" class="hover:text-indigo-400">&bull; CLI Command Matrix</a></li>
           <li><a href="#ref-shortcuts" class="hover:text-indigo-400">&bull; Keyboard Shortcuts</a></li>
         </ul>
         <a href="#explanation" class="block px-3 py-2 rounded text-slate-300 hover:bg-slate-800/60 hover:text-white transition-colors pt-2">4. Architecture &amp; Invariants</a>
         <ul class="pl-4 space-y-1 text-slate-400 text-[11px]">
-          <li><a href="#exp-identity" class="hover:text-indigo-400">&bull; Evidence-Linked Identity</a></li>
-          <li><a href="#exp-match" class="hover:text-indigo-400">&bull; Attach Match Key</a></li>
-          <li><a href="#exp-rational" class="hover:text-indigo-400">&bull; Zero-Float Rational Arithmetic</a></li>
+          <li><a href="#exp-multileg" class="hover:text-indigo-400">&bull; Multi-Leg Compiler Contract</a></li>
+          <li><a href="#exp-taxonomy" class="hover:text-indigo-400">&bull; 3-Tier Categorization</a></li>
+          <li><a href="#exp-email-unwrapper" class="hover:text-indigo-400">&bull; Email Envelope Unwrapping</a></li>
+          <li><a href="#exp-rational" class="hover:text-indigo-400">&bull; Zero-Float Exact Integer Arithmetic</a></li>
         </ul>
       </nav>
     </aside>
@@ -99,23 +103,29 @@
     <main class="flex-1 p-6 md:p-10 max-w-4xl overflow-y-auto space-y-14">
       <section class="space-y-4 border-b border-slate-800 pb-8">
         <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-indigo-950/80 border border-indigo-800/60 text-indigo-300 font-mono text-xs">
-          <span>Operator Guide</span> &bull; <span>v0.15.0</span> &bull; <span>Inbox Attach + PDF Wedge</span>
+          <span>Operator Guide</span> &bull; <span>v0.17.0</span> &bull; <span>Multi-Leg Splitter &amp; Receipts Engine</span>
         </div>
         <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white">IronLedger Operator Guide &amp; Reference</h1>
         <p class="text-base text-slate-400 leading-relaxed">
           IronLedger is a local-first financial OS. Plaintext Beancount is accounting authority; SQLite is a disposable projection.
-          Phase 15 treats a later statement row as more evidence on an existing economic event. Confirm attach. Do not create a second posting.
+          Phase 17 introduces automated multi-leg order splitting for e-commerce receipts (Amazon, Venmo, Apple, Uber) forwarded from multiple email accounts via Sigil Relay with 3-tier categorization and strict zero-float integer balance guarantees (&sum; minor_units = 0).
         </p>
-        <div class="p-4 rounded-lg bg-amber-950/40 border border-amber-800/60 space-y-2">
-          <h2 class="text-sm font-semibold text-amber-200 font-mono uppercase tracking-wider">v0.15.0 &mdash; what changed</h2>
+        <div class="p-4 rounded-lg bg-indigo-950/40 border border-indigo-800/60 space-y-2">
+          <h2 class="text-sm font-semibold text-indigo-200 font-mono uppercase tracking-wider">v0.17.0 Architecture Highlights</h2>
           <ul class="list-disc list-inside text-xs text-slate-300 space-y-1 pl-1">
-            <li>Inbox can show <strong>attach</strong> and <strong>near-miss</strong> proposals next to ordinary pending rows.</li>
-            <li>PDF bank/card statements (text layer) import through <code>--pdf-profile</code>. Inbox suffixes: <code>.csv</code> <code>.ofx</code> <code>.qfx</code> <code>.pdf</code>.</li>
-            <li>Confirm writes <code>event_evidence</code>. Staged/ledger posting count does not increase. Payee and narration on the target stay put.</li>
-            <li>Never auto-attach. Enter / Approve skip attach rows. Pick a candidate, then <strong>Confirm attach</strong>.</li>
-            <li>SimpleFIN ingest is a match target only. It is not rerouted through <code>run_import</code>.</li>
-            <li>OCR, email, XLS, Zapier, NotebookLM, and OAuth are out of this slice.</li>
+            <li><strong>Multi-Account Forwarded Email Unwrapping:</strong> Automatically un-wraps forwarded email receipts (.eml) from Gmail, Outlook/Hotmail, Apple Mail/iCloud, and Resent headers to extract original merchant, purchase timestamp, and line items.</li>
+            <li><strong>Amazon &amp; Venmo Normalizers:</strong> Groups multi-item order histories, tax lines, shipping fees, and discounts into structured itemized orders.</li>
+            <li><strong>3-Tier Categorization Engine:</strong> Resolves line items through Deterministic Rules (95% conf) &rarr; Keyword Taxonomy Heuristic (85% conf) &rarr; Expenses:Uncategorized fallback (50% conf).</li>
+            <li><strong>Multi-Leg Compiler Contract:</strong> Upgraded compiler to support 1 imported parent posting + N &ge; 1 contra postings with exact integer balance verification.</li>
+            <li><strong>MCP &amp; Web Workbench Workflows:</strong> Preview proposals via <code>preview_order_split</code> and confirm splits via <code>confirm_order_split</code> or Workbench REST API.</li>
           </ul>
+          <div class="mt-2 text-[11px] text-slate-400 border-t border-indigo-900/60 pt-2 flex flex-wrap gap-2">
+            <span class="font-bold text-slate-300">Milestones:</span>
+            <span><code class="text-indigo-300">v0.17.0</code> Multi-Leg Splits</span> &bull;
+            <span><code class="text-indigo-300">v0.16.0</code> Anomaly Engine</span> &bull;
+            <span><code class="text-indigo-300">v0.15.0</code> Inbox Attach + PDF Wedge</span> &bull;
+            <span><code class="text-indigo-300">v0.14.0</code> IRS Tax Lots</span>
+          </div>
         </div>
       </section>
 
@@ -127,26 +137,28 @@
         <div class="space-y-4">
           <div id="tutorial-step1" class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
             <h3 class="text-sm font-semibold text-white font-mono">1. Ingest Statement Records</h3>
-            <p class="text-xs text-slate-400">CSV / OFX / QFX rows become staged events. Those events are later attach targets.</p>
-            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli import inbox/checking_export.ofx --confirm "import inbox/checking_export.ofx"</pre>
-            <p class="text-[11px] text-slate-500">The confirm phrase is <code>import &lt;resolved-path&gt;</code>. Use the path the CLI resolved, not a nickname.</p>
+            <p class="text-xs text-slate-400">Import credit card or bank statements (OFX, QFX, CSV, or text-layer PDF). These create parent staged transactions (e.g. AMEX charge of -$54.10).</p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli import inbox/amex_statement.ofx --confirm "import inbox/amex_statement.ofx"</pre>
           </div>
           <div id="tutorial-step2" class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-            <h3 class="text-sm font-semibold text-white font-mono">2. Import a PDF Statement</h3>
-            <p class="text-xs text-slate-400">Text-layer PDF only. The shipped wedge profile is <code>example-card</code> (<code>Liabilities:CreditCard:ExampleCard</code>, sign <code>as_printed</code>, &plusmn;3 calendar days). Do not pass <code>--importing-account</code> when the profile already sets the account.</p>
-            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli import inbox/card-statement.pdf --pdf-profile example-card --confirm "import inbox/card-statement.pdf"</pre>
+            <h3 class="text-sm font-semibold text-white font-mono">2. Forward Purchase Receipts via Email</h3>
+            <p class="text-xs text-slate-400">Set forwarding rules in Hotmail, Apple Mail, Outlook, or Gmail to forward order confirmations to Sigil. The email receipt engine un-wraps headers to extract original items.</p>
           </div>
           <div id="tutorial-step3" class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-            <h3 class="text-sm font-semibold text-white font-mono">3. Confirm Attach</h3>
-            <p class="text-xs text-slate-400">Open the workbench. Attach rows are badged <span class="text-amber-300 font-mono">attach</span> or <span class="text-amber-300 font-mono">near-miss</span>. In the inspector, choose a candidate radio (none is preselected) and click <strong>Confirm attach</strong>. Enter and Approve do nothing on these rows.</p>
-            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli web --port 8000
-python -m ironledger.cli review attach-confirm PROP_ID --chosen STAGED_ID --confirm "attach-confirm PROP_ID"</pre>
+            <h3 class="text-sm font-semibold text-white font-mono">3. Ingest Amazon / Venmo Order CSVs</h3>
+            <p class="text-xs text-slate-400">Import Amazon Order History or Venmo statements. IronLedger automatically categorizes items and finds matching parent charges in staging.</p>
           </div>
           <div id="tutorial-step4" class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
-            <h3 class="text-sm font-semibold text-white font-mono">4. Review Remaining Pending</h3>
-            <p class="text-xs text-slate-400">Unmatched PDF rows land as ordinary pending inbox items. Categorize and approve those as before. Rejected attach proposals do not attach evidence.</p>
-            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli review attach-reject PROP_ID --confirm "attach-reject PROP_ID"
-python -m ironledger.cli review list --status pending</pre>
+            <h3 class="text-sm font-semibold text-white font-mono">4. Preview &amp; Confirm Splits</h3>
+            <p class="text-xs text-slate-400">Inspect split proposals in the Operator Workbench or via MCP tools. Confirming a proposal breaks down the single contra leg into itemized expenses.</p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto"># Preview via MCP or Web
+GET /api/staging/splits/proposals
+POST /api/staging/splits/proposals/{proposal_id}/confirm</pre>
+          </div>
+          <div id="tutorial-step5" class="p-4 rounded-lg bg-slate-900 border border-slate-800 space-y-2">
+            <h3 class="text-sm font-semibold text-white font-mono">5. Compile Multi-Leg Ledger</h3>
+            <p class="text-xs text-slate-400">Compile approved staged transactions into plaintext Beancount with verified integer balance.</p>
+            <pre class="p-3 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto">python -m ironledger.cli compile --confirm "authorize compile"</pre>
           </div>
         </div>
       </section>
@@ -157,52 +169,58 @@ python -m ironledger.cli review list --status pending</pre>
           <h2 class="text-2xl font-bold text-white">How-To Guides</h2>
         </div>
 
+        <div id="how-to-splits" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How Multi-Leg Order Splitting Works</h3>
+          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li><strong>Lump-Sum Parent Charge:</strong> Credit card or checking account imports show a single lump sum (e.g. -$105.00 to <code>Liabilities:CreditCard</code>).</li>
+            <li><strong>Itemized Order Ingest:</strong> When an Amazon order CSV or forwarded email receipt is ingested, IronLedger breaks the purchase into item lines (e.g. $35.00 Books, $50.00 Electronics, $20.00 Household).</li>
+            <li><strong>Split Proposal:</strong> The system matches candidate charges within &plusmn;3 days and exact integer minor units, creating a <code>split_proposals</code> record.</li>
+            <li><strong>Atomic Confirmation:</strong> Confirming the proposal mutates <code>staged_postings</code> to keep the 1 imported leg (-$105.00) and replace the single contra leg with 3 categorized contra postings (+35.00, +50.00, +20.00). Total balance remains exactly zero.</li>
+          </ul>
+        </div>
+
+        <div id="how-to-email-relay" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Set Up Multi-Account Forwarding via Sigil Relay</h3>
+          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
+            <li><strong>Forwarding Rules:</strong> In your email providers (Hotmail/Outlook, Apple Mail/iCloud, Gmail, Work accounts), create forwarding rules:
+              <ul class="list-disc list-inside pl-4 text-slate-400 space-y-0.5">
+                <li>Subject contains: <code>Order Confirmation</code>, <code>Receipt</code>, <code>Your receipt from Apple</code>, <code>Invoice</code></li>
+                <li>Action: Forward to your local Sigil Relay inbox address.</li>
+              </ul>
+            </li>
+            <li><strong>Envelope Unwrapping:</strong> The email receipt engine strips outer forwarding headers (<code>---------- Forwarded message ---------</code>, <code>-----Original Message-----</code>, <code>Begin forwarded message:</code>, <code>Resent-From</code>) to restore original merchant headers and dates.</li>
+            <li><strong>Evidence Preservation:</strong> The original raw <code>.eml</code> is stored under <code>source_documents</code> as immutable accounting evidence.</li>
+          </ul>
+        </div>
+
+        <div id="how-to-subscriptions" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">How to Track Recurring Subscriptions &amp; Price Jumps</h3>
+          <p class="text-xs text-slate-400">IronLedger uses view <code>v_recurring_subscriptions</code> to detect cadences (WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, ANNUAL) and identify price jumps without floating-point math.</p>
+          <pre class="p-3 rounded bg-slate-950 text-xs font-mono text-emerald-300 overflow-x-auto">GET /api/analytics/subscriptions
+GET /api/analytics/subscriptions/price-jumps</pre>
+        </div>
+
         <div id="how-to-attach" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Attach Later Evidence to an Existing Charge</h3>
-          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li>Import a later CSV/OFX/PDF. Matching rows become <code>attach_proposals</code>, not a second staged posting pair.</li>
-            <li>Match key is imported-leg <code>minor_units</code> + account + currency + integer calendar-day window. Payee is enrichment, not identity.</li>
-            <li>Unique window hit still requires confirm. Two same-amount hits in the window: disambiguate; no default selected.</li>
-            <li>Two rows from one source document cannot attach to the same event.</li>
-            <li>Amount+account hits outside the window, or with flipped sign, surface as <strong>near-miss</strong> suggestions.</li>
-            <li>Confirm writes <code>event_evidence</code> and leaves the target <code>identity_fingerprint</code>, payee, and narration unchanged.</li>
-            <li>Same content-hash reimport short-circuits when source rows already have staged txns or pending/confirmed proposals.</li>
-          </ul>
-        </div>
+          <h3 class="text-base font-semibold text-white">How to Attach PDF Statements &amp; Later Evidence</h3>
+          <p class="text-xs text-slate-400">Attach proposals match later statement rows to existing economic events. Ingest PDF statements with <code>--pdf-profile</code>. Confirm attach writes <code>event_evidence</code> without creating duplicate postings (no-op on attach compilation).</p>
+          <pre class="p-3 rounded bg-slate-950 text-xs font-mono text-emerald-300 overflow-x-auto"># Import with PDF Profile
+python -m ironledger.cli import statement.pdf --pdf-profile chase_checking --confirm "import statement.pdf"
 
-        <div id="how-to-pdf" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Import a Text-Layer PDF Statement</h3>
-          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li>Put a profile JSON in <code>config/pdf-profiles/&lt;name&gt;.json</code>. Pass <code>--pdf-profile &lt;name&gt;</code>.</li>
-            <li>Shipped profile: <code>example-card</code>. Account <code>Liabilities:CreditCard:ExampleCard</code>. <code>sign</code> is <code>as_printed</code> or <code>invert</code>. Default window is 3 days.</li>
-            <li>Parser reads the PDF text layer via pypdf. Empty text (scans without OCR) fails closed. OCR is not in this slice.</li>
-            <li><code>--pdf-profile</code> is required for <code>.pdf</code> and rejected for CSV.</li>
-          </ul>
-        </div>
-
-        <div id="how-to-review" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
-          <h3 class="text-base font-semibold text-white">How to Tell Staging Rows from Attach Rows</h3>
-          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li>Ordinary staged rows: Enter / <kbd>a</kbd> approve, <kbd>x</kbd> reject, inspector categorizes the contra account.</li>
-            <li>Attach rows (<code>item_type = attach</code>): inspector lists candidate radios. <strong>Confirm attach</strong> stays disabled until you pick one.</li>
-            <li>Enter / Approve on an attach row is a no-op. That is intentional (false-attach guard).</li>
-            <li><kbd>x</kbd> on an attach row rejects the proposal. It does not approve a posting.</li>
-          </ul>
+# Inspect &amp; Confirm Attach via API
+GET /api/staging/proposals
+POST /api/staging/proposals/{proposal_id}/confirm
+# Headers: X-IronLedger-Op-Token: &lt;token&gt;
+# CLI: python -m ironledger.cli attach-confirm &lt;proposal_id&gt;</pre>
         </div>
 
         <div id="how-to-portfolio" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
           <h3 class="text-base font-semibold text-white">How to Manage Multi-Asset Holdings &amp; Watchlist Pricing</h3>
-          <ul class="list-disc list-inside text-xs text-slate-300 space-y-1.5 pl-1">
-            <li><strong>Watchlist Guard:</strong> In the Workbench <em>Holdings &amp; Watchlist</em> view, click the <strong>Lock Guard</strong> button to toggle edit mode before adding or removing symbols.</li>
-            <li><strong>Add Symbols:</strong> Supply base symbol (e.g. <code>NVDA</code>), quote currency (<code>USD</code>), and optional fallback price.</li>
-            <li><strong>Remove Symbols:</strong> Click the trash button on any unlocked symbol row, or delete from <code>config/prices.json</code>.</li>
-            <li><strong>On-Demand Sync:</strong> Click <strong>Sync Watchlist</strong> to scrape live quotes and refresh valuation tables.</li>
-          </ul>
+          <p class="text-xs text-slate-400">Manage commodities, cost basis tax lots (FIFO/LIFO/HIFO), and mark-to-market valuations in <code>Holdings &amp; Watchlist</code>.</p>
         </div>
 
         <div id="how-to-sankey" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
           <h3 class="text-base font-semibold text-white">How to Inspect Cash Flow Sankey Diagrams</h3>
-          <p class="text-xs text-slate-400">The Sankey visualizer renders directed cash flow linkages from Income accounts through Operating Buffer to Expenses and Asset allocations for any <code>YYYY-MM</code> period.</p>
+          <p class="text-xs text-slate-400">Renders directed cash flow linkages from Income accounts through Operating Buffer to Expenses and Asset allocations for any <code>YYYY-MM</code> period.</p>
         </div>
 
         <div id="how-to-compliance" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
@@ -220,21 +238,38 @@ python -m ironledger.cli compliance verify --bundle bundle.tar</pre>
 
         <div id="ref-api" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
           <h3 class="text-base font-semibold text-white">REST API Catalog</h3>
-          <p class="text-[11px] text-slate-500">Attach mutations require header <code>X-IronLedger-Op-Token</code> when an operator token is configured.</p>
           <table class="w-full text-left font-mono text-xs">
             <thead class="text-slate-500 border-b border-slate-800">
               <tr><th class="py-2">Method</th><th class="py-2">Endpoint</th><th class="py-2">Description</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-800/60 text-slate-300">
+              <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/staging/splits/proposals</td><td class="py-2 text-slate-400">List pending and decided multi-leg split proposals</td></tr>
+              <tr><td class="py-2 text-indigo-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/staging/splits/proposals/{id}/confirm</td><td class="py-2 text-slate-400">Confirm order split proposal &amp; mutate staged postings</td></tr>
+              <tr><td class="py-2 text-rose-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/staging/splits/proposals/{id}/reject</td><td class="py-2 text-slate-400">Reject an order split proposal</td></tr>
+              <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/analytics/subscriptions</td><td class="py-2 text-slate-400">Active recurring subscriptions and cadences</td></tr>
+              <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/analytics/subscriptions/price-jumps</td><td class="py-2 text-slate-400">Subscription price jump anomalies</td></tr>
               <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/staging/proposals</td><td class="py-2 text-slate-400">List pending attach proposals</td></tr>
-              <tr><td class="py-2 text-indigo-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/staging/proposals/{id}/confirm</td><td class="py-2 text-slate-400">Body <code>{"chosen_staged_id": "..."}</code>. Writes event_evidence. No new posting.</td></tr>
-              <tr><td class="py-2 text-rose-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/staging/proposals/{id}/reject</td><td class="py-2 text-slate-400">Reject an attach proposal</td></tr>
-              <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/analytics/watchlist</td><td class="py-2 text-slate-400">List active watchlist commodities and prices</td></tr>
-              <tr><td class="py-2 text-indigo-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/analytics/watchlist/add</td><td class="py-2 text-slate-400">Add symbol to config/prices.json</td></tr>
-              <tr><td class="py-2 text-rose-400 font-bold">DELETE</td><td class="py-2 text-indigo-300">/api/analytics/watchlist/{symbol}</td><td class="py-2 text-slate-400">Remove symbol from watchlist</td></tr>
-              <tr><td class="py-2 text-indigo-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/analytics/prices/sync</td><td class="py-2 text-slate-400">Trigger on-demand feed scraping</td></tr>
+              <tr><td class="py-2 text-indigo-400 font-bold">POST</td><td class="py-2 text-indigo-300">/api/staging/proposals/{id}/confirm</td><td class="py-2 text-slate-400">Confirm attach proposal to link evidence</td></tr>
               <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/analytics/portfolio</td><td class="py-2 text-slate-400">Consolidated multi-asset holdings &amp; P&amp;L</td></tr>
               <tr><td class="py-2 text-emerald-400 font-bold">GET</td><td class="py-2 text-indigo-300">/api/analytics/sankey?period=YYYY-MM</td><td class="py-2 text-slate-400">Directed cash flow link matrix</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="ref-mcp" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-3">
+          <h3 class="text-base font-semibold text-white">Model Context Protocol (MCP) Tool Catalog</h3>
+          <table class="w-full text-left font-mono text-xs">
+            <thead class="text-slate-500 border-b border-slate-800">
+              <tr><th class="py-2">Tool Name</th><th class="py-2">Category</th><th class="py-2">Description</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60 text-slate-300">
+              <tr><td class="py-2 text-indigo-300 font-bold">preview_order_split</td><td class="py-2 text-slate-400">Splits</td><td class="py-2 text-slate-400">Preview multi-leg breakdown and proposed accounts without mutating state</td></tr>
+              <tr><td class="py-2 text-indigo-300 font-bold">confirm_order_split</td><td class="py-2 text-slate-400">Splits</td><td class="py-2 text-slate-400">Confirm order split and mutate staged contra postings transactionally</td></tr>
+              <tr><td class="py-2 text-indigo-300 font-bold">get_recurring_subscriptions</td><td class="py-2 text-slate-400">Analytics</td><td class="py-2 text-slate-400">Fetch recurring subscription cadence and price jump summary</td></tr>
+              <tr><td class="py-2 text-indigo-300 font-bold">search</td><td class="py-2 text-slate-400">Core</td><td class="py-2 text-slate-400">Full-text search across ledger entries and postings</td></tr>
+              <tr><td class="py-2 text-indigo-300 font-bold">balances</td><td class="py-2 text-slate-400">Core</td><td class="py-2 text-slate-400">Query account balances for assets, liabilities, income, expenses</td></tr>
+              <tr><td class="py-2 text-indigo-300 font-bold">get_portfolio_holdings</td><td class="py-2 text-slate-400">Analytics</td><td class="py-2 text-slate-400">Fetch commodity quantities and mark-to-market valuations</td></tr>
+              <tr><td class="py-2 text-indigo-300 font-bold">preview_lot_disposal</td><td class="py-2 text-slate-400">Tax</td><td class="py-2 text-slate-400">Simulate FIFO/LIFO/HIFO lot sales without mutating database</td></tr>
             </tbody>
           </table>
         </div>
@@ -244,10 +279,6 @@ python -m ironledger.cli compliance verify --bundle bundle.tar</pre>
           <pre class="p-3 rounded bg-slate-950 text-xs font-mono text-slate-300 overflow-x-auto">python -m ironledger.cli web --port 8000
 python -m ironledger.cli import inbox/file.ofx --confirm "import &lt;resolved-path&gt;"
 python -m ironledger.cli import inbox/card.pdf --pdf-profile example-card --confirm "import &lt;resolved-path&gt;"
-python -m ironledger.cli review attach-confirm PROP_ID --chosen STAGED_ID --confirm "attach-confirm PROP_ID"
-python -m ironledger.cli review attach-reject PROP_ID --confirm "attach-reject PROP_ID"
-python -m ironledger.cli prices poll --ledger-id default
-python -m ironledger.cli prices sync --symbols AAPL MSFT BTC
 python -m ironledger.cli compile --dry-run
 python -m ironledger.cli compile --confirm "authorize compile"</pre>
         </div>
@@ -257,15 +288,14 @@ python -m ironledger.cli compile --confirm "authorize compile"</pre>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
             <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-indigo-300 font-bold">j</kbd> Next row</div>
             <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-indigo-300 font-bold">k</kbd> Previous row</div>
-            <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-emerald-300 font-bold">a</kbd> Approve staged (no-op on attach)</div>
-            <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-emerald-300 font-bold">Enter</kbd> Approve staged (no-op on attach)</div>
-            <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-rose-300 font-bold">x</kbd> Reject staged or attach proposal</div>
+            <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-emerald-300 font-bold">a</kbd> Approve staged</div>
+            <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-emerald-300 font-bold">Enter</kbd> Approve staged</div>
+            <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-rose-300 font-bold">x</kbd> Reject row / proposal</div>
             <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-indigo-300 font-bold">Ctrl+K</kbd> Command Palette</div>
             <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-indigo-300 font-bold">Ctrl+R</kbd> Rule Wizard</div>
             <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-indigo-300 font-bold">Ctrl+S</kbd> Simulate</div>
             <div class="p-2 rounded bg-slate-950 border border-slate-800"><kbd class="text-indigo-300 font-bold">Ctrl+Enter</kbd> Compile</div>
           </div>
-          <p class="text-[11px] text-slate-500">Attach confirm is not a shortcut. Choose a candidate in the inspector, then click Confirm attach.</p>
         </div>
       </section>
 
@@ -274,23 +304,27 @@ python -m ironledger.cli compile --confirm "authorize compile"</pre>
           <span class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold uppercase">Diataxis 4</span>
           <h2 class="text-2xl font-bold text-white">Architecture &amp; Invariants</h2>
         </div>
-        <div id="exp-identity" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
-          <h3 class="text-base font-semibold text-white">Evidence-Linked Identity</h3>
-          <p class="text-xs text-slate-400">Identity v1 is FITID (if trusted) or SHA-256 of account+date+amount+currency+payee+institution. That fingerprint still dedupes inserts. Phase 15 adds a join: many <code>source_record</code>s can hang off one economic event via <code>event_evidence</code>. A later PDF row is more evidence, not a new charge.</p>
+        <div id="exp-multileg" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
+          <h3 class="text-base font-semibold text-white">Multi-Leg Posting Contract</h3>
+          <p class="text-xs text-slate-400">A valid staged transaction must possess exactly 1 <code>imported</code> leg (the account where money was withdrawn or credited) and N &ge; 1 <code>contra</code> legs (categorized expense or asset postings). The sum of minor units across all legs must equal zero for the same currency before approval or compilation.</p>
         </div>
-        <div id="exp-match" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
-          <h3 class="text-base font-semibold text-white">Attach Match Key</h3>
-          <p class="text-xs text-slate-400">Candidates are imported legs on existing staged transactions: exact <code>minor_units</code>, same account, same currency, date within the profile&rsquo;s integer day window. Payee is not in the match key. Unique hits still wait for an operator. Ambiguous windows never auto-attach. SimpleFIN remains on <code>ingest_simplefin_payload</code>; it is a match target, not an attach adapter.</p>
+        <div id="exp-taxonomy" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
+          <h3 class="text-base font-semibold text-white">3-Tier Item Categorization Hierarchy</h3>
+          <p class="text-xs text-slate-400">Order line items are classified progressively: (1) Exact &amp; regex review rules from <code>categorization_rules</code> at 95% confidence; (2) Pre-compiled keyword taxonomy across Books, Electronics, Food, Household, Transport, and Software at 85% confidence; (3) Fallback to <code>Expenses:Uncategorized</code> at 50% confidence.</p>
+        </div>
+        <div id="exp-email-unwrapper" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
+          <h3 class="text-base font-semibold text-white">Email Header &amp; Envelope Unwrapping</h3>
+          <p class="text-xs text-slate-400">Forwarded RFC 822 messages contain intermediate transmission headers. The email engine strips forwarding blocks to restore original merchant, purchase timestamp, and line items while retaining the full raw envelope in <code>source_documents</code> for cryptographic provenance.</p>
         </div>
         <div id="exp-rational" class="p-5 rounded-lg bg-slate-900/60 border border-slate-800 space-y-2">
-          <h3 class="text-base font-semibold text-white">Zero-Float Exact Rational Arithmetic</h3>
-          <p class="text-xs text-slate-400">Enforced by static AST verification: zero <code>ast.Div</code> and zero runtime <code>import beancount</code> on the new ingest modules. Amounts stay integer minor units. PDF <code>sign</code> is <code>as_printed</code> or <code>invert</code> &mdash; never a float flip.</p>
+          <h3 class="text-base font-semibold text-white">Zero-Float Exact Integer Arithmetic</h3>
+          <p class="text-xs text-slate-400">Enforced by static AST verification: zero <code>ast.Div</code> and zero runtime <code>import beancount</code> across all modules. Currency values are stored strictly as integer cents (minor units) with integer scale multiplication and division.</p>
         </div>
       </section>
 
       <footer class="pt-8 border-t border-slate-800 text-xs text-slate-500 font-mono flex items-center justify-between">
-        <div>IronLedger local-first financial OS &bull; v0.15.0</div>
-        <div>Beancount authority &bull; SQLite projection &bull; Inbox attach</div>
+        <div>IronLedger local-first financial OS &bull; v0.17.0</div>
+        <div>Beancount authority &bull; SQLite projection &bull; Multi-Leg Splitter</div>
       </footer>
     </main>
   </div>

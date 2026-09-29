@@ -1,56 +1,58 @@
 # IronLedger Project Status
 
 ## Active Goal
-Phase 15 — Inbox attach + PDF statement wedge: later evidence hangs off an existing economic event after operator confirm. Packaging waits.
+Phase 17 — Multi-Leg Order-Level Splitter & Multi-Account Receipt Ingestion Engine: Automated itemized transaction breakdown (Amazon/Venmo CSVs & forwarded RFC 822 email receipts via Sigil Relay) with integer zero-float precision, 3-tier categorization, and safe-mode review workflows.
 
-
-## Milestone Status: Inbox Attach + PDF Statement Wedge v0.15.0
-- **Preceding Baseline:** MCP Tax & Gains Tools v0.14.0 (1000 passed, 4 skipped).
-- **Regression Invariant:** 1023 passed, 4 skipped (51.56s).
-- **Current Milestone:** Phase 15 inbox attach. Later CSV/OFX/PDF rows propose attach to an existing economic event. Operator confirms in the inbox. No second posting. PDF text-layer `example-card` profile. SimpleFIN ingest unchanged (match-target only).
-
+## Milestone Status: Multi-Leg Order Splitter Engine v0.17.0
+- **Preceding Baseline:** Phase 16 Subscriptions & Recurring Intelligence Engine v0.16.0 (1095 passed, 4 skipped).
+- **Regression Invariant:** 1122 passed, 4 skipped.
+- **Current Milestone:** Phase 17 Multi-Leg Order Splitter.
+  - Forward-only migration 0021 (`itemized_orders`, `itemized_order_lines`, `split_proposals`).
+  - Compiler Multi-Leg Contract (`validate_approved_set` in `src/ironledger/compile/model.py` and deterministic contra rendering in `src/ironledger/compile/render.py`).
+  - Normalizers: Amazon Order History CSV (`src/ironledger/ingest/formats/amazon_order_normalizer.py`), Venmo statement CSV (`src/ironledger/ingest/formats/venmo_normalizer.py`), and Email Receipt Engine (`src/ironledger/ingest/formats/email_receipt_engine.py`).
+  - Ingestion Split Linker & 3-Tier Categorization (`src/ironledger/ingest/split_linker.py`).
+  - Operator Workbench Web API (`/api/staging/splits/proposals`, `/confirm`, `/reject` in `src/ironledger/web/routers/staging.py`).
+  - MCP Split Tools (`preview_order_split`, `confirm_order_split` in `src/ironledger/mcp/tools.py`).
+  - Full AST Invariant & Exit Contract Seal (`tests/test_phase17_exit_contract.py`).
 
 ## Completed Work
-1. **In-Memory Lot Disposal Simulation Engine (`src/ironledger/valuation/lots.py`)**:
-   - Implemented `simulate_lot_disposal()` function supporting `FIFO`, `LIFO`, and `HIFO` lot matching strategies.
-   - Operates strictly on detached in-memory deep-copies of `open_lots` without mutating SQLite tables or ledger state.
-   - Preserves basis residue conservation and integer rational precision across partial lot liquidations.
+1. **Compiler Multi-Leg Contract (`src/ironledger/compile/model.py`, `src/ironledger/compile/render.py`)**:
+   - Upgraded `validate_approved_set` to assert exactly one `imported` leg and $N \ge 1$ `contra` legs while strictly enforcing same-currency balance ($\sum \text{minor\_units} = 0$).
+   - Ensured deterministic ordering in Beancount export (imported leg first, then contra legs sorted deterministically by account, minor units, and source record ID).
 
-2. **MCP Tool Schemas & Tool Registry (`src/ironledger/mcp/tools.py`)**:
-   - Registered `TAX_TOOL_NAMES = ('get_capital_gains_summary', 'list_open_tax_lots', 'get_unrealized_gains', 'preview_lot_disposal')` in `ALL_TOOL_NAMES`.
-   - Added schema definitions with `include_tax` parameter in `list_tools(include_analytics=False, include_tax=False, include_all=False)`.
-   - Implemented full parameter validation and schema contracts for capital gains summary filters, open tax lot queries, unrealized gain calculations, and disposal simulations.
+2. **Schema Migration `0021_split_proposals.sql`**:
+   - Added `itemized_orders`, `itemized_order_lines`, and `split_proposals` with `STRICT` enforcement, foreign key constraints, total balance check formulas, and performance indexes.
 
-3. **Read-Only MCP Tool Dispatchers & Handlers (`src/ironledger/mcp/tools.py`)**:
-   - `get_capital_gains_summary`: Dispatches gain/loss aggregation filterable by tax year, term, account, and commodity with formatted decimal display strings.
-   - `list_open_tax_lots`: Returns active open tax lots with cost basis, remaining units, acquisition dates, and source posting IDs.
-   - `get_unrealized_gains`: Recomputes valuation cost basis vs mark-to-market prices from price directives and returns per-position and aggregate unrealized gains.
-   - `preview_lot_disposal`: Runs pure simulation of candidate sales, returning allocated lots, holding period classifications, proceeds, cost basis, and projected realized gain/loss.
+3. **CSV & Email Receipt Normalizers (`src/ironledger/ingest/formats/`)**:
+   - Zero-float integer minor unit currency parser with strict fraction rejection.
+   - Amazon Order History CSV and Venmo Statement CSV normalizers with multi-line item grouping.
+   - Forwarded email unwrapper for RFC 822 `.eml` files supporting Gmail, Outlook/Hotmail, Apple Mail/iCloud, and Resent-* envelope headers.
 
-4. **Security Audit Logging & Dual Transport Compatibility (`src/ironledger/mcp/tools.py`, `src/ironledger/mcp/stdio.py`, `src/ironledger/mcp/http.py`)**:
-   - Enforced fail-closed parameter validation and sanitization across all tax tool dispatchers.
-   - Routed execution through `_audit_tool()` to record immutable audit events without leaking sensitive payloads.
-   - Verified seamless execution across both standard I/O (`stdio.py`) and loopback HTTP JSON-RPC (`http.py`) MCP transports.
+4. **Multi-Leg Split Linker & 3-Tier Item Categorization (`src/ironledger/ingest/split_linker.py`)**:
+   - Tier 1: Deterministic Review Rules (`resolve_rule_row`).
+   - Tier 2: Keyword taxonomy heuristic (Books, Electronics, Food, Household, Transport, Software).
+   - Tier 3: Uncategorized fallback (`Expenses:Uncategorized`).
+   - Transactional split confirmation mutating staged postings with full balance validation and audit trails.
 
-5. **Phase 14 Integration & Exit Contract Test Suite (`tests/test_mcp_tax_tools.py`, `tests/test_phase14_exit_contract.py`)**:
-   - Comprehensive unit and integration test coverage for all 4 tax tools, strategy variations (FIFO, LIFO, HIFO), invalid inputs, and dual transport mechanisms.
-   - AST static analysis verification enforcing zero floating-point division (`ast.Div`) and zero runtime `import beancount`.
-   - End-to-end multi-lot lifecycle testing asserting exact minor unit calculations and database immutability.
-   - Sealed exit contract at `docs/meta/contracts/ironledger-phase-14-exit-contract.md`.
+5. **Operator Workbench Web API & MCP Tool Integration (`src/ironledger/web/routers/staging.py`, `src/ironledger/mcp/tools.py`)**:
+   - Added `/api/staging/splits/proposals` list, `/confirm`, and `/reject` endpoints guarded by operator token auth.
+   - Registered and exposed `preview_order_split` and `confirm_order_split` MCP tools with comprehensive parameter validation and audit logging.
+
+6. **Phase 17 Exit Contract & AST Invariant Suite (`tests/test_phase17_exit_contract.py`)**:
+   - Verified zero `ast.Div` and zero `import beancount` across all Phase 17 modules.
+   - Full regression suite passing: 1122 passed, 4 skipped (100% green).
 
 ## Core Architectural Invariants Maintained
 - **Plaintext Ground Truth:** Plaintext Beancount files remain the sole financial authority.
 - **Decoupled Runtime:** Zero runtime `import beancount` enforced via static AST visitor.
-- **Pure Integer Arithmetic:** Exact rational arithmetic without float representation or drift.
-- **Cost Basis Conservation:** Exact integer balance conservation across partial lot liquidations.
-- **Envelope Encryption:** AES-256-GCM with separate IV/auth tags and zero plaintext payload leakage.
+- **Pure Integer Arithmetic:** Exact integer minor units without float representation or drift (zero `ast.Div`).
+- **Balanced Multi-Leg Postings:** Single parent imported leg with $N \ge 1$ contra postings guaranteed $\sum \text{minor\_units} = 0$.
 - **Append-Only Immutability:** SQLite triggers guarding outbox, audit, mutation, and governance event streams.
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Keep SimpleFIN and CSV imports as the active supported path; select the next operational need from current staging/rules work. Real PDF try-on is deferred and non-blocking. Resume details: `docs/meta/plans/ironledger-phase-15-handoff.md`.
+Keep SimpleFIN, CSV imports, and receipt splitting as active supported paths. Select the next operational need from current staging/rules work.
 
 ## Local Workbench Runtime
 - Compose default: `http://127.0.0.1:8000`.
-- Current Windows fallback: `http://127.0.0.1:8765` via `IRONLEDGER_HOST_PORT=8765 docker compose up -d` (host port `8765` mapped to container port `8000`; port 8000 is administratively reserved on this machine).
-
+- Current Windows fallback: `http://127.0.0.1:8765` via `IRONLEDGER_HOST_PORT=8765 docker compose up -d` (host port `8765` mapped to container port `8000`).

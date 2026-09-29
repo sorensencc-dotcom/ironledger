@@ -101,5 +101,5 @@ def test_refuse_non_imported_contra_role_pair(db: sqlite3.Connection):
     _seed_approved(db)
     db.execute("UPDATE staged_postings SET role = 'imported' WHERE role = 'contra'")
     db.commit()
-    with pytest.raises(CompileInputError, match="exactly one 'imported' and one 'contra'"):
+    with pytest.raises(CompileInputError, match="exactly one 'imported'"):
         validate_approved_set(load_approved_set(db))

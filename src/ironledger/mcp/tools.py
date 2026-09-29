@@ -14,10 +14,11 @@ from ironledger.valuation.lots import OpenLot, simulate_lot_disposal, Insufficie
 from ironledger.valuation.engine import convert_amount_rational, ValuationEngine
 
 CORE_TOOL_NAMES = ('search', 'balances', 'projection_status')
-ANALYTICS_TOOL_NAMES = ('get_cash_flow_sankey', 'get_portfolio_holdings', 'trigger_price_sync')
+ANALYTICS_TOOL_NAMES = ('get_cash_flow_sankey', 'get_portfolio_holdings', 'trigger_price_sync', 'get_recurring_subscriptions')
 TAX_TOOL_NAMES = ('get_capital_gains_summary', 'list_open_tax_lots', 'get_unrealized_gains', 'preview_lot_disposal')
+SPLIT_TOOL_NAMES = ('preview_order_split', 'confirm_order_split')
 TOOL_NAMES = CORE_TOOL_NAMES
-ALL_TOOL_NAMES = CORE_TOOL_NAMES + ANALYTICS_TOOL_NAMES + TAX_TOOL_NAMES
+ALL_TOOL_NAMES = CORE_TOOL_NAMES + ANALYTICS_TOOL_NAMES + TAX_TOOL_NAMES + SPLIT_TOOL_NAMES
 
 def _audit_tool(
     db: str | None,
@@ -117,6 +118,31 @@ def list_tools(include_analytics: bool = False, include_tax: bool = False, inclu
                 'additionalProperties': False,
             },
         },
+        {
+            'name': 'get_recurring_subscriptions',
+            'description': 'Query recurring subscriptions, cadence analysis, and monthly fixed overhead.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'ledger_id': {
+                        'type': 'string',
+                        'description': 'Target ledger ID (default: "default")',
+                        'default': 'default',
+                    },
+                    'cadence': {
+                        'type': 'string',
+                        'description': 'Optional filter by cadence (WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, ANNUAL)',
+                        'enum': ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'ANNUAL', 'IRREGULAR'],
+                    },
+                    'include_irregular': {
+                        'type': 'boolean',
+                        'description': 'Whether to include irregular recurring expenses (default: false)',
+                        'default': False,
+                    },
+                },
+                'additionalProperties': False,
+            },
+        },
     ]
 
     tax_tools = [
@@ -180,8 +206,35 @@ def list_tools(include_analytics: bool = False, include_tax: bool = False, inclu
         },
     ]
 
+    split_tools = [
+        {
+            'name': 'preview_order_split',
+            'description': 'Preview multi-leg itemized breakdown and proposed accounts for an order split proposal without mutating staged state.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'proposal_id': {'type': 'string', 'description': 'Split proposal ID to preview'},
+                },
+                'required': ['proposal_id'],
+                'additionalProperties': False,
+            },
+        },
+        {
+            'name': 'confirm_order_split',
+            'description': 'Confirm a multi-leg order split proposal, replacing staged contra postings with itemized legs transactionally.',
+            'inputSchema': {
+                'type': 'object',
+                'properties': {
+                    'proposal_id': {'type': 'string', 'description': 'Split proposal ID to confirm'},
+                },
+                'required': ['proposal_id'],
+                'additionalProperties': False,
+            },
+        },
+    ]
+
     if include_all:
-        return core + analytics_tools + tax_tools
+        return core + analytics_tools + tax_tools + split_tools
     res = list(core)
     if include_analytics:
         res.extend(analytics_tools)
@@ -200,6 +253,83 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
 
     ledger_dir = Path(ledger_dir)
     projection_dir = Path(projection_dir)
+
+    if name == 'preview_order_split':
+        proposal_id = args.get('proposal_id')
+        if not proposal_id or not isinstance(proposal_id, str):
+            _audit_tool(db, action='mcp preview_order_split', target='preview_order_split', result='error')
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'Missing required string parameter proposal_id'}]}
+        if not db:
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'Database connection required for preview_order_split'}]}
+        conn = connect(str(db))
+        try:
+            prop = conn.execute(
+                "SELECT sp.proposal_id, sp.order_id, sp.target_type, sp.target_id, "
+                "       sp.parent_amount_minor, sp.match_confidence, sp.status, "
+                "       io.merchant, io.order_date, io.total_minor_units, io.currency "
+                "FROM split_proposals sp "
+                "JOIN itemized_orders io ON sp.order_id = io.order_id "
+                "WHERE sp.proposal_id = ?",
+                (proposal_id,),
+            ).fetchone()
+            if not prop:
+                _audit_tool(db, action='mcp preview_order_split', target=proposal_id, result='error')
+                return {'isError': True, 'content': [{'type': 'text', 'text': f'Split proposal {proposal_id} not found'}]}
+
+            lines = conn.execute(
+                "SELECT line_index, item_title, item_description, quantity, total_price_minor, proposed_account, confidence_score "
+                "FROM itemized_order_lines WHERE order_id = ? ORDER BY line_index",
+                (prop[1],),
+            ).fetchall()
+
+            preview_data = {
+                "proposal_id": prop[0],
+                "order_id": prop[1],
+                "target_type": prop[2],
+                "target_id": prop[3],
+                "parent_amount_minor": prop[4],
+                "match_confidence": prop[5],
+                "status": prop[6],
+                "merchant": prop[7],
+                "order_date": prop[8],
+                "total_minor_units": prop[9],
+                "currency": prop[10],
+                "lines": [
+                    {
+                        "line_index": l[0],
+                        "item_title": l[1],
+                        "item_description": l[2],
+                        "quantity": l[3],
+                        "total_price_minor": l[4],
+                        "proposed_account": l[5],
+                        "confidence_score": l[6],
+                    }
+                    for l in lines
+                ],
+            }
+            _audit_tool(db, action='mcp preview_order_split', target=proposal_id, result='ok')
+            return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps(preview_data, indent=2)}]}
+        finally:
+            conn.close()
+
+    if name == 'confirm_order_split':
+        proposal_id = args.get('proposal_id')
+        if not proposal_id or not isinstance(proposal_id, str):
+            _audit_tool(db, action='mcp confirm_order_split', target='confirm_order_split', result='error')
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'Missing required string parameter proposal_id'}]}
+        if not db:
+            return {'isError': True, 'content': [{'type': 'text', 'text': 'Database connection required for confirm_order_split'}]}
+        from ironledger.ingest.split_linker import confirm_split_proposal
+        conn = connect(str(db))
+        try:
+            res = confirm_split_proposal(conn, proposal_id, actor='operator')
+            _audit_tool(db, action='mcp confirm_order_split', target=proposal_id, result='ok')
+            return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps(res, indent=2)}]}
+        except Exception as exc:
+            _audit_tool(db, action='mcp confirm_order_split', target=proposal_id, result='error')
+            return {'isError': True, 'content': [{'type': 'text', 'text': str(exc)}]}
+        finally:
+            conn.close()
 
     if name == 'trigger_price_sync':
         from ironledger.prices.providers.manual import ManualProvider
@@ -324,6 +454,28 @@ def call_tool(name, arguments, *, ledger_dir, projection_dir, db):
                 return {'isError': True, 'content': [{'type': 'text', 'text': f'Query error: {e}'}]}
             finally:
                 if db and db_conn != conn:
+                    db_conn.close()
+        elif name == 'get_recurring_subscriptions':
+            from ironledger.analytics.subscriptions import get_recurring_subscriptions as query_subscriptions
+            ledger_id = str(args.get('ledger_id') or 'default')
+            cadence = args.get('cadence')
+            include_irregular = bool(args.get('include_irregular', False))
+            db_conn = None
+            try:
+                db_conn = connect(str(db)) if db else conn
+                result = query_subscriptions(
+                    db_conn,
+                    ledger_id=ledger_id,
+                    cadence_filter=str(cadence) if cadence is not None else None,
+                    include_irregular=include_irregular,
+                )
+                _audit_tool(db, action='mcp get_recurring_subscriptions', target='get_recurring_subscriptions', result='ok', input_hash=input_hash)
+                return {'isError': False, 'content': [{'type': 'text', 'text': json.dumps(result, indent=2, sort_keys=True)}]}
+            except Exception as e:
+                _audit_tool(db, action='mcp get_recurring_subscriptions', target='get_recurring_subscriptions', result='error', input_hash=input_hash)
+                return {'isError': True, 'content': [{'type': 'text', 'text': f'Query error: {e}'}]}
+            finally:
+                if db and db_conn is not None and db_conn != conn:
                     db_conn.close()
         elif name == 'get_capital_gains_summary':
             ledger_id = str(args.get('ledger_id') or 'default')

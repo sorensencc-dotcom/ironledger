@@ -13,6 +13,11 @@ from pydantic import BaseModel
 from ironledger.audit import append_audit_event
 from ironledger.conventions import validate_same_currency_balance
 from ironledger.ingest.identity import canonical_payee
+from ironledger.ingest.split_linker import (
+    apply_staged_transaction_split,
+    confirm_split_proposal,
+    reject_split_proposal,
+)
 from ironledger.review import state
 from ironledger.review.rules import resolve_rule_row
 from ironledger.review.state import ReviewStateError
@@ -233,6 +238,73 @@ def reopen_transaction(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"success": True, "staged_id": stx_id, "status": "pending"}
+
+
+@router.get("/splits/proposals")
+def list_split_proposals(
+    status: Optional[str] = Query(None),
+    ledger_id: str = Query("default"),
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    query = (
+        "SELECT sp.proposal_id, sp.order_id, sp.target_type, sp.target_id, "
+        "       sp.parent_amount_minor, sp.match_confidence, sp.status, sp.created_at_utc, "
+        "       io.merchant, io.order_date, io.total_minor_units, io.currency "
+        "FROM split_proposals sp "
+        "JOIN itemized_orders io ON sp.order_id = io.order_id "
+        "WHERE io.ledger_id = ?"
+    )
+    params: list[Any] = [ledger_id]
+    if status:
+        query += " AND sp.status = ?"
+        params.append(status)
+    query += " ORDER BY sp.created_at_utc DESC"
+    rows = db.execute(query, params).fetchall()
+
+    result = []
+    for r in rows:
+        result.append({
+            "proposal_id": r[0],
+            "order_id": r[1],
+            "target_type": r[2],
+            "target_id": r[3],
+            "parent_amount_minor": r[4],
+            "match_confidence": r[5],
+            "status": r[6],
+            "created_at_utc": r[7],
+            "merchant": r[8],
+            "order_date": r[9],
+            "total_minor_units": r[10],
+            "currency": r[11],
+        })
+    return result
+
+
+@router.post("/splits/proposals/{proposal_id}/confirm")
+def confirm_proposal_endpoint(
+    proposal_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    try:
+        res = confirm_split_proposal(db, proposal_id, actor="operator")
+        return res
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/splits/proposals/{proposal_id}/reject")
+def reject_proposal_endpoint(
+    proposal_id: str,
+    db: sqlite3.Connection = Depends(get_db),
+    _auth: None = Depends(require_operator),
+):
+    try:
+        res = reject_split_proposal(db, proposal_id, actor="operator")
+        return res
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{stx_id}/split")

@@ -49,9 +49,11 @@ def render_year_beancount(year: int, txns: list[ApprovedTransaction]) -> bytes:
         lines = [f'{tx.proposed_date} * "{payee_esc}" "{narration_esc}"']
         lines.append(f'  staged-transaction-id: "{tx.staged_transaction_id}"')
 
-        # Imported leg first, then contra. validate_approved_set (Task 3, Finding 4)
-        # guarantees roles are exactly {"imported", "contra"}, so this sort is total.
-        sorted_postings = sorted(tx.postings, key=lambda p: 0 if p.role == "imported" else 1)
+        # Imported leg first, then contra legs sorted deterministically.
+        sorted_postings = sorted(
+            tx.postings,
+            key=lambda p: (0 if p.role == "imported" else 1, p.account or "", p.minor_units, p.source_record_id),
+        )
         for p in sorted_postings:
             amt_str = format_amount(p.minor_units, p.minor_unit_scale)
             lines.append(f"  {p.account}  {amt_str} {p.currency}")

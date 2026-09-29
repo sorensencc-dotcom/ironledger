@@ -111,15 +111,28 @@ def validate_approved_set(approved_set: ApprovedSet) -> None:
     account_currencies: dict[str, str] = {}
 
     for tx in approved_set.transactions:
-        if len(tx.postings) != 2:
-            raise CompileInputError(f"Transaction {tx.staged_transaction_id} must have exactly 2 postings, got {len(tx.postings)}")
-
-        # Finding 4: pin the role contract so render.py's imported-then-contra sort is
-        # provably deterministic (two 'imported' legs would otherwise sort unstably).
-        roles = sorted(p.role for p in tx.postings)
-        if roles != ["contra", "imported"]:
+        if len(tx.postings) < 2:
             raise CompileInputError(
-                f"Transaction {tx.staged_transaction_id} postings must be exactly one 'imported' and one 'contra', got {roles}"
+                f"Transaction {tx.staged_transaction_id} must have at least 2 postings, got {len(tx.postings)}"
+            )
+
+        imported_count = sum(1 for p in tx.postings if p.role == "imported")
+        contra_count = sum(1 for p in tx.postings if p.role == "contra")
+        unknown_roles = [p.role for p in tx.postings if p.role not in ("imported", "contra")]
+
+        if unknown_roles:
+            raise CompileInputError(
+                f"Transaction {tx.staged_transaction_id} has unknown roles: {unknown_roles}"
+            )
+
+        if imported_count != 1:
+            raise CompileInputError(
+                f"Transaction {tx.staged_transaction_id} must have exactly one 'imported' posting, got {imported_count}"
+            )
+
+        if contra_count < 1:
+            raise CompileInputError(
+                f"Transaction {tx.staged_transaction_id} must have at least one 'contra' posting, got {contra_count}"
             )
 
         posting_dicts = []

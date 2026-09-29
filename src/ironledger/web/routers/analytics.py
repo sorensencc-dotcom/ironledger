@@ -485,3 +485,54 @@ def remove_watchlist_symbol(
         json.dump(data, f, indent=2)
 
     return {"status": "success", "removed_symbol": sym, "quote_currency": quote}
+
+
+def _fetch_subscriptions_payload(
+    conn: sqlite3.Connection,
+    ledger_id: str,
+    cadence: str | None = None,
+    include_irregular: bool = False,
+) -> Dict[str, Any]:
+    _require_ledger(conn, ledger_id)
+    from ironledger.analytics.subscriptions import get_recurring_subscriptions
+    try:
+        return get_recurring_subscriptions(
+            conn,
+            ledger_id=ledger_id,
+            cadence_filter=cadence,
+            include_irregular=include_irregular,
+        )
+    except sqlite3.OperationalError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to query recurring subscriptions: {exc}",
+        )
+    finally:
+        conn.close()
+
+
+@router.get("/subscriptions")
+def get_subscriptions_data(
+    ledger_id: str = "default",
+    cadence: str | None = None,
+    include_irregular: bool = False,
+    conn: sqlite3.Connection = Depends(get_db),
+) -> Dict[str, Any]:
+    """Retrieve recurring subscriptions, cadence analysis, and monthly fixed overhead."""
+    return _fetch_subscriptions_payload(
+        conn,
+        ledger_id=ledger_id,
+        cadence=cadence,
+        include_irregular=include_irregular,
+    )
+
+
+@router.get("/subscriptions/price-jumps")
+def get_subscription_price_jumps(
+    ledger_id: str = "default",
+    conn: sqlite3.Connection = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """Retrieve detected subscription price jumps for HUD and operator alerts."""
+    res = _fetch_subscriptions_payload(conn, ledger_id=ledger_id)
+    return res["price_jumps"]
+
