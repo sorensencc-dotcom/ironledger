@@ -42,6 +42,12 @@ Phase 17 — Multi-Leg Order-Level Splitter & Multi-Account Receipt Ingestion En
    - Verified zero `ast.Div` and zero `import beancount` across all Phase 17 modules.
    - Full regression suite passing: 1122 passed, 4 skipped (100% green).
 
+7. **Receipt Automation & Unattended S4U Task Scheduler Daemon Suite (`scripts/`)**:
+   - `scripts/sweep_receipts.py`: Gmail IMAP receipt sweeper using `X-GM-RAW` queries, UID deduplication, and optional dynamic Gmail label tagging (`+X-GM-LABELS`).
+   - `scripts/ingest_receipts.py`: Ingestion runner parsing `.eml` files into `itemized_orders` and `itemized_order_lines`, generating `split_proposals` in `ironledger.db`.
+   - `scripts/poll-receipts.ps1`: Unified PowerShell pipeline runner with headless `.env` configuration support.
+   - `scripts/setup-scheduled-tasks.ps1`: Windows Task Scheduler harness upgraded to `S4U` unattended execution mode (`IronLedger-PriceFeed-Sync`, `IronLedger-Bank-Sync`, `IronLedger-Receipt-Sync`).
+
 ## Core Architectural Invariants Maintained
 - **Plaintext Ground Truth:** Plaintext Beancount files remain the sole financial authority.
 - **Decoupled Runtime:** Zero runtime `import beancount` enforced via static AST visitor.

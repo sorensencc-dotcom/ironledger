@@ -21,6 +21,22 @@ if (-not (Test-Path $PythonExe)) {
     $PythonExe = "python"
 }
 
+# Load .env if present
+$EnvFile = Join-Path $RepoRoot ".env"
+if (Test-Path $EnvFile) {
+    Get-Content $EnvFile | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $parts = $line.Split("=", 2)
+            $k = $parts[0].Trim()
+            $v = $parts[1].Trim()
+            if (-not [System.Environment]::GetEnvironmentVariable($k)) {
+                [System.Environment]::SetEnvironmentVariable($k, $v, "Process")
+            }
+        }
+    }
+}
+
 Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting IronLedger SimpleFIN Bank Sync..." -ForegroundColor Cyan
 
 & $PythonExe -m ironledger.cli sync poll --db $DbPath --lookback $LookbackDays

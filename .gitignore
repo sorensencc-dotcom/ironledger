@@ -41,6 +41,7 @@ config/filesystem-roots.json
 # Live ingest payloads — never Git financial artifacts
 evidence/source_documents/
 evidence/source_records/
+inbox/
 
 # Local graft session cache
 graft/
