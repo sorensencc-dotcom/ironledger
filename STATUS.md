@@ -57,8 +57,13 @@ Phase 17 — Multi-Leg Order-Level Splitter & Multi-Account Receipt Ingestion En
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Keep SimpleFIN, CSV imports, and receipt splitting as active supported paths. Select the next operational need from current staging/rules work.
+Execute Phase 18 deliverables as defined in [Phase 18 Roadmap](docs/meta/roadmap.md):
+1. **Background IMAP / Mail Poller Daemon** (`src/ironledger/ingest/imap_poller.py` & multi-account config).
+2. **Operator Workbench Split Proposal UI** (`RegisterGrid.tsx` & `InspectorSidecar.tsx` visual line-item split table).
+3. **Multi-Shipment Combinatorial Matcher** (subset-sum partial charge reconciliation).
+4. **Configurable Keyword Taxonomy** (`config/taxonomy.json`).
 
 ## Local Workbench Runtime
 - Compose default: `http://127.0.0.1:8000`.
 - Current Windows fallback: `http://127.0.0.1:8765` via `IRONLEDGER_HOST_PORT=8765 docker compose up -d` (host port `8765` mapped to container port `8000`).
+
