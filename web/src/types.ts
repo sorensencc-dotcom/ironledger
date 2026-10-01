@@ -29,6 +29,33 @@ export interface AttachProposal {
   item_type: 'attach';
 }
 
+
+export interface SplitProposalLine {
+  line_index: number;
+  item_title?: string | null;
+  item_description?: string | null;
+  quantity?: number | null;
+  unit_price_minor?: number | null;
+  total_price_minor: number;
+  proposed_account?: string | null;
+  confidence_score?: number | null;
+}
+
+export interface SplitProposal {
+  proposal_id: string;
+  order_id: string;
+  target_type: string;
+  target_id: string;
+  parent_amount_minor: number;
+  match_confidence: number | null;
+  status: string;
+  created_at_utc: string;
+  merchant: string;
+  order_date: string;
+  total_minor_units: number;
+  currency: string;
+  lines?: SplitProposalLine[];
+}
 export interface StagedTransaction {
   staged_id: string;
   source_document_id: string;
@@ -48,8 +75,9 @@ export interface StagedTransaction {
   external_id?: string | null;
   raw_payload_ref?: string | null;
   provenance?: string | null;
-  item_type?: 'staged' | 'attach';
+  item_type?: 'staged' | 'attach' | 'split';
   proposal_id?: string;
+  split_proposal?: SplitProposal;
   attach_kind?: 'unique' | 'ambiguous' | 'near_miss';
   candidates?: AttachCandidate[];
   pdf_description?: string;
@@ -67,6 +95,8 @@ export interface SyncPollResult {
   inserted: number;
   skipped: number;
 }
+
+export interface TaxonomyCategory { keywords: string[]; account: string; }
 
 export interface Rule {
   rule_id: string;

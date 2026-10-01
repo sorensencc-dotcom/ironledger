@@ -12,6 +12,8 @@ from ironledger.ingest.formats.amazon_order_normalizer import (
 )
 from ironledger.ingest.split_linker import (
     categorize_order_line,
+    find_shipment_match,
+    load_keyword_taxonomy,
     propose_splits_for_order,
     confirm_split_proposal,
     reject_split_proposal,
@@ -170,3 +172,62 @@ def test_reject_split_proposal(db: sqlite3.Connection):
 
     status = db.execute("SELECT status FROM split_proposals WHERE proposal_id = ?", (proposal_id,)).fetchone()[0]
     assert status == "rejected"
+
+
+def test_configurable_taxonomy_and_partial_shipment_match(db: sqlite3.Connection, tmp_path: Path):
+    _seed_environment(db)
+    taxonomy = tmp_path / "taxonomy.json"
+    taxonomy.write_text('{"categories":[{"keywords":["laserdisc"],"account":"Expenses:Media"}]}', encoding="utf-8")
+    assert load_keyword_taxonomy(taxonomy) == [(("laserdisc",), "Expenses:Media")]
+    assert categorize_order_line(db, "Laserdisc player", ledger_id="default", taxonomy_path=taxonomy) == ("Expenses:Media", 85)
+
+    match = find_shipment_match([3000, 2000, 1000], 5750, tax_minor=600, shipping_minor=300)
+    assert match == {
+        "line_indices": (0, 1),
+        "line_total_minor": 5000,
+        "tax_minor": 500,
+        "shipping_minor": 250,
+        "discount_minor": 0,
+    }
+    assert find_shipment_match([3000, 2000, 1000], 5800, tax_minor=600, shipping_minor=300) is None
+
+def test_partial_shipment_proposal_persists_selection_and_confirms(db: sqlite3.Connection):
+    _seed_environment(db)
+    db.execute("UPDATE staged_postings SET minor_units = -5750 WHERE staged_posting_id = 'sp_imp_001'")
+    order = ParsedItemizedOrder(
+        order_id="ord_partial_001",
+        merchant="Amazon",
+        merchant_order_ref="partial-1",
+        order_date="2026-09-29",
+        currency="USD",
+        subtotal_minor_units=6000,
+        tax_minor_units=600,
+        shipping_minor_units=300,
+        discount_minor_units=0,
+        total_minor_units=6900,
+        lines=(
+            ParsedOrderLine(0, "Item A", "", 1, 3000, 3000, "Expenses:Household", 80),
+            ParsedOrderLine(1, "Item B", "", 1, 2000, 2000, "Expenses:Household", 80),
+            ParsedOrderLine(2, "Item C", "", 1, 1000, 1000, "Expenses:Household", 80),
+        ),
+    )
+    proposal_id = propose_splits_for_order(db, order, source_document_id="doc_ord_001", ledger_id="default")
+    assert proposal_id is not None
+    selected = db.execute(
+        "SELECT selected_line_indices, allocated_tax_minor, allocated_shipping_minor FROM split_proposals WHERE proposal_id = ?",
+        (proposal_id,),
+    ).fetchone()
+    assert selected == ('[0, 1]', 500, 250)
+
+    result = confirm_split_proposal(db, proposal_id, actor="operator")
+    assert result["status"] == "confirmed"
+    postings = db.execute(
+        "SELECT role, account, minor_units FROM staged_postings WHERE staged_transaction_id = 'stx_amazon_001' ORDER BY posting_index"
+    ).fetchall()
+    assert sum(row[2] for row in postings) == 0
+    assert [(row[1], row[2]) for row in postings if row[0] == "contra"] == [
+        ("Expenses:Household", 3000),
+        ("Expenses:Household", 2000),
+        ("Expenses:Taxes", 500),
+        ("Expenses:Shipping", 250),
+    ]

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import json
+from pathlib import Path
 import re
 import sqlite3
 import uuid
@@ -53,6 +55,68 @@ KEYWORD_TAXONOMY: list[tuple[tuple[str, ...], str]] = [
     ),
 ]
 
+_TAXONOMY_CACHE: tuple[float, list[tuple[tuple[str, ...], str]]] | None = None
+
+
+def load_keyword_taxonomy(path: str | Path | None = None) -> list[tuple[tuple[str, ...], str]]:
+    """Load taxonomy JSON when changed; retain built-in rules if file is absent."""
+    global _TAXONOMY_CACHE
+    taxonomy_path = Path(path) if path is not None else Path(__file__).parents[3] / "config" / "taxonomy.json"
+    try:
+        mtime = taxonomy_path.stat().st_mtime
+    except FileNotFoundError:
+        return KEYWORD_TAXONOMY
+    if _TAXONOMY_CACHE is not None and _TAXONOMY_CACHE[0] == mtime:
+        return _TAXONOMY_CACHE[1]
+    raw = json.loads(taxonomy_path.read_text(encoding="utf-8"))
+    loaded: list[tuple[tuple[str, ...], str]] = []
+    for entry in raw.get("categories", []):
+        keywords = tuple(str(keyword).strip().lower() for keyword in entry.get("keywords", []) if str(keyword).strip())
+        account = str(entry.get("account", "")).strip()
+        if keywords and account:
+            validate_account_name(account)
+            loaded.append((keywords, account))
+    if not loaded:
+        raise ValueError(f"Taxonomy file has no valid categories: {taxonomy_path}")
+    _TAXONOMY_CACHE = (mtime, loaded)
+    return loaded
+
+
+def find_shipment_match(
+    line_amounts: list[int] | tuple[int, ...],
+    charge_minor: int,
+    tax_minor: int = 0,
+    shipping_minor: int = 0,
+    discount_minor: int = 0,
+) -> dict[str, object] | None:
+    """Find deterministic line subset matching a partial shipment charge using integer math."""
+    subtotal = sum(line_amounts)
+    target = abs(charge_minor)
+    if subtotal <= 0 or target <= 0:
+        return None
+    sums: dict[int, tuple[int, ...]] = {0: ()}
+    for index, amount in enumerate(line_amounts):
+        if amount <= 0:
+            continue
+        for current, indices in list(sums.items()):
+            candidate = current + amount
+            if candidate not in sums:
+                sums[candidate] = indices + (index,)
+    for line_total, indices in sorted(sums.items(), key=lambda item: (len(item[1]), item[1])):
+        if not indices:
+            continue
+        allocated_tax = tax_minor * line_total // subtotal
+        allocated_shipping = shipping_minor * line_total // subtotal
+        allocated_discount = discount_minor * line_total // subtotal
+        if line_total + allocated_tax + allocated_shipping - allocated_discount == target:
+            return {
+                "line_indices": indices,
+                "line_total_minor": line_total,
+                "tax_minor": allocated_tax,
+                "shipping_minor": allocated_shipping,
+                "discount_minor": allocated_discount,
+            }
+    return None
 
 def categorize_order_line(
     conn: sqlite3.Connection,
@@ -61,6 +125,7 @@ def categorize_order_line(
     merchant: str = "",
     ledger_id: str = "default",
     now_utc: str | None = None,
+    taxonomy_path: str | Path | None = None,
 ) -> tuple[str, int]:
     """Categorize an order line item through 3 tiers.
 
@@ -79,7 +144,7 @@ def categorize_order_line(
 
     # Tier 2: Keyword Taxonomy Heuristic (80-85% confidence)
     text_to_search = f"{clean_title} {item_desc} {merchant}".lower()
-    for keywords, account in KEYWORD_TAXONOMY:
+    for keywords, account in load_keyword_taxonomy(taxonomy_path):
         for kw in keywords:
             if re.search(r"\b" + re.escape(kw) + r"\b", text_to_search) or kw in text_to_search:
                 return account, 85
@@ -155,19 +220,29 @@ def propose_splits_for_order(
             ),
         )
 
-    # Find matching staged parent transactions
-    # Match criteria: ABS(minor_units) == order.total_minor_units and pending status
+    # Match full orders and partial shipment charges against pending imported postings.
     candidates = conn.execute(
         "SELECT st.staged_transaction_id, st.proposed_date, st.payee, sp.minor_units, sp.currency "
         "FROM staged_transactions st "
         "JOIN staged_postings sp ON st.staged_transaction_id = sp.staged_transaction_id AND sp.role = 'imported' "
-        "WHERE st.ledger_id = ? AND st.status = 'pending' AND ABS(sp.minor_units) = ? AND sp.currency = ?",
-        (ledger_id, order.total_minor_units, order.currency),
+        "WHERE st.ledger_id = ? AND st.status = 'pending' AND sp.currency = ?",
+        (ledger_id, order.currency),
     ).fetchall()
 
     created_proposal_id: str | None = None
 
     for cand_stx_id, cand_date, cand_payee, cand_minor, _cand_curr in candidates:
+        shipment = None
+        if abs(cand_minor) != order.total_minor_units:
+            shipment = find_shipment_match(
+                [line.total_price_minor for line in order.lines],
+                cand_minor,
+                tax_minor=order.tax_minor_units,
+                shipping_minor=order.shipping_minor_units,
+                discount_minor=order.discount_minor_units,
+            )
+            if shipment is None:
+                continue
         # Compute match confidence
         match_conf = 80
         merchant_norm = order.merchant.lower()
@@ -183,8 +258,9 @@ def propose_splits_for_order(
 
         conn.execute(
             "INSERT INTO split_proposals ("
-            "  proposal_id, order_id, target_type, target_id, parent_amount_minor, match_confidence, status, created_at_utc"
-            ") VALUES (?, ?, 'staged_transaction', ?, ?, ?, 'pending', ?) "
+            "  proposal_id, order_id, target_type, target_id, parent_amount_minor, match_confidence, status, created_at_utc, "
+            "  selected_line_indices, allocated_tax_minor, allocated_shipping_minor, allocated_discount_minor"
+            ") VALUES (?, ?, 'staged_transaction', ?, ?, ?, 'pending', ?, ?, ?, ?, ?) "
             "ON CONFLICT (order_id, target_type, target_id) DO NOTHING",
             (
                 proposal_id,
@@ -193,6 +269,10 @@ def propose_splits_for_order(
                 cand_minor,
                 match_conf,
                 now_utc,
+                json.dumps(shipment["line_indices"]) if shipment else None,
+                shipment["tax_minor"] if shipment else None,
+                shipment["shipping_minor"] if shipment else None,
+                shipment["discount_minor"] if shipment else None,
             ),
         )
         created_proposal_id = proposal_id
@@ -287,6 +367,7 @@ def confirm_split_proposal(
 
     prop = conn.execute(
         "SELECT sp.proposal_id, sp.order_id, sp.target_type, sp.target_id, sp.status, "
+        "       sp.selected_line_indices, sp.allocated_tax_minor, sp.allocated_shipping_minor, sp.allocated_discount_minor, "
         "       io.source_document_id, io.currency, io.tax_minor_units, io.shipping_minor_units, io.discount_minor_units, io.ledger_id "
         "FROM split_proposals sp "
         "JOIN itemized_orders io ON sp.order_id = io.order_id "
@@ -303,6 +384,10 @@ def confirm_split_proposal(
         target_type,
         target_id,
         status,
+        selected_line_indices,
+        allocated_tax_minor,
+        allocated_shipping_minor,
+        allocated_discount_minor,
         source_doc_id,
         currency,
         tax_minor,
@@ -319,13 +404,18 @@ def confirm_split_proposal(
     if target_type == "staged_transaction":
         # Load order lines
         lines = conn.execute(
-            "SELECT item_title, total_price_minor, proposed_account "
+            "SELECT line_index, item_title, total_price_minor, proposed_account "
             "FROM itemized_order_lines WHERE order_id = ? ORDER BY line_index",
             (order_id,),
         ).fetchall()
+        selected = set(json.loads(selected_line_indices)) if selected_line_indices else None
+        lines = [line for line in lines if selected is None or line[0] in selected]
+        effective_tax = allocated_tax_minor if selected is not None and allocated_tax_minor is not None else tax_minor
+        effective_shipping = allocated_shipping_minor if selected is not None and allocated_shipping_minor is not None else shipping_minor
+        effective_discount = allocated_discount_minor if selected is not None and allocated_discount_minor is not None else discount_minor
 
         contra_postings: list[dict] = []
-        for _title, total_price, account in lines:
+        for _line_index, _title, total_price, account in lines:
             contra_postings.append({
                 "account": account,
                 "minor_units": total_price,
@@ -334,24 +424,24 @@ def confirm_split_proposal(
             })
 
         # Add remaining tax/shipping/discount legs if not 0
-        if tax_minor > 0:
+        if effective_tax > 0:
             contra_postings.append({
                 "account": "Expenses:Taxes",
-                "minor_units": tax_minor,
+                "minor_units": effective_tax,
                 "currency": currency,
                 "scale": 2,
             })
-        if shipping_minor > 0:
+        if effective_shipping > 0:
             contra_postings.append({
                 "account": "Expenses:Shipping",
-                "minor_units": shipping_minor,
+                "minor_units": effective_shipping,
                 "currency": currency,
                 "scale": 2,
             })
-        if discount_minor > 0:
+        if effective_discount > 0:
             contra_postings.append({
                 "account": "Income:Discounts",
-                "minor_units": -discount_minor,
+                "minor_units": -effective_discount,
                 "currency": currency,
                 "scale": 2,
             })

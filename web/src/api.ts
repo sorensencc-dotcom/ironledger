@@ -11,6 +11,7 @@ import type {
   Posting,
   RedriveDLQResult,
   Rule,
+  TaxonomyCategory,
   RuleDrift,
   SafeModeStatus,
   StagedTransaction,
@@ -32,6 +33,7 @@ import type {
   WatchlistData,
   PriceSyncResult,
   AttachProposal,
+  SplitProposal,
   CapitalGainsSummary,
   DisposalPreview,
   DisposalPreviewRequest,
@@ -176,6 +178,31 @@ export const api = {
     return res.json();
   },
 
+  async getSplitProposals(status = 'pending'): Promise<SplitProposal[]> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await fetch(`${API_BASE}/staging/splits/proposals${query}`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch split proposals: ${res.statusText}`);
+    return res.json();
+  },
+
+  async confirmSplitProposal(proposalId: string) {
+    const res = await fetch(`${API_BASE}/staging/splits/proposals/${proposalId}/confirm`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to confirm split proposal: ${res.statusText}`);
+    return res.json();
+  },
+
+  async rejectSplitProposal(proposalId: string) {
+    const res = await fetch(`${API_BASE}/staging/splits/proposals/${proposalId}/reject`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error(`Failed to reject split proposal: ${res.statusText}`);
+    return res.json();
+  },
+
   async confirmAttach(proposalId: string, chosenStagedId: string) {
     const res = await fetch(`${API_BASE}/staging/proposals/${proposalId}/confirm`, {
       method: 'POST',
@@ -194,6 +221,8 @@ export const api = {
     if (!res.ok) throw new Error(`Failed to reject attach: ${res.statusText}`);
     return res.json();
   },
+
+
 
   async getStaging(status?: string): Promise<StagedTransaction[]> {
     const url = status ? `${API_BASE}/staging?status=${status}` : `${API_BASE}/staging`;
@@ -267,6 +296,21 @@ export const api = {
   },
 
   // Rules
+  async getTaxonomy(): Promise<{ categories: TaxonomyCategory[] }> {
+    const res = await fetch(`${API_BASE}/taxonomy`, { headers: getHeaders() });
+    if (!res.ok) throw new Error(`Failed to fetch taxonomy: ${res.statusText}`);
+    return res.json();
+  },
+
+  async saveTaxonomy(categories: TaxonomyCategory[]) {
+    const res = await fetch(`${API_BASE}/taxonomy`, {
+      method: 'PUT',
+      headers: getHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ categories }),
+    });
+    if (!res.ok) throw new Error(`Failed to save taxonomy: ${res.statusText}`);
+    return res.json() as Promise<{ categories: TaxonomyCategory[] }>;
+  },
   async getRules(): Promise<Rule[]> {
     const res = await fetch(`${API_BASE}/rules`, { headers: getHeaders() });
     if (!res.ok) throw new Error(`Failed to fetch rules: ${res.statusText}`);

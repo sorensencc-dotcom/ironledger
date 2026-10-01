@@ -240,10 +240,32 @@ def reopen_transaction(
     return {"success": True, "staged_id": stx_id, "status": "pending"}
 
 
+def _split_proposal_lines(db: sqlite3.Connection, order_id: str) -> list[dict[str, Any]]:
+    rows = db.execute(
+        "SELECT line_index, item_title, item_description, quantity, unit_price_minor, "
+        "       total_price_minor, proposed_account, confidence_score "
+        "FROM itemized_order_lines WHERE order_id = ? ORDER BY line_index ASC",
+        (order_id,),
+    ).fetchall()
+    return [
+        {
+            "line_index": r[0],
+            "item_title": r[1],
+            "item_description": r[2],
+            "quantity": r[3],
+            "unit_price_minor": r[4],
+            "total_price_minor": r[5],
+            "proposed_account": r[6],
+            "confidence_score": r[7],
+        }
+        for r in rows
+    ]
+
 @router.get("/splits/proposals")
 def list_split_proposals(
     status: Optional[str] = Query(None),
-    ledger_id: str = Query("default"),
+    ledger_id: Optional[str] = Query(None),
+    request: Request = None,
     db: sqlite3.Connection = Depends(get_db),
     _auth: None = Depends(require_operator),
 ):
@@ -255,7 +277,8 @@ def list_split_proposals(
         "JOIN itemized_orders io ON sp.order_id = io.order_id "
         "WHERE io.ledger_id = ?"
     )
-    params: list[Any] = [ledger_id]
+    active_ledger_id = ledger_id or (request.headers.get("X-IronLedger-Ledger-Id") if request else None) or "default"
+    params: list[Any] = [active_ledger_id]
     if status:
         query += " AND sp.status = ?"
         params.append(status)
@@ -277,6 +300,7 @@ def list_split_proposals(
             "order_date": r[9],
             "total_minor_units": r[10],
             "currency": r[11],
+            "lines": _split_proposal_lines(db, r[1]),
         })
     return result
 

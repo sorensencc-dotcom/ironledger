@@ -5,6 +5,7 @@ import type { Rule, RuleDrift, StagedTransaction } from '../types';
 import { AccountTypeahead } from './AccountTypeahead';
 import { isRuleActive } from './accountOptions';
 import { humanizePayee } from '../lib/text';
+import { splitProposalLineTotal } from '../lib/staging';
 
 interface InspectorSidecarProps {
   transaction: StagedTransaction | null;
@@ -12,6 +13,7 @@ interface InspectorSidecarProps {
   onOpenRuleWizard: (stx: StagedTransaction) => void;
   onCategorize?: (stagedId: string, targetAccount: string) => void;
   onConfirmAttach?: (proposalId: string, chosenStagedId: string) => void;
+  onConfirmSplit?: (proposalId: string) => void;
 }
 
 const WIDTH_KEY = 'ironledger.inspectorWidth';
@@ -128,6 +130,7 @@ const InspectorSidecarImpl: React.FC<InspectorSidecarProps> = ({
   onOpenRuleWizard,
   onCategorize,
   onConfirmAttach,
+  onConfirmSplit,
 }) => {
   const frame = useInspectorWidth();
   const [drift, setDrift] = useState<RuleDrift | null>(null);
@@ -175,6 +178,12 @@ const InspectorSidecarImpl: React.FC<InspectorSidecarProps> = ({
   }
   beancountLines.push(`  staged-id: "${transaction.staged_id}"`);
   const beancountText = beancountLines.join('\n');
+  const splitProposal = transaction.split_proposal;
+  const splitLineTotal = splitProposalLineTotal(splitProposal);
+  const formatMinor = (minorUnits: number, scale = transaction.scale || 2) => {
+    const raw = minorUnits / 10 ** scale;
+    return minorUnits < 0 ? `-${Math.abs(raw).toFixed(scale)}` : raw.toFixed(scale);
+  };
 
   // Provenance tag classification
   const extId = transaction.external_id || '';
@@ -233,7 +242,67 @@ const InspectorSidecarImpl: React.FC<InspectorSidecarProps> = ({
         </div>
       )}
 
-      {transaction.item_type !== 'attach' && (
+      {transaction.item_type === 'split' && (
+        <div className="p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-ui tracking-wider uppercase font-semibold text-ash">
+              Split proposal review
+            </span>
+            <span className="text-[10px] font-ui text-brass uppercase tracking-wider">
+              {splitProposal?.lines?.length || 0} lines
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[10px] font-ui uppercase tracking-wider text-ash">
+            <div>Order: <span className="text-bone">{splitProposal?.order_id || transaction.source_document_id}</span></div>
+            <div className="text-right">Total: <span className="text-bone">{formatMinor(splitProposal?.total_minor_units ?? transaction.minor_units)} {transaction.currency}</span></div>
+            <div>Target: <span className="text-bone">{splitProposal?.target_id || transaction.source_record_id}</span></div>
+            <div className="text-right">Lines: <span className="text-bone">{splitLineTotal == null ? 'unavailable' : `${formatMinor(splitLineTotal)} ${transaction.currency}`}</span></div>
+          </div>
+          {splitProposal?.lines?.length ? (
+            <div className="space-y-2">
+              {splitProposal.lines.map((line) => (
+                <div key={line.line_index} className="p-2 bg-black/45 border border-border space-y-2">
+                  <div className="flex items-start justify-between gap-2 text-xs">
+                    <div className="min-w-0">
+                      <div className="truncate text-bone font-serif font-bold" title={line.item_title || line.item_description || ''}>
+                        {line.item_title || line.item_description || `Line ${line.line_index + 1}`}
+                      </div>
+                      {line.quantity != null && (
+                        <div className="text-[10px] text-ash font-ui uppercase tracking-wider">Qty {line.quantity}</div>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right font-ui font-bold text-bone">
+                      {formatMinor(line.total_price_minor)} <span className="text-[10px] text-ash">{transaction.currency}</span>
+                    </div>
+                  </div>
+                  <AccountTypeahead
+                    value={line.proposed_account || ''}
+                    onChange={() => {}}
+                    rules={rules}
+                    placeholder="Expenses:Uncategorized"
+                    disabled
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-3 bg-card border border-dashed border-border text-ash text-[11px] text-center font-serif italic">
+              No line items returned for this proposal yet.
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={!transaction.proposal_id || !onConfirmSplit}
+            onClick={() => {
+              if (transaction.proposal_id && onConfirmSplit) onConfirmSplit(transaction.proposal_id);
+            }}
+            className="px-2 py-1 text-[11px] uppercase tracking-wider border border-ember/40 text-ember disabled:opacity-40"
+          >
+            Apply split
+          </button>
+        </div>
+      )}
+      {transaction.item_type !== 'attach' && transaction.item_type !== 'split' && (
         <div className="p-3.5 space-y-2">
           <span className="text-[11px] font-ui tracking-wider uppercase font-semibold text-ash">
             Categorize this row

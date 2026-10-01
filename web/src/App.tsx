@@ -33,6 +33,7 @@ import type {
   StagedPortfolioSummary,
   MutationEvent,
   Rule,
+  TaxonomyCategory,
   SafeModeStatus,
   SankeyFlowRow,
   StagedTransaction,
@@ -53,6 +54,8 @@ export default function App() {
   const [scanningRules, setScanningRules] = useState(false);
 
   const [rules, setRules] = useState<Rule[]>([]);
+  const [taxonomy, setTaxonomy] = useState<TaxonomyCategory[]>([]);
+  const [taxonomyDraft, setTaxonomyDraft] = useState<TaxonomyCategory[]>([]);
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
   const [mutations, setMutations] = useState<MutationEvent[]>([]);
@@ -105,10 +108,12 @@ export default function App() {
   // Fetch initial data
   const refreshAll = async () => {
     try {
-      const [stg, proposals, rls, sm, fresh, sync, h, r, dlq] = await Promise.all([
+      const [stg, proposals, splitProposals, rls, tax, sm, fresh, sync, h, r, dlq] = await Promise.all([
         api.getStaging().catch(() => []),
         api.getAttachProposals().catch(() => []),
+        api.getSplitProposals().catch(() => []),
         api.getRules().catch(() => []),
+        api.getTaxonomy().then((value) => value.categories).catch(() => []),
         api.getSafeMode().catch(() => null),
         api.getFreshness().catch(() => null),
         api.getSyncStatus().catch(() => null),
@@ -138,8 +143,30 @@ export default function App() {
         candidates: p.candidates,
         pdf_description: p.pdf_description,
       }));
-      setStaging([...mappedProposals, ...stg]);
+      const mappedSplitProposals: StagedTransaction[] = splitProposals.map((p) => ({
+        staged_id: p.proposal_id,
+        source_document_id: p.order_id,
+        source_record_id: p.target_id,
+        date: p.order_date,
+        payee: p.merchant,
+        narration: 'split proposal',
+        currency: p.currency,
+        minor_units: p.parent_amount_minor,
+        scale: 2,
+        postings: [],
+        category_account: p.lines?.[0]?.proposed_account,
+        status: 'pending',
+        confidence_score: (p.match_confidence ?? 0) / 100,
+        matched_rule_id: null,
+        notes: null,
+        item_type: 'split',
+        proposal_id: p.proposal_id,
+        split_proposal: p,
+      }));
+      setStaging([...mappedSplitProposals, ...mappedProposals, ...stg]);
       setRules(rls);
+      setTaxonomy(tax);
+      setTaxonomyDraft(tax);
       setSafeMode(sm);
       setFreshness(fresh);
       if (sync) setSyncStatus(sync);
@@ -306,7 +333,7 @@ export default function App() {
   // Actions
   const handleApprove = useCallback(async (stagedId: string) => {
     const item = staging.find((tx) => tx.staged_id === stagedId);
-    if (item?.item_type === 'attach') {
+    if (item?.item_type !== undefined && item.item_type !== 'staged') {
       return;
     }
     try {
@@ -328,12 +355,33 @@ export default function App() {
     }
   }, []);
 
+
+  const handleConfirmSplitProposal = useCallback(async (proposalId: string) => {
+    try {
+      await api.confirmSplitProposal(proposalId);
+      showNotification(`Applied split ${proposalId.slice(0, 12)}`);
+      refreshAll();
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  }, []);
+
   const handleReject = useCallback(async (stagedId: string) => {
     const item = staging.find((tx) => tx.staged_id === stagedId);
     if (item?.item_type === 'attach' && item.proposal_id) {
       try {
         await api.rejectAttach(item.proposal_id);
         showNotification(`Rejected attach ${item.proposal_id.slice(0, 12)}`);
+        refreshAll();
+      } catch (err: any) {
+        showNotification(err.message, 'error');
+      }
+      return;
+    }
+    if (item?.item_type === 'split' && item.proposal_id) {
+      try {
+        await api.rejectSplitProposal(item.proposal_id);
+        showNotification(`Rejected split ${item.proposal_id.slice(0, 12)}`);
         refreshAll();
       } catch (err: any) {
         showNotification(err.message, 'error');
@@ -348,6 +396,16 @@ export default function App() {
       showNotification(err.message, 'error');
     }
   }, [staging]);
+
+  const handleSaveTaxonomy = useCallback(async () => {
+    try {
+      const saved = await api.saveTaxonomy(taxonomyDraft);
+      setTaxonomy(saved.categories);
+      showNotification('Taxonomy saved');
+    } catch (err: any) {
+      showNotification(err.message, 'error');
+    }
+  }, [taxonomyDraft]);
 
   const handleOpenRuleWizard = useCallback((stx: StagedTransaction) => {
     setRuleWizardTx(stx);
@@ -560,6 +618,7 @@ export default function App() {
               onOpenRuleWizard={handleOpenRuleWizard}
               onCategorize={handleCategorize}
               onConfirmAttach={handleConfirmAttach}
+              onConfirmSplit={handleConfirmSplitProposal}
             />
           </>
         )}
@@ -620,7 +679,7 @@ export default function App() {
             <div style={{ position: 'absolute', top: '-60px', right: '-40px', width: '260px', height: '260px', background: 'radial-gradient(circle, rgba(184,146,42,0.18), transparent 70%)', filter: 'blur(30px)', pointerEvents: 'none', zIndex: 0 }} />
             <div className="flex items-center justify-between border-b border-[#2c2420] pb-3 relative z-10">
               <h2 className="text-base font-serif font-bold text-[#f2ece2]">Categorization Rules</h2>
-              <span className="text-xs text-[#7a6e65] font-mono">{rules.length} active rules</span>
+              <span className="text-xs text-[#7a6e65] font-mono">{rules.length} rules / {taxonomy.length} taxonomy categories</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 relative z-10">
               {rules.map((rule) => (
@@ -636,6 +695,20 @@ export default function App() {
                 </div>
               ))}
             </div>
+            <section className="relative z-10 border border-[#2c2420] bg-[#1a1410] p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-serif font-bold text-[#f2ece2]">Keyword Taxonomy</h3>
+                <button type="button" onClick={handleSaveTaxonomy} className="px-2.5 py-1 text-[11px] uppercase tracking-wider border border-ember/40 text-ember">Save taxonomy</button>
+              </div>
+              {taxonomyDraft.map((category, index) => (
+                <div key={`${index}-${category.account}`} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2">
+                  <input value={category.keywords.join(', ')} onChange={(event) => setTaxonomyDraft((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, keywords: event.target.value.split(',').map((value) => value.trim()).filter(Boolean) } : item))} className="bg-black/50 border border-[#3a2e26] px-2 py-1 text-xs text-bone" aria-label={`Keywords ${index + 1}`} />
+                  <input value={category.account} onChange={(event) => setTaxonomyDraft((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, account: event.target.value } : item))} className="bg-black/50 border border-[#3a2e26] px-2 py-1 text-xs text-bone" aria-label={`Account ${index + 1}`} />
+                  <button type="button" onClick={() => setTaxonomyDraft((current) => current.filter((_item, itemIndex) => itemIndex !== index))} className="px-2 py-1 text-[11px] uppercase border border-loss/40 text-loss-bright">Remove</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setTaxonomyDraft((current) => [...current, { keywords: [], account: 'Expenses:Uncategorized' }])} className="px-2 py-1 text-[11px] uppercase border border-[#3a2e26] text-ash">Add category</button>
+            </section>
           </div>
         )}
 

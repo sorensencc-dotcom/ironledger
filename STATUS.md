@@ -1,7 +1,7 @@
 # IronLedger Project Status
 
 ## Active Goal
-Phase 17 — Multi-Leg Order-Level Splitter & Multi-Account Receipt Ingestion Engine: Automated itemized transaction breakdown (Amazon/Venmo CSVs & forwarded RFC 822 email receipts via Sigil Relay) with integer zero-float precision, 3-tier categorization, and safe-mode review workflows.
+Phase 18 Reduced P1 — IMAP Poller & Split Proposal Operator Workbench: Automated itemized transaction breakdown (Amazon/Venmo CSVs & forwarded RFC 822 email receipts via Sigil Relay) with integer zero-float precision, 3-tier categorization, and safe-mode review workflows.
 
 ## Milestone Status: Multi-Leg Order Splitter Engine v0.17.0
 - **Preceding Baseline:** Phase 16 Subscriptions & Recurring Intelligence Engine v0.16.0 (1095 passed, 4 skipped).
@@ -48,6 +48,21 @@ Phase 17 — Multi-Leg Order-Level Splitter & Multi-Account Receipt Ingestion En
    - `scripts/poll-receipts.ps1`: Unified PowerShell pipeline runner with headless `.env` configuration support.
    - `scripts/setup-scheduled-tasks.ps1`: Windows Task Scheduler harness upgraded to `S4U` unattended execution mode (`IronLedger-PriceFeed-Sync`, `IronLedger-Bank-Sync`, `IronLedger-Receipt-Sync`).
 
+8. **Phase 18 Reduced P1 IMAP Poller Lane (`src/ironledger/ingest/imap_poller.py`)**:
+   - Added stdlib multi-account IMAP polling with `password_env` secret references, JSON UID state, RFC 822 `.eml` staging, and focused mocked tests.
+
+9. **Phase 18 P2 foundations** (src/ironledger/ingest/split_linker.py, config/taxonomy.json):
+   - Added mtime-aware external taxonomy reload with account validation.
+   - Added deterministic integer subset-sum shipment matcher with prorated tax, shipping, and discount arithmetic.
+
+10. **Phase 18 Partial Shipment Proposal Persistence** (src/ironledger/db/schema/0022_partial_shipment_proposals.sql, src/ironledger/ingest/split_linker.py):
+   - Persisted selected line indices and prorated tax, shipping, and discount allocations.
+   - Confirmation now applies only selected shipment lines while preserving full-order compatibility.
+
+11. **Phase 18 Taxonomy Editor** (src/ironledger/web/routers/taxonomy.py, web/src/App.tsx):
+   - Added operator-authenticated validated taxonomy read/write API and rules-view editor.
+   - Category edits persist to config/taxonomy.json and reload dynamically.
+
 ## Core Architectural Invariants Maintained
 - **Plaintext Ground Truth:** Plaintext Beancount files remain the sole financial authority.
 - **Decoupled Runtime:** Zero runtime `import beancount` enforced via static AST visitor.
@@ -57,11 +72,10 @@ Phase 17 — Multi-Leg Order-Level Splitter & Multi-Account Receipt Ingestion En
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Execute Phase 18 deliverables as defined in [Phase 18 Roadmap](docs/meta/roadmap.md):
-1. **Background IMAP / Mail Poller Daemon** (`src/ironledger/ingest/imap_poller.py` & multi-account config).
-2. **Operator Workbench Split Proposal UI** (`RegisterGrid.tsx` & `InspectorSidecar.tsx` visual line-item split table).
-3. **Multi-Shipment Combinatorial Matcher** (subset-sum partial charge reconciliation).
-4. **Configurable Keyword Taxonomy** (`config/taxonomy.json`).
+Phase 18 implementation complete: IMAP polling, split proposal UI, partial shipment persistence, configurable taxonomy, and existing scheduled receipt ingestion verified.
+Optional P3 follow-up: inbound HTTP email webhook with independently reviewed HMAC/replay contract.
+## Verification Process Note
+- Windows ACLs permit writes under this checkout. If Codex restricted process reports Permission denied, classify as sandbox enforcement; rerun repo-writing build/test steps elevated. Use PYTHONDONTWRITEBYTECODE=1 for syntax checks to avoid __pycache__ writes.
 
 ## Local Workbench Runtime
 - Compose default: `http://127.0.0.1:8000`.

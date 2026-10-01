@@ -17,7 +17,7 @@ from starlette.responses import Response
 from ironledger.db.connection import connect
 from ironledger.observability.middleware import MetricsMiddleware
 from ironledger.web.errors import GovernanceException, governance_exception_handler
-from ironledger.web.routers import analytics, anomaly, compile, compliance, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, tax, webhooks
+from ironledger.web.routers import analytics, anomaly, compile, compliance, connectors, failover, federation, health, metrics, projection, rules, staging, sync, system, taxonomy, tax, webhooks
 
 __all__ = ["create_app"]
 
@@ -114,6 +114,7 @@ def create_app(
     app.include_router(metrics.router)
     app.include_router(staging.router)
     app.include_router(rules.router)
+    app.include_router(taxonomy.router)
     app.include_router(projection.router)
     app.include_router(compile.router)
     app.include_router(system.router)

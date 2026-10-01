@@ -104,7 +104,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const activeItem = transactions[selectedIndex];
-        if (activeItem && activeItem.item_type !== 'attach') {
+        if (activeItem && activeItem.item_type !== 'attach' && activeItem.item_type !== 'split') {
           if (e.ctrlKey || e.metaKey) {
             onApprove(activeItem.staged_id);
             onOpenRuleWizard(activeItem);
@@ -119,7 +119,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
       } else if (e.key.toLowerCase() === 'x') {
         e.preventDefault();
         const activeItem = transactions[selectedIndex];
-        if (activeItem && activeItem.item_type !== 'attach') onReject(activeItem.staged_id);
+        if (activeItem && activeItem.item_type !== 'attach' && activeItem.item_type !== 'split') onReject(activeItem.staged_id);
       }
     };
 
@@ -226,9 +226,9 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
               >
                 <div className="col-span-2 font-ui text-xs text-ash tracking-wider">{tx.date}</div>
                 <div className="col-span-3 min-w-0 line-clamp-2 break-words font-serif font-bold text-xs text-white" title={tx.payee}>
-                  {tx.item_type === 'attach' ? (
+                  {tx.item_type === 'attach' || tx.item_type === 'split' ? (
                     <span className="text-ember uppercase text-[10px] tracking-wider mr-1">
-                      {tx.attach_kind === 'near_miss' ? 'near-miss' : 'attach'}
+                      {tx.item_type === 'split' ? 'split' : tx.attach_kind === 'near_miss' ? 'near-miss' : 'attach'}
                     </span>
                   ) : null}
                   {tx.payee ? humanizePayee(tx.payee) : (tx.narration || '(Unnamed)')}
@@ -236,7 +236,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
                 <RegisterCategoryCell
                   categoryAccount={categoryAccount}
                   rules={rules}
-                  onApply={onCategorize ? (account) => onCategorize(tx.staged_id, account) : undefined}
+                  onApply={tx.item_type === 'split' ? undefined : onCategorize ? (account) => onCategorize(tx.staged_id, account) : undefined}
                 />
                 <div className={`col-span-2 text-right font-ui font-extrabold text-sm ${isNegative ? 'text-loss-bright' : 'text-gain-bright'}`}>
                   {amountFormatted} <span className="text-ash font-normal text-[10px] tracking-wider uppercase">{tx.currency}</span>
@@ -247,7 +247,7 @@ const RegisterGridImpl: React.FC<RegisterGridProps> = ({
                   </span>
                 </div>
                 <div className="col-span-1 flex justify-end space-x-1">
-                  {tx.item_type !== 'attach' && (
+                  {tx.item_type !== 'attach' && tx.item_type !== 'split' && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

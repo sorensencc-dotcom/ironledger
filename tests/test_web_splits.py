@@ -113,6 +113,28 @@ def test_web_split_proposals_list(test_env):
     assert len(data) >= 1
     assert data[0]["proposal_id"] == proposal_id
     assert data[0]["status"] == "pending"
+    assert data[0]["lines"] == [
+        {
+            "line_index": 0,
+            "item_title": "Book 1",
+            "item_description": "",
+            "quantity": 1,
+            "unit_price_minor": 3000,
+            "total_price_minor": 3000,
+            "proposed_account": "Expenses:Books",
+            "confidence_score": 90,
+        },
+        {
+            "line_index": 1,
+            "item_title": "Electronics 1",
+            "item_description": "",
+            "quantity": 1,
+            "unit_price_minor": 2000,
+            "total_price_minor": 2000,
+            "proposed_account": "Expenses:Electronics",
+            "confidence_score": 90,
+        },
+    ]
 
 
 def test_web_split_proposal_confirm_and_reject(test_env):
@@ -133,3 +155,23 @@ def test_web_split_proposal_confirm_and_reject(test_env):
     assert postings[1] == ("contra", "Expenses:Books", 3000)
     assert postings[2] == ("contra", "Expenses:Electronics", 2000)
     assert sum(p[2] for p in postings) == 0
+
+
+def test_split_proposals_use_active_ledger_header(test_env):
+    client, conn, proposal_id = test_env
+    conn.execute("INSERT OR IGNORE INTO ledgers (ledger_id, name, base_currency) VALUES ('default-test', 'Test', 'USD')")
+    conn.execute(
+        "UPDATE itemized_orders SET ledger_id = 'default-test' WHERE order_id = 'ord_web_001'"
+    )
+    conn.commit()
+
+    default_res = client.get("/api/staging/splits/proposals", headers={"X-IronLedger-Op-Token": "test-token"})
+    assert default_res.status_code == 200
+    assert default_res.json() == []
+
+    ledger_res = client.get(
+        "/api/staging/splits/proposals",
+        headers={"X-IronLedger-Op-Token": "test-token", "X-IronLedger-Ledger-Id": "default-test"},
+    )
+    assert ledger_res.status_code == 200
+    assert ledger_res.json()[0]["proposal_id"] == proposal_id
