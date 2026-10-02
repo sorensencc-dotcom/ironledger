@@ -72,8 +72,7 @@ Phase 18 Reduced P1 — IMAP Poller & Split Proposal Operator Workbench: Automat
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
 ## Next Action
-Phase 18 implementation complete: IMAP polling, split proposal UI, partial shipment persistence, configurable taxonomy, and existing scheduled receipt ingestion verified.
-Optional P3 follow-up: inbound HTTP email webhook with independently reviewed HMAC/replay contract.
+Database repaired 2026-10-02 (`PRAGMA quick_check` ok, staging and sync return 200). Compose runs with `IRONLEDGER_JOURNAL_MODE=DELETE`. Inbound email webhook is `POST /api/webhooks/inbound-email` and stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. Remaining operator work: conflicting categorization targets, and a real PDF statement profile. See `docs/meta/roadmap.md`.
 ## Verification Process Note
 - Windows ACLs permit writes under this checkout. If Codex restricted process reports Permission denied, classify as sandbox enforcement; rerun repo-writing build/test steps elevated. Use PYTHONDONTWRITEBYTECODE=1 for syntax checks to avoid __pycache__ writes.
 

@@ -107,6 +107,8 @@ def create_app(
     app.state.get_db = get_db
     app.state.get_projection_db = get_projection_db
     app.state.op_token = os.environ.get("IRONLEDGER_OP_TOKEN")
+    inbound_secret = os.environ.get("IRONLEDGER_INBOUND_EMAIL_SECRET")
+    app.state.inbound_email_secret = inbound_secret.strip() if inbound_secret and inbound_secret.strip() else None
     app.state.version = APP_VERSION
 
     # Include routers

@@ -61,7 +61,7 @@ _TAXONOMY_CACHE: tuple[float, list[tuple[tuple[str, ...], str]]] | None = None
 def load_keyword_taxonomy(path: str | Path | None = None) -> list[tuple[tuple[str, ...], str]]:
     """Load taxonomy JSON when changed; retain built-in rules if file is absent."""
     global _TAXONOMY_CACHE
-    taxonomy_path = Path(path) if path is not None else Path(__file__).parents[3] / "config" / "taxonomy.json"
+    taxonomy_path = Path(path) if path is not None else Path(__file__).parents[3].joinpath("config", "taxonomy.json")
     try:
         mtime = taxonomy_path.stat().st_mtime
     except FileNotFoundError:

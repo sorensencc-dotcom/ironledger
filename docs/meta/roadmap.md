@@ -1,79 +1,54 @@
-# IronLedger Phase 18 Roadmap & Open Items
+# IronLedger roadmap
 
-## Strategic Direction: Automated Ingestion & Split Intelligence
+Checked 2026-10-02. The workbench container `ironledger-workbench` is up at `http://127.0.0.1:8000`.
 
-Phase 17 established the core multi-leg compiler contract, schema migration 0021, RFC 822 email unwrapper, Amazon/Venmo normalizers, and REST/MCP split endpoints. Phase 18 focuses on closing the operational loop: automated mail background polling, visual split proposal triage in the React workbench, multi-shipment charge reconciliation, and user-configurable taxonomy.
+## Database
 
----
+Repaired 2026-10-02. `PRAGMA quick_check` is `ok` inside the running container, foreign-key check is 0, and `GET /api/staging` and `GET /api/sync/status` return 200. Staged totals survived: 449 approved, 294 pending, 269 categorized. `source_documents` reads (503 rows). Sixteen itemized orders point at stub documents (`provenance=db-recover-20261002`) because those receipt bytes were on corrupt pages.
 
-## Phase 18 Work Breakdown Structure (WBS)
+The container now forces `IRONLEDGER_JOURNAL_MODE=DELETE`. WAL on the Docker Desktop bind mount is what corrupted this file on 2026-09-24 and again on the first restart after recover. Snapshots of the bad files are `backup-20261002-malformed/` and `backup-20261002-poststart/`. Do not write `ironledger.db` from the host while compose is up.
 
-```
-Phase 18 Delivery Roadmap
-├── 1. Background IMAP / Mail Poller Daemon (P1)
-│   ├── Multi-account credential store (`config/email_connectors.json`)
-│   ├── Scheduled IMAP poller (`src/ironledger/ingest/imap_poller.py`)
-│   ├── Automatic .eml extraction & inbox staging
-│   └── Ingestion pipeline trigger & duplicate message suppression
-│
-├── 2. Operator Workbench Split Proposal UI (P1)
-│   ├── React split proposal visual review card in `RegisterGrid.tsx`
-│   ├── Itemized breakdown table (lines, prices, taxes, shipping, confidence)
-│   ├── Inline category override typeaheads per line
-│   └── 1-click "Apply Split" & "Reject Split" actions in `InspectorSidecar.tsx`
-│
-├── 3. Multi-Shipment Combinatorial Reconciliation (P2)
-│   ├── Subset-sum solver for partial Amazon credit card charges
-│   ├── Prorated tax & shipping distribution across shipment splits
-│   └── Partial order linking in `split_linker.py`
-│
-├── 4. Configurable Keyword Taxonomy (`config/taxonomy.json`) (P2)
-│   ├── Externalize hardcoded Tier 2 regex rules to JSON
-│   ├── Workbench UI taxonomy rule editor
-│   └── Custom account mapping validation
-│
-└── 5. Inbound Email HTTP Webhook Endpoint (P3)
-    ├── `POST /api/webhooks/inbound-email` for real-time Sigil / agent push
-    └── HMAC signature verification & direct staging
-```
+## Shipped — Phase 18
 
----
+Phase 17 left the multi-leg compiler, migration 0021, and the Amazon, Venmo, and email normalizers. Phase 18 closed the loop below.
 
-## Deliverable Specifications
+| Item | Where it landed |
+|---|---|
+| IMAP receipt polling | `src/ironledger/ingest/imap_poller.py` (stdlib poller, `password_env` secrets, UID state). The scheduled operator path is `scripts/sweep_receipts.py` plus `scripts/setup-scheduled-tasks.ps1` (`IronLedger-Receipt-Sync`). |
+| Split proposal review | Confirm and reject in `web/src/components/InspectorSidecar.tsx`, backed by `/api/staging/splits/proposals`. |
+| Partial-shipment matching | Integer subset-sum and prorated tax, shipping, and discount in `src/ironledger/ingest/split_linker.py`. Selected lines persist in `src/ironledger/db/schema/0022_partial_shipment_proposals.sql`. |
+| Taxonomy editor | `config/taxonomy.json`, `src/ironledger/web/routers/taxonomy.py`, rules view in the workbench. Edits reload by mtime. |
 
-### 1. Background IMAP / Mail Poller Daemon
-- **Objective**: Eliminate manual file dropping for email receipts.
-- **Module**: `src/ironledger/ingest/imap_poller.py`.
-- **Config**: `config/email_connectors.json` (supports multiple accounts: Gmail, Outlook/Hotmail, iCloud with app passwords).
-- **Behavior**:
-  - Connects securely via SSL/TLS IMAP.
-  - Queries `(UNSEEN (OR FROM "auto-confirm@amazon.com" (OR FROM "venmo@venmo.com" (OR FROM "no_reply@email.apple.com" FROM "uber.us@uber.com"))))` or `SINCE <date>` for backfill.
-  - Fetches RFC 822 `.eml` payloads directly into `C:\Users\soren\IronLedger\InBox`.
-  - Automatically runs `run_import()` and triggers split linking against staged transactions.
+## Shipped after the repair
 
-### 2. Operator Workbench Split Proposal Review UI
-- **Objective**: Full interactive visual triage in browser at `http://127.0.0.1:8000/`.
-- **Components**:
-  - `web/src/components/SplitProposalModal.tsx` & `web/src/components/InspectorSidecar.tsx`.
-  - Line-item breakdown table displaying: Item Title, Quantity, Price, Tax, Category Account with `AccountTypeahead`, Confidence score badge.
-  - Single-action Approve/Confirm button calling `/api/staging/splits/proposals/{id}/confirm`.
+| Item | Where it landed |
+|---|---|
+| Rollback journal on the bind mount | `IRONLEDGER_JOURNAL_MODE=DELETE` in `docker-compose.yml`. `connect()` honors that env var. |
+| Compose-guard coverage | Warns before `compliance generate`, `anomaly scan`, `anomaly resolve`, `federation outbox dispatch`, `failover promote`, and `security rotate-key`. List, status, and `compliance verify` stay quiet. |
+| Web runtime dependencies | `pyproject.toml` declares FastAPI, uvicorn, pydantic, starlette, cryptography, jsonschema, keyring, psutil, and python-multipart. `beancount` stays a dev extra. |
+| Inbound email webhook | `POST /api/webhooks/inbound-email`. Body is the raw RFC 822 message. `X-IronLedger-Signature` is the existing `t,e,d,v1` HMAC with a 300 second window. `d` is stored in `inbound_email_deliveries` (migration 0023) and rejected on replay. A valid receipt is acquired and sent through `propose_splits_for_order`. |
+| Identical categorization rules | Ten extra active rows with the same pattern, match type, account, target, and priority were disabled on 2026-10-02. |
 
-### 3. Multi-Shipment Combinatorial Matcher
-- **Objective**: Reconcile Amazon orders where items ship across multiple days and generate separate credit card transactions.
-- **Module**: `src/ironledger/ingest/split_linker.py`.
-- **Algorithm**: Integer subset-sum matching where:
-  $$\sum_{i \in \text{subset}} \text{unit\_price}_i + \text{prorated\_tax} + \text{prorated\_shipping} = |\text{staged\_charge\_minor}|$$
+The inbound route stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. An empty secret returns 503.
 
-### 4. User-Configurable Taxonomy
-- **Objective**: Allow users to define custom keywords and expense mappings without code edits.
-- **Config**: `config/taxonomy.json`.
-- **Integration**: Dynamic reload in `categorize_order_line()`.
+## Open
 
----
+1. **Conflicting categorization rules.** These patterns still have more than one active target, so rule resolution can pick either one: `hbo max new york ny`, the full SunPass payee, `sunpass`, `paws n rec`, `publix`, `contribution`, `anthropic`, `textmuncher`, `trupanion`, `uber trip help.uber.com ca`, `link.com* simplefin br`, and `royalcaribbean.com (866)562-7625 fl`. Identical copies are already disabled. Choosing the target is an operator decision.
 
-## Invariants & Compliance Requirements
+2. **Real PDF statement profile.** The only profile in git is `config/pdf-profiles/example-card.json`. A real statement has not been checked in.
 
-1. **Zero Float Math**: All split calculations, taxes, shipping, and discounts remain strict integer minor units.
-2. **Beancount Immutability**: All mutations target disposable staging; plaintext Beancount remains accounting ground truth.
-3. **Decoupled Runtime**: Zero runtime `import beancount` (verified via AST static analysis).
-4. **Balanced Multi-Leg Verification**: Compiler guarantees $\sum \text{minor\_units} = 0$ across all transactions.
+3. **Operator queue, still unread as decisions.** 294 pending and 269 categorized. Pending includes core-account cash sweeps and card or ACH payments that post both sides. Nothing in that queue was auto-categorized during the repair.
+
+## Parked
+
+- OCR. Text-layer PDFs only. Empty text fails closed.
+- Packaging. `pyproject.toml` version stays `0.0.0`. `VERSION` is `0.15.0`.
+- Identity v2. Confirm-attach must leave the target fingerprint, payee, and narration unchanged.
+- Auto-attach. A unique hit still requires an operator confirm.
+
+## Invariants
+
+- Plaintext Beancount is the accounting authority. SQLite is a disposable projection.
+- Money math stays integer minor units. No float division on the money path.
+- Zero runtime `import beancount` in `src/ironledger`.
+- One confirmed economic event gets more evidence, never a second posting.

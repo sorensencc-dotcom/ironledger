@@ -412,6 +412,16 @@ def _is_mutating_invocation(args) -> bool:
         return False
     if args.command == "project" and sub is None:
         return True  # bare `project` rebuilds the projection db
+    if args.command == "compliance":
+        return getattr(args, "compliance_command", None) == "generate"
+    if args.command == "anomaly":
+        return getattr(args, "anomaly_command", None) in {"scan", "resolve"}
+    if args.command == "federation":
+        return getattr(args, "outbox_command", None) == "dispatch"
+    if args.command == "failover":
+        return getattr(args, "failover_command", None) == "promote"
+    if args.command == "security":
+        return getattr(args, "security_command", None) == "rotate-key"
     return args.command in {
         "compile", "import", "review", "rule", "fitid-trust", "web",
     } or (args.command == "sync" and getattr(args, "sync_command", None) in {"poll"}) or (

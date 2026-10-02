@@ -31,4 +31,7 @@ services:
       - PYTHONPATH=/data/src
       - IRONLEDGER_CONFIG_DIR=/data/config
       - IRONLEDGER_OP_TOKEN=${IRONLEDGER_OP_TOKEN:-d0-localhost-token}
+      - IRONLEDGER_INBOUND_EMAIL_SECRET=${IRONLEDGER_INBOUND_EMAIL_SECRET:-}
+      # WAL on this Windows bind mount corrupted ironledger.db. Rollback journal only.
+      - IRONLEDGER_JOURNAL_MODE=DELETE
       - IRONLEDGER_SIMPLEFIN_ACCESS_URL=${IRONLEDGER_SIMPLEFIN_ACCESS_URL:-}

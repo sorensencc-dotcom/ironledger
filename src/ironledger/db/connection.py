@@ -13,8 +13,11 @@ structural tests are meaningful.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
+
+_JOURNAL_MODES = {"WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY"}
 
 __all__ = ["ForeignKeysNotEnforced", "connect"]
 
@@ -23,8 +26,17 @@ class ForeignKeysNotEnforced(RuntimeError):
     """A connection could not be placed in foreign-key-enforcing mode."""
 
 
+def _journal_mode() -> str:
+    raw = os.environ.get("IRONLEDGER_JOURNAL_MODE", "WAL").strip().upper()
+    return raw if raw in _JOURNAL_MODES else "WAL"
+
+
 def connect(database: str | Path) -> sqlite3.Connection:
-    """Open a SQLite connection with foreign keys enforced and WAL journaling.
+    """Open a SQLite connection with foreign keys enforced.
+
+    Journal mode defaults to WAL. Set ``IRONLEDGER_JOURNAL_MODE=DELETE`` when the
+    database file lives on a Docker Desktop bind mount: WAL locking there has
+    corrupted this database twice.
 
     ``database`` may be a filesystem path or ``":memory:"``. Raises
     :class:`ForeignKeysNotEnforced` if ``PRAGMA foreign_keys`` does not report
@@ -41,10 +53,12 @@ def connect(database: str | Path) -> sqlite3.Connection:
             raise ForeignKeysNotEnforced(
                 f"PRAGMA foreign_keys reported {fk_state!r} after being set to ON"
             )
-        # WAL is unavailable for pure in-memory databases and some mounted filesystems; that is acceptable.
+        # WAL is unavailable for pure in-memory databases. On a Docker Desktop
+        # bind mount it also reports success and then corrupts pages, so the
+        # container sets IRONLEDGER_JOURNAL_MODE=DELETE.
         if str(database) != ":memory:":
             try:
-                conn.execute("PRAGMA journal_mode = WAL")
+                conn.execute(f"PRAGMA journal_mode = {_journal_mode()}")
             except sqlite3.OperationalError:
                 pass
         conn.execute("PRAGMA busy_timeout = 5000")

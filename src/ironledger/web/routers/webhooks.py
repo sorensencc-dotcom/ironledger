@@ -7,12 +7,16 @@ import hashlib
 import ipaddress
 import json
 import sqlite3
+from pathlib import Path
 from urllib.parse import urlparse
 import uuid
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from ironledger.db import migrations
+from ironledger.events.signer import WebhookSigner
+from ironledger.ingest.inbound_email import InboundEmailError, stage_inbound_receipt
 from ironledger.web.errors import GovernanceException
 from ironledger.web.auth import require_operator as require_operator_auth
 
@@ -378,3 +382,103 @@ def redrive_webhook_dlq(
         status="PENDING",
         message=f"Delivery {delivery_id} successfully re-enqueued for processing",
     )
+
+
+def _signature_parts(signature_header: str) -> dict[str, str]:
+    parts: dict[str, str] = {}
+    for item in signature_header.split(","):
+        if "=" in item:
+            key, value = item.split("=", 1)
+            parts[key.strip()] = value.strip()
+    return parts
+
+
+@router.post("/inbound-email")
+async def receive_inbound_email(
+    request: Request,
+    db: sqlite3.Connection = Depends(get_db),
+):
+    """Accept one signed RFC 822 receipt and stage it through the split linker.
+
+    The signed payload is the raw request body. ``X-IronLedger-Signature`` uses
+    the outbound signer format (``t,e,d,v1``) and the 300 second skew window.
+    ``d`` is the replay key.
+    """
+    secret = getattr(request.app.state, "inbound_email_secret", None)
+    if not secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="inbound email secret is not configured",
+        )
+
+    raw = await request.body()
+    try:
+        payload = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="inbound email body must be utf-8",
+        ) from exc
+
+    signature = request.headers.get("x-ironledger-signature", "")
+    if not signature or not WebhookSigner.verify_signature(secret, signature, payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid inbound email signature",
+        )
+
+    parts = _signature_parts(signature)
+    delivery_id = parts.get("d", "")
+    event_id = parts.get("e", "")
+    if not delivery_id or not event_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid inbound email signature",
+        )
+
+    migrations.migrate(db)
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    already = db.execute(
+        "SELECT 1 FROM inbound_email_deliveries WHERE delivery_id = ?",
+        (delivery_id,),
+    ).fetchone()
+    if already is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="replayed inbound email delivery",
+        )
+    try:
+        db.execute(
+            "INSERT INTO inbound_email_deliveries "
+            "(delivery_id, event_id, received_at_utc) VALUES (?, ?, ?)",
+            (delivery_id, event_id, now_utc),
+        )
+    except sqlite3.IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="replayed inbound email delivery",
+        ) from exc
+
+    evidence_dir = Path(request.app.state.db_path).parent / "evidence"
+    ledger_id = get_active_ledger_id(request, db)
+    try:
+        staged = stage_inbound_receipt(
+            db,
+            payload,
+            evidence_dir=evidence_dir,
+            ledger_id=ledger_id,
+        )
+    except InboundEmailError as exc:
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    db.execute(
+        "UPDATE inbound_email_deliveries SET source_document_id = ? WHERE delivery_id = ?",
+        (staged["source_document_id"], delivery_id),
+    )
+    db.commit()
+    return staged

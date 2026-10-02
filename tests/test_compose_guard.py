@@ -106,6 +106,18 @@ def test_warn_if_compose_not_running_is_silent(monkeypatch):
         (["web"], True),
         (["project", "status"], False),
         (["project"], True),
+        (["sync", "accounts", "list"], False),
+        (["compliance", "verify", "--archive", "bundle.tar"], False),
+        (["compliance", "generate", "--ledger-id", "default", "--framework", "SOC2_TYPE2", "--start", "2026-01-01T00:00:00Z", "--end", "2026-02-01T00:00:00Z"], True),
+        (["anomaly", "list", "--ledger-id", "default"], False),
+        (["anomaly", "scan", "--ledger-id", "default"], True),
+        (["anomaly", "resolve", "--ledger-id", "default", "--flag-id", "f1", "--status", "DISMISSED"], True),
+        (["federation", "nodes", "list"], False),
+        (["federation", "outbox", "list"], False),
+        (["federation", "outbox", "dispatch"], True),
+        (["failover", "status"], False),
+        (["failover", "promote", "--cluster-id", "default", "--candidate-node-id", "n1"], True),
+        (["security", "rotate-key", "--tenant-id", "t1", "--new-kek-key-id", "k2"], True),
     ],
 )
 def test_is_mutating_invocation(argv, expected):

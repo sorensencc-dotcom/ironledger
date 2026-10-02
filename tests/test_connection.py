@@ -14,6 +14,13 @@ def test_connection_has_foreign_keys_on():
     assert state == 1
 
 
+def test_journal_mode_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("IRONLEDGER_JOURNAL_MODE", "DELETE")
+    conn = connect(tmp_path / "journal.db")
+    (mode,) = conn.execute("PRAGMA journal_mode").fetchone()
+    assert mode == "delete"
+
+
 def test_restricted_delete_raises_with_enforcement_live(tmp_path):
     import sqlite3
 
