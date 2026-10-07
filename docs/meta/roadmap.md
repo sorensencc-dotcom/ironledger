@@ -1,12 +1,12 @@
 # IronLedger roadmap
 
-Checked 2026-10-07. Container `ironledger-workbench` is up at `http://127.0.0.1:8000` and reports healthy, but staging and authenticated sync status both return 500. Read-only SQLite access fails; immutable inspection reports malformed pages and foreign-key inspection fails. Recovery is open. See `STATUS.md` for the isolated code/test baseline.
+Checked 2026-10-07 after recovery. Workbench at `http://127.0.0.1:8000`: integrity `ok`, zero foreign-key violations, staging/authenticated sync/split APIs 200, including after restart. Runtime database now lives on native Docker volume `ironledger-database`; root host `ironledger.db` is the preserved damaged copy. See `STATUS.md` for recovery limits and test evidence.
 
 ## Database
 
 Historical repair evidence (2026-10-02; superseded by the failed 2026-10-07 check): `PRAGMA quick_check` is `ok` inside the running container, foreign-key check is 0, and `GET /api/staging` and `GET /api/sync/status` return 200. Staged totals survived: 449 approved, 294 pending, 269 categorized. `source_documents` reads (503 rows). Sixteen itemized orders point at stub documents (`provenance=db-recover-20261002`) because those receipt bytes were on corrupt pages.
 
-The container now forces `IRONLEDGER_JOURNAL_MODE=DELETE`. WAL on the Docker Desktop bind mount is what corrupted this file on 2026-09-24 and again on the first restart after recover. Snapshots of the bad files are `backup-20261002-malformed/` and `backup-20261002-poststart/`. Do not write `ironledger.db` from the host while compose is up.
+Current runtime uses native Docker storage and forces `IRONLEDGER_JOURNAL_MODE=DELETE`. WAL on the Docker Desktop bind mount is what corrupted this file on 2026-09-24 and again on the first restart after recover. Snapshots of the bad files are `backup-20261002-malformed/` and `backup-20261002-poststart/`. Host `ironledger.db` is stale/damaged; operational writes must run inside the container against `/var/lib/ironledger/ironledger.db`.
 
 ## Shipped — Phase 18
 
@@ -33,7 +33,7 @@ The inbound route stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. An 
 
 ## Open
 
-0. **Live database integrity failure (2026-10-07).** Preserve damaged files and plan recovery before replacing data. Recheck integrity, evidence availability, and authenticated API health after recovery. Existing healthz success is insufficient. No database recovery or financial writes performed during baseline verification.
+0. **Recovery follow-up (2026-10-07).** Three orders/16 lines were reconstructed from original receipts; review regenerated categories before confirming pending proposals. Historical completeness of previously unreadable tables is unproven; retained damaged snapshot and recovered lost-and-found support further audit. External Sentinel still checks host file size rather than native-volume integrity.
 
 1. **Conflicting categorization rules.** These patterns still have more than one active target, so rule resolution can pick either one: `hbo max new york ny`, the full SunPass payee, `sunpass`, `paws n rec`, `publix`, `contribution`, `anthropic`, `textmuncher`, `trupanion`, `uber trip help.uber.com ca`, `link.com* simplefin br`, and `royalcaribbean.com (866)562-7625 fl`. Identical copies are already disabled. Choosing the target is an operator decision.
 

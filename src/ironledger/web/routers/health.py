@@ -21,16 +21,16 @@ def liveness_probe(request: Request) -> dict[str, str]:
 
 @router.get("/readyz", status_code=status.HTTP_200_OK)
 def readiness_probe(request: Request) -> dict[str, Any]:
-    """Readiness probe verifying database connectivity and query execution."""
+    """Readiness probe verifying database connectivity and page integrity."""
     try:
         conn = request.app.state.get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1;")
+        cursor.execute("PRAGMA quick_check(1);")
         res = cursor.fetchone()
-        if not res or res[0] != 1:
+        if not res or res[0] != "ok":
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Database query returned unexpected result",
+                detail="Database integrity check failed",
             )
         return {
             "status": "ready",
