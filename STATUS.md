@@ -1,12 +1,12 @@
 # IronLedger Project Status
 
 ## Active Goal
-Phase 18 Reduced P1 — IMAP Poller & Split Proposal Operator Workbench: Automated itemized transaction breakdown (Amazon/Venmo CSVs & forwarded RFC 822 email receipts via Sigil Relay) with integer zero-float precision, 3-tier categorization, and safe-mode review workflows.
+Stabilize the shipped Phase 18 workbench: verify runtime/database health, finish the split-line total UI repair, and refresh the regression baseline. Live database health is failing as of 2026-10-07; recovery remains operator work.
 
-## Milestone Status: Multi-Leg Order Splitter Engine v0.17.0
+## Milestone Status: Phase 18 Shipped; Runtime Stabilization Open
 - **Preceding Baseline:** Phase 16 Subscriptions & Recurring Intelligence Engine v0.16.0 (1095 passed, 4 skipped).
-- **Regression Invariant:** 1122 passed, 4 skipped.
-- **Current Milestone:** Phase 17 Multi-Leg Order Splitter.
+- **Current isolated regression baseline (2026-10-07):** 1146 passed, 5 skipped (1151 collected); UI 6 passed; production UI build passed. Live runtime checks failed separately.
+- **Shipped milestone:** Phase 18 ingestion and split proposal workbench, building on Phase 17 Multi-Leg Order Splitter.
   - Forward-only migration 0021 (`itemized_orders`, `itemized_order_lines`, `split_proposals`).
   - Compiler Multi-Leg Contract (`validate_approved_set` in `src/ironledger/compile/model.py` and deterministic contra rendering in `src/ironledger/compile/render.py`).
   - Normalizers: Amazon Order History CSV (`src/ironledger/ingest/formats/amazon_order_normalizer.py`), Venmo statement CSV (`src/ironledger/ingest/formats/venmo_normalizer.py`), and Email Receipt Engine (`src/ironledger/ingest/formats/email_receipt_engine.py`).
@@ -40,7 +40,7 @@ Phase 18 Reduced P1 — IMAP Poller & Split Proposal Operator Workbench: Automat
 
 6. **Phase 17 Exit Contract & AST Invariant Suite (`tests/test_phase17_exit_contract.py`)**:
    - Verified zero `ast.Div` and zero `import beancount` across all Phase 17 modules.
-   - Full regression suite passing: 1122 passed, 4 skipped (100% green).
+   - Historical Phase 17 regression result: 1122 passed, 4 skipped. Current baseline is recorded above.
 
 7. **Receipt Automation & Unattended S4U Task Scheduler Daemon Suite (`scripts/`)**:
    - `scripts/sweep_receipts.py`: Gmail IMAP receipt sweeper using `X-GM-RAW` queries, UID deduplication, and optional dynamic Gmail label tagging (`+X-GM-LABELS`).
@@ -71,12 +71,22 @@ Phase 18 Reduced P1 — IMAP Poller & Split Proposal Operator Workbench: Automat
 - **Append-Only Immutability:** SQLite triggers guarding outbox, audit, mutation, and governance event streams.
 - **Multi-Tenant Boundaries:** Relational composite keys and tenant registries enforcing strict ledger isolation.
 
+## Verification Snapshot — 2026-10-07
+- Source baseline: main `fde1262`, plus the scoped split-total helper and tests in an isolated worktree. No live financial writes or deployment performed.
+- Backend: `python -m pytest -q` passed; 1151 tests collected, five skipped (1146 passed). One upstream Starlette TestClient deprecation warning.
+- UI: focused and full `npm test` both passed (6 tests); `npm run build` passed, including docs generation, TypeScript, and Vite.
+- Runtime: `ironledger-workbench` reports healthy, but `/api/staging` and authenticated `/api/sync/status` return 500. `/healthz` does not establish database health.
+- Database: normal read-only SQLite open fails (`unable to open database file`). Immutable read-only `quick_check` reports malformed btree pages; foreign-key check raises `database disk image is malformed`. Immutable inspection is diagnostic only, not a healthy/live consistency proof.
+- Container config has `IRONLEDGER_JOURNAL_MODE=DELETE`; actual database journal mode could not be verified after integrity failure.
+- Version authority: root `VERSION` remains `0.15.0` and supplies app/docs version. Python package `0.0.0` and private web package `0.1.0` are packaging metadata; phase milestones are not release versions. No release bump approved here.
+
 ## Next Action
-Database repaired 2026-10-02 (`PRAGMA quick_check` ok, staging and sync return 200). Compose runs with `IRONLEDGER_JOURNAL_MODE=DELETE`. Inbound email webhook is `POST /api/webhooks/inbound-email` and stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. Remaining operator work: conflicting categorization targets, and a real PDF statement profile. See `docs/meta/roadmap.md`.
+Investigate and recover the malformed live database under a separately reviewed recovery plan. Preserve damaged files and verify receipt/evidence losses before replacing data; do not write from the host while compose runs. Then repeat integrity and authenticated endpoint checks. Conflicting categorization targets and a real PDF statement profile remain operator work. Inbound email webhook stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. See `docs/meta/roadmap.md`.
+
 ## Verification Process Note
 - Windows ACLs permit writes under this checkout. If Codex restricted process reports Permission denied, classify as sandbox enforcement; rerun repo-writing build/test steps elevated. Use PYTHONDONTWRITEBYTECODE=1 for syntax checks to avoid __pycache__ writes.
 
 ## Local Workbench Runtime
 - Compose default: `http://127.0.0.1:8000`.
-- Current Windows fallback: `http://127.0.0.1:8765` via `IRONLEDGER_HOST_PORT=8765 docker compose up -d` (host port `8765` mapped to container port `8000`).
+- Documented Windows fallback (not verified in this check): `http://127.0.0.1:8765` via `IRONLEDGER_HOST_PORT=8765 docker compose up -d` (host port `8765` mapped to container port `8000`).
 

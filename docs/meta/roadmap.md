@@ -1,10 +1,10 @@
 # IronLedger roadmap
 
-Checked 2026-10-02. The workbench container `ironledger-workbench` is up at `http://127.0.0.1:8000`.
+Checked 2026-10-07. Container `ironledger-workbench` is up at `http://127.0.0.1:8000` and reports healthy, but staging and authenticated sync status both return 500. Read-only SQLite access fails; immutable inspection reports malformed pages and foreign-key inspection fails. Recovery is open. See `STATUS.md` for the isolated code/test baseline.
 
 ## Database
 
-Repaired 2026-10-02. `PRAGMA quick_check` is `ok` inside the running container, foreign-key check is 0, and `GET /api/staging` and `GET /api/sync/status` return 200. Staged totals survived: 449 approved, 294 pending, 269 categorized. `source_documents` reads (503 rows). Sixteen itemized orders point at stub documents (`provenance=db-recover-20261002`) because those receipt bytes were on corrupt pages.
+Historical repair evidence (2026-10-02; superseded by the failed 2026-10-07 check): `PRAGMA quick_check` is `ok` inside the running container, foreign-key check is 0, and `GET /api/staging` and `GET /api/sync/status` return 200. Staged totals survived: 449 approved, 294 pending, 269 categorized. `source_documents` reads (503 rows). Sixteen itemized orders point at stub documents (`provenance=db-recover-20261002`) because those receipt bytes were on corrupt pages.
 
 The container now forces `IRONLEDGER_JOURNAL_MODE=DELETE`. WAL on the Docker Desktop bind mount is what corrupted this file on 2026-09-24 and again on the first restart after recover. Snapshots of the bad files are `backup-20261002-malformed/` and `backup-20261002-poststart/`. Do not write `ironledger.db` from the host while compose is up.
 
@@ -33,6 +33,8 @@ The inbound route stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. An 
 
 ## Open
 
+0. **Live database integrity failure (2026-10-07).** Preserve damaged files and plan recovery before replacing data. Recheck integrity, evidence availability, and authenticated API health after recovery. Existing healthz success is insufficient. No database recovery or financial writes performed during baseline verification.
+
 1. **Conflicting categorization rules.** These patterns still have more than one active target, so rule resolution can pick either one: `hbo max new york ny`, the full SunPass payee, `sunpass`, `paws n rec`, `publix`, `contribution`, `anthropic`, `textmuncher`, `trupanion`, `uber trip help.uber.com ca`, `link.com* simplefin br`, and `royalcaribbean.com (866)562-7625 fl`. Identical copies are already disabled. Choosing the target is an operator decision.
 
 2. **Real PDF statement profile.** The only profile in git is `config/pdf-profiles/example-card.json`. A real statement has not been checked in.
@@ -42,7 +44,7 @@ The inbound route stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. An 
 ## Parked
 
 - OCR. Text-layer PDFs only. Empty text fails closed.
-- Packaging. `pyproject.toml` version stays `0.0.0`. `VERSION` is `0.15.0`.
+- Packaging. Root `VERSION` (`0.15.0`) supplies app/docs version. Python package `0.0.0` and private web package `0.1.0` remain packaging metadata. Phase numbers do not imply a released version; no bump in this stabilization pass.
 - Identity v2. Confirm-attach must leave the target fingerprint, payee, and narration unchanged.
 - Auto-attach. A unique hit still requires an operator confirm.
 
