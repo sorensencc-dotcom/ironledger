@@ -5,7 +5,7 @@ Stabilize the shipped Phase 18 workbench: verify runtime/database health, finish
 
 ## Milestone Status: Phase 18 Shipped; Runtime Stabilization Open
 - **Preceding Baseline:** Phase 16 Subscriptions & Recurring Intelligence Engine v0.16.0 (1095 passed, 4 skipped).
-- **Current isolated regression baseline (2026-10-07):** 1147 passed, 5 skipped (1152 collected); UI 6 passed; production UI build passed. Initial live runtime checks failed; post-recovery checks pass.
+- **Current isolated regression baseline (2026-10-07):** 1159 passed, 5 skipped (1164 collected); UI 6 passed; production UI build passed. Initial live runtime checks failed; post-recovery checks pass.
 - **Shipped milestone:** Phase 18 ingestion and split proposal workbench, building on Phase 17 Multi-Leg Order Splitter.
   - Forward-only migration 0021 (`itemized_orders`, `itemized_order_lines`, `split_proposals`).
   - Compiler Multi-Leg Contract (`validate_approved_set` in `src/ironledger/compile/model.py` and deterministic contra rendering in `src/ironledger/compile/render.py`).
@@ -73,7 +73,7 @@ Stabilize the shipped Phase 18 workbench: verify runtime/database health, finish
 
 ## Verification Snapshot â€” 2026-10-07
 - Initial source baseline: main `fde1262`, plus the scoped split-total helper/tests. Initial checks made no live financial writes; the separately authorized recovery/deployment is recorded below.
-- Backend: `python -m pytest -q` passed; 1152 tests collected, five skipped (1147 passed), after the readiness fix. One upstream Starlette TestClient deprecation warning.
+- Backend: `python -m pytest -q` passed; 1164 tests collected, five skipped (1159 passed), after the receipt repair. One upstream Starlette TestClient deprecation warning.
 - UI: focused and full `npm test` both passed (6 tests); `npm run build` passed, including docs generation, TypeScript, and Vite.
 - Initial runtime failure: `ironledger-workbench` reported healthy, but `/api/staging` and authenticated `/api/sync/status` return 500. `/healthz` does not establish database health.
 - Initial database failure: normal read-only SQLite open fails (`unable to open database file`). Immutable read-only `quick_check` reports malformed btree pages; foreign-key check raises `database disk image is malformed`. Immutable inspection is diagnostic only, not a healthy/live consistency proof.
@@ -91,8 +91,14 @@ Stabilize the shipped Phase 18 workbench: verify runtime/database health, finish
 - Readiness now runs SQLite `quick_check(1)` instead of `SELECT 1`; compose health checks readiness. A real corrupt-page regression test proves liveness can remain 200 while readiness returns 503.
 - Attempt to pause scheduled tasks was denied by Windows; task settings were not changed. Tasks remain Ready and their scripts now route writes to the container. External Sentinel file-size inspection still observes the stale host copy; use readiness and container integrity checks as database-health evidence.
 
+## Receipt Review and Repair — 2026-10-07
+- Three rebuilt orders/16 lines reviewed against original receipts: summary rows became products, a credit became positive, and stale receipts matched unrelated current transactions. Eight proposals rejected through authenticated operator API, with eight audit records. Audit chain passes; staged decisions and postings unchanged.
+- Parser recognizes receipt summary variants and discounts, reconciles stated totals/subtotals, and rejects unsupported negative amounts. Order references require digits. Shared linker and confirmation require merchant agreement and dates within seven days; Amazon/AMZN alias applies only to Amazon. Unknown merchants/invalid dates fail closed. Other abbreviated merchants may require evidence-backed aliases later.
+- Original receipt totals now $208.00, $124.99, $121.19. November receipt has no inline product prices, so subtotal is one low-confidence Uncategorized aggregate. No product details fabricated. Corrected receipts create zero proposals on an in-memory live-database clone. Old rejected order/line rows retained as historical parse evidence; no ID rewrites or confirmations.
+- Focused parser/linker/web/MCP tests: 26 passed. Full suite: 1159 passed, 5 skipped. Live integrity ok, foreign keys zero, readiness/staging/sync 200 after deployment. Logs/XML and before-action snapshot retained in the recovery directory.
+
 ## Next Action
-Resolve conflicting categorization targets and validate a real PDF statement profile. Review regenerated receipt lines before confirming their pending proposals. Use `docker compose exec -w /data ironledger` for operational database writes and back up the native-volume database with SQLite backup; host `ironledger.db` is a preserved damaged artifact, not current state. Never delete the database volume as routine cleanup. Inbound email webhook stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set.
+Resolve conflicting categorization targets and validate a real PDF statement profile. All eight unsafe recovered proposals are rejected; do not resurrect their old parsed order data. Use `docker compose exec -w /data ironledger` for operational database writes and back up the native-volume database with SQLite backup; host `ironledger.db` is a preserved damaged artifact, not current state. Never delete the database volume as routine cleanup. Inbound email webhook stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set.
 
 ## Verification Process Note
 - Windows ACLs permit writes under this checkout. If Codex restricted process reports Permission denied, classify as sandbox enforcement; rerun repo-writing build/test steps elevated. Use PYTHONDONTWRITEBYTECODE=1 for syntax checks to avoid __pycache__ writes.

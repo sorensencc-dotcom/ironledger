@@ -33,7 +33,7 @@ The inbound route stays dark until `IRONLEDGER_INBOUND_EMAIL_SECRET` is set. An 
 
 ## Open
 
-0. **Recovery follow-up (2026-10-07).** Three orders/16 lines were reconstructed from original receipts; review regenerated categories before confirming pending proposals. Historical completeness of previously unreadable tables is unproven; retained damaged snapshot and recovered lost-and-found support further audit. External Sentinel still checks host file size rather than native-volume integrity.
+0. **Recovery follow-up (2026-10-07).** Receipt review complete: all eight unsafe proposals rejected with audit records. Shared parser totals corrected; linker/confirmation require merchant agreement and a seven-day date window. Corrected original receipts produce zero current matches; old rejected parsed rows remain historical evidence. Historical completeness of previously unreadable tables is unproven; retained damaged snapshot and recovered lost-and-found support further audit. External Sentinel still checks host file size rather than native-volume integrity.
 
 1. **Conflicting categorization rules.** These patterns still have more than one active target, so rule resolution can pick either one: `hbo max new york ny`, the full SunPass payee, `sunpass`, `paws n rec`, `publix`, `contribution`, `anthropic`, `textmuncher`, `trupanion`, `uber trip help.uber.com ca`, `link.com* simplefin br`, and `royalcaribbean.com (866)562-7625 fl`. Identical copies are already disabled. Choosing the target is an operator decision.
 
