@@ -6,7 +6,7 @@ generating multi-leg contra posting proposals with integer zero-float precision.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -153,6 +153,20 @@ def categorize_order_line(
     return "Expenses:Uncategorized", 50
 
 
+def _receipt_target_matches(order_date: str, merchant: str, target_date: str, payee: str) -> bool:
+    """Amount alone cannot establish receipt identity; require nearby date and merchant."""
+    try:
+        if abs((date.fromisoformat(target_date) - date.fromisoformat(order_date)).days) > 7:
+            return False
+    except (TypeError, ValueError):
+        return False
+    merchant_norm = re.sub(r"[^a-z0-9]", "", merchant.lower())
+    payee_norm = re.sub(r"[^a-z0-9]", "", (payee or "").lower())
+    return len(merchant_norm) >= 3 and merchant_norm != "unknownmerchant" and (
+        merchant_norm in payee_norm or (merchant_norm == "amazon" and "amzn" in payee_norm)
+    )
+
+
 def propose_splits_for_order(
     conn: sqlite3.Connection,
     order: ParsedItemizedOrder,
@@ -232,6 +246,8 @@ def propose_splits_for_order(
     created_proposal_id: str | None = None
 
     for cand_stx_id, cand_date, cand_payee, cand_minor, _cand_curr in candidates:
+        if not _receipt_target_matches(order.order_date, order.merchant, cand_date, cand_payee):
+            continue
         shipment = None
         if abs(cand_minor) != order.total_minor_units:
             shipment = find_shipment_match(
@@ -244,12 +260,7 @@ def propose_splits_for_order(
             if shipment is None:
                 continue
         # Compute match confidence
-        match_conf = 80
-        merchant_norm = order.merchant.lower()
-        payee_norm = (cand_payee or "").lower()
-
-        if merchant_norm in payee_norm or payee_norm in merchant_norm or "amzn" in payee_norm or "amazon" in payee_norm:
-            match_conf += 10
+        match_conf = 90
         if cand_date == order.order_date:
             match_conf += 8
 
@@ -368,7 +379,7 @@ def confirm_split_proposal(
     prop = conn.execute(
         "SELECT sp.proposal_id, sp.order_id, sp.target_type, sp.target_id, sp.status, "
         "       sp.selected_line_indices, sp.allocated_tax_minor, sp.allocated_shipping_minor, sp.allocated_discount_minor, "
-        "       io.source_document_id, io.currency, io.tax_minor_units, io.shipping_minor_units, io.discount_minor_units, io.ledger_id "
+        "       io.source_document_id, io.currency, io.tax_minor_units, io.shipping_minor_units, io.discount_minor_units, io.ledger_id, io.order_date, io.merchant "
         "FROM split_proposals sp "
         "JOIN itemized_orders io ON sp.order_id = io.order_id "
         "WHERE sp.proposal_id = ?",
@@ -394,6 +405,8 @@ def confirm_split_proposal(
         shipping_minor,
         discount_minor,
         ledger_id,
+        order_date,
+        merchant,
     ) = prop
 
     if status == "confirmed":
@@ -402,6 +415,13 @@ def confirm_split_proposal(
         raise ValueError(f"Cannot confirm already rejected proposal {proposal_id}")
 
     if target_type == "staged_transaction":
+        target = conn.execute(
+            "SELECT proposed_date, payee FROM staged_transactions "
+            "WHERE staged_transaction_id = ? AND ledger_id = ?",
+            (target_id, ledger_id),
+        ).fetchone()
+        if target is None or not _receipt_target_matches(order_date, merchant, *target):
+            raise ValueError("Split target date or merchant does not match receipt")
         # Load order lines
         lines = conn.execute(
             "SELECT line_index, item_title, total_price_minor, proposed_account "

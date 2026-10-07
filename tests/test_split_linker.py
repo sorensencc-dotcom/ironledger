@@ -231,3 +231,25 @@ def test_partial_shipment_proposal_persists_selection_and_confirms(db: sqlite3.C
         ("Expenses:Taxes", 500),
         ("Expenses:Shipping", 250),
     ]
+
+@pytest.mark.parametrize("target_date,payee,expected", [
+    ("2006-01-03", "AMZN US", False),
+    ("2026-10-07", "AMZN US", False),
+    ("2026-09-29", "CASH ADVANCE", False),
+    ("2026-09-29", "", False),
+    ("2026-10-06", "AMZN US", True),
+])
+def test_split_requires_nearby_date_and_same_merchant(db, target_date, payee, expected):
+    _seed_environment(db)
+    db.execute("UPDATE staged_transactions SET proposed_date=?, payee=?", (target_date, payee))
+    order = ParsedItemizedOrder("guard_order", "Amazon", "114-123", "2026-09-29", "USD", 5410, 0, 0, 0, 5410,
+        (ParsedOrderLine(0, "Book", "", 1, 5410, 5410, "Expenses:Books", 90),))
+    proposal = propose_splits_for_order(db, order, "doc_ord_001")
+    assert bool(proposal) is expected
+    if expected:
+        db.execute("UPDATE staged_transactions SET proposed_date='2006-01-03'")
+        before = db.execute("SELECT * FROM staged_postings").fetchall()
+        with pytest.raises(ValueError, match="date or merchant"):
+            confirm_split_proposal(db, proposal)
+        assert db.execute("SELECT * FROM staged_postings").fetchall() == before
+        assert db.execute("SELECT status FROM split_proposals WHERE proposal_id=?", (proposal,)).fetchone()[0] == "pending"
