@@ -35,3 +35,40 @@ def test_cli_mcp_argv_exits(mcp_env):
 
     # --bind 0.0.0.0 -> exit 1
     assert main(["mcp", "--db", db, "--ledger-dir", str(ledger_dir), "--bind", "0.0.0.0", "--port", "8765"]) == 1
+
+    # Bearer rotation belongs to serve_http. --bind starts the loopback daemon.
+    assert main(["mcp", "--db", db, "--ledger-dir", str(ledger_dir), "--bind", "127.0.0.1", "--port", "8766", "--rotate-token"]) == 2
+
+
+def test_cli_mcp_bind_starts_loopback_copy(mcp_env, monkeypatch, tmp_path):
+    ledger_dir, _projection_dir, db = mcp_env
+    copy_root = tmp_path / "daemon-root"
+    monkeypatch.setenv("IRONLEDGER_MCP_COPY_ROOT", str(copy_root))
+    seen = {}
+
+    def fake_serve(copy, *, host, port):
+        seen["host"] = host
+        seen["port"] = port
+        seen["database"] = copy.database
+
+    monkeypatch.setattr("ironledger.mcp.loopback.serve", fake_serve)
+    code = main(["mcp", "--db", db, "--ledger-dir", str(ledger_dir), "--bind", "127.0.0.1", "--port", "8766"])
+    assert code == 0
+    assert seen["host"] == "127.0.0.1"
+    assert seen["port"] == 8766
+    assert seen["database"].name == "ironledger.daemon-copy.db"
+    assert Path(db).resolve() != seen["database"].resolve()
+
+
+def test_cli_mcp_bind_refuses_live_database(mcp_env, monkeypatch):
+    from ironledger.mcp.loopback import repo_root
+
+    ledger_dir, _projection_dir, _db = mcp_env
+    live = repo_root() / "ironledger.db"
+
+    def fail_serve(*_args, **_kwargs):
+        raise AssertionError("serve must not run")
+
+    monkeypatch.setattr("ironledger.mcp.loopback.serve", fail_serve)
+    code = main(["mcp", "--db", str(live), "--ledger-dir", str(ledger_dir), "--bind", "127.0.0.1", "--port", "8766"])
+    assert code == 1

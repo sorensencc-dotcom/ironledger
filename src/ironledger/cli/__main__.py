@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -35,7 +36,6 @@ from ironledger.project.errors import ProjectError
 from ironledger.project.query import assert_fresh, balances as project_balances, projection_status, search as project_search
 from ironledger.mcp.bind import assert_loopback
 from ironledger.mcp.errors import McpBindError
-from ironledger.mcp.http import serve_http
 from ironledger.mcp.stdio import run_stdio
 
 _EXIT_OK = 0
@@ -222,7 +222,7 @@ def _build_parser() -> argparse.ArgumentParser:
     bal.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
     bal.add_argument("--json", action="store_true", help="render balances as JSON")
 
-    mcp = sub.add_parser("mcp", help="run the read-only MCP server (stdio or loopback HTTP)")
+    mcp = sub.add_parser("mcp", help="run the read-only MCP server (stdio, or the stateless loopback daemon)")
     mcp.add_argument("--db", required=False, default=argparse.SUPPRESS, help="path to the SQLite ledger index")
     mcp.add_argument("--ledger-dir", dest="ledger_dir", default=None, type=Path, help="path to the compiled ledger directory")
     mcp.add_argument("--projection-dir", default=None, type=Path, help="path to the projection directory")
@@ -1423,18 +1423,19 @@ def _cmd_mcp(args) -> int:
         if port < 1 or port > 65535:
             print(f"error: port must be between 1 and 65535, got {port}", file=sys.stderr)
             return 2
-        server = serve_http(
-            host=bind,
-            port=port,
-            ledger_dir=ledger_dir,
-            projection_dir=projection_dir,
-            db=args.db,
-            rotate=rotate,
-        )
+        if rotate:
+            print("error: --rotate-token is not part of the loopback daemon", file=sys.stderr)
+            return 2
+        import ironledger.mcp.loopback as loopback
+
         try:
-            server.serve_forever()
-        finally:
-            server.server_close()
+            loopback.assert_not_live(Path(args.db), loopback.repo_root())
+        except loopback.LiveDatabaseRefused as exc:
+            print(f"error: refusing live database {exc}", file=sys.stderr)
+            return 1
+        root = Path(os.environ.get("IRONLEDGER_MCP_COPY_ROOT", loopback.repo_root() / ".mcp-loopback"))
+        copy = loopback.prepare_copy(root)
+        loopback.serve(copy, host=bind, port=port)
         return 0
 
     return run_stdio(
