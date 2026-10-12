@@ -16,6 +16,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from mcp_types import CallToolResult, TextContent
+
 from ironledger.db.connection import connect
 from ironledger.db.migrations import migrate
 from ironledger.mcp.bind import assert_loopback
@@ -108,6 +110,13 @@ def _tool_text(name: str, arguments: dict, copy: LoopbackCopy) -> str:
 def build_server(copy: LoopbackCopy):
     from mcp.server import MCPServer
 
+    from ironledger.mcp.idempotency import IdempotencyMiddleware, Ledger, mutation
+
+    mutations: set[str] = set()
+    ledger = Ledger()
+    mark = mutation(mutations)
+    executions = {"mark_request": 0}
+
     @asynccontextmanager
     async def lifespan(_server):
         log.info("subject %s opened %s", copy.principal, copy.database)
@@ -121,7 +130,19 @@ def build_server(copy: LoopbackCopy):
         "ironledger",
         instructions="Loopback finance tools on a SQLite copy. Subject local:ironledger.",
         lifespan=lifespan,
+        middleware=[IdempotencyMiddleware(mutations, ledger, copy.principal)],
     )
+
+    @server.tool(description="Record one loopback marker. A retry returns the stored row.")
+    @mark
+    def mark_request(label: str) -> CallToolResult:
+        executions["mark_request"] += 1
+        count = executions["mark_request"]
+        return CallToolResult(
+            content=[TextContent(type="text", text=label)],
+            structured_content={"label": label, "executions": count},
+            is_error=False,
+        )
 
     @server.tool(description="Return freshness of the disposable projection.")
     def projection_status() -> str:
