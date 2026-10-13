@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from ironledger import __version__
-from ironledger.mcp import PROTOCOL_VERSION
 from ironledger.mcp.tools import call_tool, list_tools
 
 _logger = logging.getLogger("ironledger.mcp")
@@ -63,13 +62,7 @@ def handle_message(
         return None
 
     try:
-        if method == "initialize":
-            return _jsonrpc_result({
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities": {"tools": {"listChanged": False}},
-                "serverInfo": {"name": "ironledger", "version": __version__},
-            }, req_id)
-        elif method == "ping":
+        if method == "ping":
             return _jsonrpc_result({}, req_id)
         elif method == "tools/list":
             return _jsonrpc_result({"tools": list_tools()}, req_id)
