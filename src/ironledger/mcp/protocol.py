@@ -62,7 +62,15 @@ def handle_message(
         return None
 
     try:
-        if method == "ping":
+        if method == "initialize":
+            params = data.get("params")
+            version = params.get("protocolVersion") if isinstance(params, dict) else None
+            return _jsonrpc_result({
+                "protocolVersion": version if isinstance(version, str) else "2025-03-26",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "ironledger", "version": __version__},
+            }, req_id)
+        elif method == "ping":
             return _jsonrpc_result({}, req_id)
         elif method == "tools/list":
             return _jsonrpc_result({"tools": list_tools()}, req_id)
