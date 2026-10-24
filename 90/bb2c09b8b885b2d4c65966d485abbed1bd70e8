@@ -1,0 +1,19 @@
+src/ironledger/mcp/protocol.py
+  s_eb62a187f56d6f::t_74c604bd519e80 65-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90bb2c09b8b885b2d4c65966d485abbed1bd70e8",
+  "prompts": {},
+  "sessions": {
+    "s_eb62a187f56d6f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f61ea1c8-9f32-4a92-8e15-d9f05484228d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Iron-Hammer <iron-hammer@ironledger.local>"
+    }
+  }
+}
