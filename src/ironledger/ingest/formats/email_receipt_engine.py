@@ -222,7 +222,7 @@ def parse_email_receipt(raw_eml: str | bytes) -> ParsedItemizedOrder:
     merchant = _detect_merchant(unwrapped.original_sender, unwrapped.original_subject)
 
     # Extract order reference from subject or body
-    order_ref_match = re.search(r"(?:order|invoice|trip)\s*(?:#|number|id)?\s*([0-9a-zA-Z-]+)", f"{unwrapped.original_subject}\n{unwrapped.body_text}", re.IGNORECASE)
+    order_ref_match = re.search(r"\b(?:order|invoice|trip)\s*(?:#|number|id)?\s*:?[ \t]*([a-zA-Z0-9-]*[0-9][a-zA-Z0-9-]*)\b", f"{unwrapped.original_subject}\n{unwrapped.body_text}", re.IGNORECASE)
     merchant_order_ref = order_ref_match.group(1) if order_ref_match else ""
 
     body = unwrapped.body_text
@@ -232,6 +232,8 @@ def parse_email_receipt(raw_eml: str | bytes) -> ParsedItemizedOrder:
     shipping_minor = 0
     discount_minor = 0
     total_minor = 0
+    stated_subtotal = None
+    stated_total = None
 
     # Line item regex: e.g. "Item: Mechanical Keyboard Price: $120.00" or "Ergonomic Mouse Pad $15.00"
     for line in body.splitlines():
@@ -239,30 +241,33 @@ def parse_email_receipt(raw_eml: str | bytes) -> ParsedItemizedOrder:
         if not line_clean:
             continue
 
-        # Look for explicit subtotal / tax / shipping / total lines
-        if re.match(r"^Subtotal:\s*", line_clean, re.IGNORECASE):
-            amt_match = re.search(r"(\$?[0-9,]+\.[0-9]{2})", line_clean)
-            if amt_match:
-                subtotal_minor = parse_currency_to_minor_units(amt_match.group(1))
+        # Summary rows are adjustments, never products. Accept receipt label variants.
+        summary = re.match(
+            r"^(sub[- ]?total(?: of items)?|tax|shipping savings|shipping & handling|"
+            r"shipping|delivery|discount|(?:[a-z]+ )?credit(?:[^:=]*?)|"
+            r"total(?: for this order)?)\s*[:=]\s*(-?\s*\$?[0-9,]+\.[0-9]{2})",
+            line_clean, re.IGNORECASE,
+        )
+        if summary:
+            label = summary.group(1).lower()
+            raw_amount = summary.group(2).replace(" ", "")
+            if raw_amount.startswith("-") and label not in ("shipping savings", "discount") and "credit" not in label:
+                raise ValueError("Unsupported negative receipt summary amount")
+            amount = parse_currency_to_minor_units(raw_amount.lstrip("-"))
+            if label.startswith(("sub",)):
+                stated_subtotal = amount
+            elif label.startswith("total"):
+                stated_total = amount
+            elif label == "tax":
+                tax_minor += amount
+            elif label in ("shipping savings", "discount") or "credit" in label:
+                discount_minor += amount
+            else:
+                shipping_minor += amount
             continue
 
-        if re.match(r"^Tax:\s*", line_clean, re.IGNORECASE):
-            amt_match = re.search(r"(\$?[0-9,]+\.[0-9]{2})", line_clean)
-            if amt_match:
-                tax_minor = parse_currency_to_minor_units(amt_match.group(1))
-            continue
-
-        if re.match(r"^(?:Shipping|Delivery):\s*", line_clean, re.IGNORECASE):
-            amt_match = re.search(r"(\$?[0-9,]+\.[0-9]{2})", line_clean)
-            if amt_match:
-                shipping_minor = parse_currency_to_minor_units(amt_match.group(1))
-            continue
-
-        if re.match(r"^Total:\s*", line_clean, re.IGNORECASE):
-            amt_match = re.search(r"(\$?[0-9,]+\.[0-9]{2})", line_clean)
-            if amt_match:
-                total_minor = parse_currency_to_minor_units(amt_match.group(1))
-            continue
+        if re.search(r"-\s*\$?[0-9,]+\.[0-9]{2}$", line_clean):
+            raise ValueError("Unsupported negative receipt item amount")
 
         # Regular item line: "Item: <Title> Price: <Price>" or "<Title>: <Price>" or "<Title> <Price>"
         item_match = re.search(r"^(?:Item:\s*)?(.*?)(?::\s*|\s+)(\$?[0-9,]+\.[0-9]{2})$", line_clean, re.IGNORECASE)
@@ -289,27 +294,33 @@ def parse_email_receipt(raw_eml: str | bytes) -> ParsedItemizedOrder:
 
     if lines:
         subtotal_minor = sum(l.total_price_minor for l in lines)
-        total_minor = subtotal_minor + tax_minor + shipping_minor - discount_minor
+        if stated_subtotal is not None and subtotal_minor != stated_subtotal:
+            raise ValueError("Receipt item total does not match stated subtotal")
+    elif stated_subtotal is not None:
+        subtotal_minor = stated_subtotal
+    elif stated_total is not None:
+        subtotal_minor = stated_total - tax_minor - shipping_minor + discount_minor
     else:
-        if total_minor:
-            subtotal_minor = total_minor - tax_minor - shipping_minor + discount_minor
-        else:
-            total_minor = subtotal_minor + tax_minor + shipping_minor - discount_minor
+        raise ValueError("Receipt has no supported itemization or total")
 
-        if subtotal_minor > 0 or total_minor > 0:
-            line_amt = subtotal_minor if subtotal_minor > 0 else total_minor
-            lines.append(
-                ParsedOrderLine(
-                    line_index=0,
-                    item_title=unwrapped.original_subject or f"{merchant} Purchase",
-                    item_description=f"Source: {unwrapped.forwarder_account}",
-                    quantity=1,
-                    unit_price_minor=line_amt,
-                    total_price_minor=line_amt,
-                    proposed_account="Expenses:Uncategorized",
-                    confidence_score=50,
-                )
+    total_minor = subtotal_minor + tax_minor + shipping_minor - discount_minor
+    if stated_total is not None and total_minor != stated_total:
+        raise ValueError("Receipt calculated total does not match stated total")
+    if subtotal_minor <= 0 or total_minor <= 0:
+        raise ValueError("Receipt total must be positive")
+    if not lines:
+        lines.append(
+            ParsedOrderLine(
+                line_index=0,
+                item_title=unwrapped.original_subject or f"{merchant} Purchase",
+                item_description=f"Source: {unwrapped.forwarder_account}",
+                quantity=1,
+                unit_price_minor=subtotal_minor,
+                total_price_minor=subtotal_minor,
+                proposed_account="Expenses:Uncategorized",
+                confidence_score=50,
             )
+        )
 
     order_id = "ord_" + hashlib.sha256(f"{merchant}:{merchant_order_ref}:{unwrapped.original_date}:{total_minor}".encode("utf-8")).hexdigest()[:16]
 

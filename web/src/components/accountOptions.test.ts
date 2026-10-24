@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Rule } from '../types';
+import { splitProposalLineTotal } from '../lib/staging';
 import { accountOptionsFromRules, filterAccountOptions } from './accountOptions';
 
 function rule(partial: Partial<Rule> & Pick<Rule, 'rule_id' | 'pattern' | 'target_account'>): Rule {
@@ -43,5 +44,20 @@ describe('filterAccountOptions', () => {
 
   it('returns all when query is empty', () => {
     expect(filterAccountOptions(opts, '  ')).toEqual(opts);
+  });
+});
+
+describe('splitProposalLineTotal', () => {
+  it('returns null when proposal lines are unavailable', () => {
+    expect(splitProposalLineTotal({})).toBeNull();
+  });
+
+  it('sums proposal line minor units', () => {
+    expect(splitProposalLineTotal({
+      lines: [
+        { line_index: 0, total_price_minor: 1200 },
+        { line_index: 1, total_price_minor: 350 },
+      ],
+    })).toBe(1550);
   });
 });
