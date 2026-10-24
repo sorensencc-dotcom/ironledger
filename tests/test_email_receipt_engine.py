@@ -120,3 +120,29 @@ def test_parse_email_receipt_amazon_full():
     assert receipt.lines[0].total_price_minor == 1500
     assert receipt.lines[1].item_title == "USB Hub"
     assert receipt.lines[1].total_price_minor == 2500
+
+
+@pytest.mark.parametrize("body,subtotal,shipping,discount,total,count", [
+    ("Item A 34.00\nItem B 224.00\nSUB-TOTAL = $258.00\nABT CREDIT - CODE = - $50.00\nSHIPPING : 0.00 (UPS Ground)\nTAX = $0.00\nTOTAL = $208.00", 25800, 0, 5000, 20800, 2),
+    ("Subtotal of Items: $124.99\nShipping & Handling: $6.98\nShipping Savings: -$6.98\nTotal for this Order: $124.99", 12499, 698, 698, 12499, 1),
+    ("Book $15.63\nCD $14.99\nElectronics $43.44\nSoftware $37.99\nSubtotal of Items: $112.05\nShipping & Handling: $9.14\nTotal for this Order: $121.19", 11205, 914, 0, 12119, 4),
+])
+def test_receipt_summary_rows_are_not_items(body, subtotal, shipping, discount, total, count):
+    raw = "From: auto-confirm@amazon.com\nDate: Wed, 30 Sep 2026 10:00:00 -0400\nSubject: Order with details\n\n" + body
+    order = parse_email_receipt(raw)
+    assert order.merchant_order_ref == ""
+    assert (order.subtotal_minor_units, order.shipping_minor_units, order.discount_minor_units, order.total_minor_units) == (subtotal, shipping, discount, total)
+    assert len(order.lines) == count
+    assert sum(line.total_price_minor for line in order.lines) == subtotal
+
+
+@pytest.mark.parametrize("body", [
+    "Item $10.00\nSubtotal: $10.00\nTotal: $20.00",
+    "Item $10.00\nSubtotal: $20.00",
+    "Item $10.00\nTax: -$2.00",
+    "Refund - $10.00",
+])
+def test_receipt_inconsistent_amounts_fail_closed(body):
+    raw = "From: auto-confirm@amazon.com\nDate: Wed, 30 Sep 2026 10:00:00 -0400\nSubject: Order #114-123\n\n" + body
+    with pytest.raises(ValueError):
+        parse_email_receipt(raw)
