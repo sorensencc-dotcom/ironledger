@@ -39,7 +39,12 @@ if (Test-Path $EnvFile) {
 
 Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting IronLedger SimpleFIN Bank Sync..." -ForegroundColor Cyan
 
-& $PythonExe -m ironledger.cli sync poll --db $DbPath --lookback $LookbackDays
+# Default scheduled writes use the same native-volume database as the workbench.
+if ($DbPath -eq "ironledger.db") {
+    & docker exec --workdir /data ironledger-workbench python -m ironledger.cli --db /var/lib/ironledger/ironledger.db sync poll --lookback $LookbackDays
+} else {
+    & $PythonExe -m ironledger.cli --db $DbPath sync poll --lookback $LookbackDays
+}
 $ExitCode = $LASTEXITCODE
 
 if ($ExitCode -eq 0) {
