@@ -1,0 +1,14 @@
+scripts/poll-simplefin.ps1
+  h_b6ab47e9bb31bd 42-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1dc35ab613ee27f30a52708d066884ce73bcbfa3",
+  "prompts": {},
+  "humans": {
+    "h_b6ab47e9bb31bd": {
+      "author": "Iron-Hammer <iron-hammer@ironledger.local>"
+    }
+  }
+}
