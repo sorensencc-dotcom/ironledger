@@ -63,7 +63,12 @@ if ($SweepExitCode -ne 0) {
 
 # 2. Ingest into IronLedger SQLite database
 Write-Host "Step 2: Ingesting receipts into IronLedger..." -ForegroundColor Cyan
-& $PythonExe scripts/ingest_receipts.py --receipts-dir $ReceiptsDir --db $DbPath
+# Default scheduled writes use the same native-volume database as the workbench.
+if ($DbPath -eq "ironledger.db") {
+    & docker exec --workdir /data ironledger-workbench python scripts/ingest_receipts.py --receipts-dir $ReceiptsDir --db /var/lib/ironledger/ironledger.db
+} else {
+    & $PythonExe scripts/ingest_receipts.py --receipts-dir $ReceiptsDir --db $DbPath
+}
 $IngestExitCode = $LASTEXITCODE
 
 if ($IngestExitCode -eq 0) {
