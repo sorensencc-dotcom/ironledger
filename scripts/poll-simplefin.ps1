@@ -41,9 +41,9 @@ Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] Starting IronLedger Simp
 
 # Default scheduled writes use the same native-volume database as the workbench.
 if ($DbPath -eq "ironledger.db") {
-    & docker exec --workdir /data ironledger-workbench python -m ironledger.cli sync poll --db /var/lib/ironledger/ironledger.db --lookback $LookbackDays
+    & docker exec --workdir /data ironledger-workbench python -m ironledger.cli --db /var/lib/ironledger/ironledger.db sync poll --lookback $LookbackDays
 } else {
-    & $PythonExe -m ironledger.cli sync poll --db $DbPath --lookback $LookbackDays
+    & $PythonExe -m ironledger.cli --db $DbPath sync poll --lookback $LookbackDays
 }
 $ExitCode = $LASTEXITCODE
 
